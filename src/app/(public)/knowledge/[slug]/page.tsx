@@ -10,10 +10,10 @@ import { SectionHero } from '@/components/SectionHero'
 // supplied for get one.
 const ARTICLE_BANNERS: Record<string, string> = {
   'retrieval-augmented-generation': '/images/sections/techno_rag.png',
-  'ai-governance': '/images/sections/governance.png',
+  'ai-governance': '/images/sections/admin.png',
   'agentic-loops': '/images/sections/Agent_loops.png',
   'graph-workflows': '/images/sections/graph-workflow.png',
-  'local-llm-deployment': '/images/sections/localLLM.png',
+  'local-llm-deployment': '/images/sections/kb-sandbox.png',
 }
 
 // No Sources section, no version history, no Edit link -- all staff-only
