@@ -15,7 +15,7 @@ export function PublicHeader({ isAuthenticated, logoUrl }: { isAuthenticated: bo
             <span className="relative block h-7 w-7 shrink-0 overflow-hidden rounded-full">
               <Image src={logoUrl} alt="" fill className="object-cover" />
             </span>
-            KB Sandbox
+            Ember
           </Link>
           <nav className="flex gap-4 text-sm text-zinc-600">
             <Link href="/about" className="hover:text-zinc-900">About</Link>

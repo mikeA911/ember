@@ -6,7 +6,7 @@ import type { Database } from '@/types/database'
 // Branding admin tab (setArticlePublicAction's sibling, updateBrandingIconAction
 // in src/app/actions/branding.ts). A fresh clone/deploy with no `branding` row
 // in `settings` still works with zero configuration.
-export const LOGO_PATH = '/images/Logo1.jpg'
+export const LOGO_PATH = '/images/logo2.png'
 
 const BRANDING_BUCKET = 'branding'
 

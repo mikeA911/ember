@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const supabase = await createClient();
   const urls = await getBrandingUrls(supabase);
   return {
-    title: "KB Sandbox",
+    title: "Ember",
     description: "Knowledge curation workbench",
     icons: { icon: urls.icon192, apple: urls.appleTouchIcon },
   };

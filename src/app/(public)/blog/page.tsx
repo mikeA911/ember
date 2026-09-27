@@ -6,16 +6,16 @@ import { getBlogMediaUrl } from '@/lib/blog/media'
 import { SectionHero } from '@/components/SectionHero'
 import { env } from '@/lib/env'
 
-const DESCRIPTION = 'Notes on building, evaluating, and deploying KB Sandbox.'
+const DESCRIPTION = 'Notes on building, evaluating, and deploying Ember.'
 
 export function generateMetadata(): Metadata {
   const url = `${env.siteUrl()}/blog`
   return {
-    title: 'Blog | KB Sandbox',
+    title: 'Blog | Ember',
     description: DESCRIPTION,
     alternates: { canonical: url },
-    openGraph: { title: 'KB Sandbox Blog', description: DESCRIPTION, url, type: 'website' },
-    twitter: { card: 'summary', title: 'KB Sandbox Blog', description: DESCRIPTION },
+    openGraph: { title: 'Ember Blog', description: DESCRIPTION, url, type: 'website' },
+    twitter: { card: 'summary', title: 'Ember Blog', description: DESCRIPTION },
   }
 }
 

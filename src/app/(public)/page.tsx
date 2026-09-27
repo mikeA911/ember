@@ -14,7 +14,7 @@ export default async function Home() {
 
   return (
     <div className="flex flex-col gap-10">
-      <SectionHero image="/images/sections/kb-sandbox.png" title="KB Sandbox" height="large" priority />
+      <SectionHero image="/images/sections/kb-sandbox.png" title="Ember" height="large" priority />
 
       <div className="flex flex-col gap-4 text-center">
         <p className="mx-auto max-w-xl text-zinc-600">
