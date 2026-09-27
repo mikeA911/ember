@@ -72,7 +72,7 @@ export default async function WikiListPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <SectionHero image="/images/sections/ghibli_wiki.png" height="compact" priority />
+      <SectionHero image="/images/sections/kb-sandbox.png" height="compact" priority />
 
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Wiki</h1>

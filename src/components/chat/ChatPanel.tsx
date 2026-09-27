@@ -1115,7 +1115,7 @@ export function ChatPanel({
           aria-label="Ask Ember"
           className="block h-14 w-14 overflow-hidden rounded-full shadow-lg transition-transform hover:scale-105"
         >
-          <Image src="/images/assistant-icon.png" alt="" width={56} height={56} priority className="h-full w-full object-cover" />
+          <Image src="/images/ember-icon.png" alt="" width={56} height={56} priority className="h-full w-full object-cover" />
         </button>
       )}
     </div>

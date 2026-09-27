@@ -20,7 +20,7 @@ export default async function PublicKnowledgePage({
 
   return (
     <div className="flex flex-col gap-6">
-      <SectionHero image="/images/sections/ghibli_wiki.png" height="standard" priority />
+      <SectionHero image="/images/sections/kb-sandbox.png" height="standard" priority />
 
       <div>
         <h1 className="text-xl font-semibold">AI Engineering Wiki</h1>

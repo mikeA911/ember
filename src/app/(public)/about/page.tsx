@@ -54,7 +54,7 @@ const EXPLORE = [
 export default function AboutPage() {
   return (
     <div className="flex flex-col gap-12 pb-8">
-      <SectionHero image="/images/sections/front-page-ghibli.png" height="standard" position="center 30%" />
+      <SectionHero image="/images/sections/kb-sandbox.png" height="standard" position="center 30%" />
 
       <section className="max-w-4xl">
         <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">About Ember</p>

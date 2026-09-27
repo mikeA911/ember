@@ -41,7 +41,7 @@ export default async function BlogIndexPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <SectionHero image="/images/sections/front-page-ghibli.png" height="standard" priority />
+      <SectionHero image="/images/sections/kb-sandbox.png" height="standard" priority />
 
       <div className="flex items-start justify-between gap-4">
         <div>
