@@ -2,6 +2,9 @@
   "name": "kb-sandbox-app",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,6 +15,7 @@
     "db:check": "node --env-file=.env.local scripts/check-db-state.mjs",
     "db:seed-kbs": "node --env-file=.env.local scripts/seed-knowledge-bases.mjs",
     "db:seed-users": "node --env-file=.env.local scripts/seed-test-users.mjs",
+    "db:build-sql": "node scripts/build-migration-sql.mjs",
     "wiki:export": "node --env-file=.env.local scripts/export-approved-wikis.mjs",
     "methods:export": "node --env-file=.env.local scripts/export-approved-wikis.mjs --methods-only"
   },
