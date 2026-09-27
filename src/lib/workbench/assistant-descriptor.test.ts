@@ -57,6 +57,6 @@ describe('getAssistantDescriptor', () => {
 describe('getAssistantSystemPromptText', () => {
   it('returns the same prompt text loop.ts actually uses', () => {
     expect(getAssistantSystemPromptText()).toBe(getSystemPromptText())
-    expect(getAssistantSystemPromptText()).toContain('KB Sandbox Workbench Assistant')
+    expect(getAssistantSystemPromptText()).toContain('Ember Workbench Assistant')
   })
 })

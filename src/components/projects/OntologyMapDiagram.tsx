@@ -133,7 +133,7 @@ export function OntologyMapDiagram({ layout, projectId, projectName }: { layout:
   return (
     <div className="overflow-hidden rounded border border-zinc-200 bg-white">
       <div className="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2">
-        <span className="text-xs text-zinc-500">For a slide deck or sharing outside KB Sandbox:</span>
+        <span className="text-xs text-zinc-500">For a slide deck or sharing outside Ember:</span>
         <span className="flex items-center gap-2">
           <button
             type="button"

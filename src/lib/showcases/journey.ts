@@ -187,7 +187,7 @@ export const SHOWCASE_STAGES: ShowcaseStage[] = [
     verb: 'Build',
     title: 'Create portable tools and agents',
     description:
-      'Use KB Sandbox to discover, specify and evaluate an integration; build and host it externally; expose only approved capabilities to Ember. Registration, certification and Project availability stay visibly distinct states — a registered capability is not yet connected, certified or available to Ember.',
+      'Use Ember to discover, specify and evaluate an integration; build and host it externally; expose only approved capabilities to Ember. Registration, certification and Project availability stay visibly distinct states — a registered capability is not yet connected, certified or available to Ember.',
     accent: 'violet',
     cards: [
       {

@@ -53,7 +53,7 @@ function buildSummaryPrompt(rows: ChatMessageRow[], previous: ConversationSummar
   const previousBlock = previous ? `Previous summary:\n${JSON.stringify(previous)}\n\n` : ''
   return (
     `${previousBlock}Conversation transcript so far:\n${transcript}\n\n` +
-    'Produce an updated structured summary of this conversation between a user and the KB Sandbox Workbench Assistant, ' +
+    'Produce an updated structured summary of this conversation between a user and the Ember Workbench Assistant, ' +
     'as a single JSON object with exactly these fields:\n' +
     '- objective: string, the user\'s overall goal in this conversation\n' +
     '- confirmedRequirements: array of strings, requirements or constraints the user has confirmed\n' +

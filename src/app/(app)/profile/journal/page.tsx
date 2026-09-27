@@ -34,9 +34,9 @@ export default async function JournalPage() {
       <div>
         <h1 className="text-lg font-medium">My Work Journal</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Generate a private, reflective summary of your own authorized activity in KB Sandbox. AI ({modelLabel}) reads and summarizes
+          Generate a private, reflective summary of your own authorized activity in Ember. AI ({modelLabel}) reads and summarizes
           what you choose to include, to help you remember and revisit your work. This document is generated fresh each time, is never
-          saved by KB Sandbox, and does not become Assistant memory -- only you can see or download it, unless you choose to share the
+          saved by Ember, and does not become Assistant memory -- only you can see or download it, unless you choose to share the
           file yourself.
         </p>
       </div>

@@ -53,7 +53,7 @@ export async function suggestProjectOntology(
 ): Promise<ProjectOntologySuggestion> {
   const provider = await getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id })
   const { data } = await provider.generateStructured({
-    system: 'You help a KB Sandbox builder sketch a starting domain-object ontology and workstream set for a new project.',
+    system: 'You help an Ember builder sketch a starting domain-object ontology and workstream set for a new project.',
     prompt: buildPrompt(input.projectType, input.objective, input.details),
     schema: SuggestionSchema,
     maxOutputTokens: 1024,

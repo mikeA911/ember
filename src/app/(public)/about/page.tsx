@@ -47,7 +47,6 @@ const EXPLORE = [
   { title: 'Wiki', description: 'Read approved concepts, guidance and Workbench material.', href: '/knowledge' },
   { title: 'Showcases', description: 'See realistic problems used to develop and test the Workbench.', href: '/examples' },
   { title: 'Blog and insights', description: 'Explore practical thinking about governed enterprise AI.', href: '/blog' },
-  { title: 'NotebookLM and KB Sandbox', description: 'Understand the move from shared notebooks to governed organizational knowledge.', href: '/blog/notebooklm-vs-kb-sandbox-governed-organizational-knowledge' },
   { title: 'Document-first AI development', description: 'Learn why architecture and evidence should come before generated code.', href: '/blog/the-document-first-principle-for-enterprise-ai' },
   { title: 'Deployment options', description: 'Consider cloud, dedicated, regional and private deployment choices.', href: '/blog/deployment-and-server-options' },
 ]
@@ -58,17 +57,17 @@ export default function AboutPage() {
       <SectionHero image="/images/sections/front-page-ghibli.png" height="standard" position="center 30%" />
 
       <section className="max-w-4xl">
-        <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">About KB Sandbox</p>
+        <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">About Ember</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
           Bring AI into the enterprise—without losing the knowledge, judgment and control that make the enterprise work.
         </h1>
         <div className="mt-6 max-w-3xl space-y-4 text-base leading-7 text-zinc-700">
           <p>People are already using tools such as ChatGPT, Claude, Gemini and NotebookLM to research, understand documents and complete work faster. That individual productivity is valuable—but an enterprise needs more than a collection of private AI conversations and independently assembled notebooks.</p>
-          <p>KB Sandbox helps organizations turn rapid, individual AI adoption into shared organizational capability. It brings approved knowledge, employees, AI models, specialist agents, evidence and human authority together within governed Projects.</p>
-          <p className="font-medium text-zinc-950">KB Sandbox&apos;s goal is to enable organizations to discover where AI can genuinely make their people more productive—and establish the safest, most effective way to do it.</p>
+          <p>Ember helps organizations turn rapid, individual AI adoption into shared organizational capability. It brings approved knowledge, employees, AI models, specialist agents, evidence and human authority together within governed Projects.</p>
+          <p className="font-medium text-zinc-950">Ember&apos;s goal is to enable organizations to discover where AI can genuinely make their people more productive—and establish the safest, most effective way to do it.</p>
         </div>
         <div className="mt-7 flex flex-wrap gap-3">
-          <Link href="/login" className="rounded bg-amber-800 px-5 py-3 text-sm font-medium text-white hover:bg-amber-900">Sign in to KB Sandbox</Link>
+          <Link href="/login" className="rounded bg-amber-800 px-5 py-3 text-sm font-medium text-white hover:bg-amber-900">Sign in to Ember</Link>
           <Link href="/examples" className="rounded border border-zinc-300 bg-white px-5 py-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50">Explore showcases</Link>
         </div>
       </section>
@@ -136,7 +135,7 @@ export default function AboutPage() {
       <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-6 sm:p-8">
         <p className="text-sm font-semibold uppercase tracking-wide text-amber-800">Build on what the organization already uses</p>
         <h2 className="mt-2 text-2xl font-semibold text-zinc-950">AI should improve existing work—not force everything to start again</h2>
-        <p className="mt-4 max-w-4xl text-sm leading-6 text-zinc-700 sm:text-base sm:leading-7">Organizations already have document stores, CRM and HR systems, service desks, finance applications and established workflows. KB Sandbox helps teams understand where those tools should supply knowledge, provide live information or support a governed action. The Workbench can then guide the design and evaluation of the appropriate connector, API integration, MCP server or specialist agent.</p>
+        <p className="mt-4 max-w-4xl text-sm leading-6 text-zinc-700 sm:text-base sm:leading-7">Organizations already have document stores, CRM and HR systems, service desks, finance applications and established workflows. Ember helps teams understand where those tools should supply knowledge, provide live information or support a governed action. The Workbench can then guide the design and evaluation of the appropriate connector, API integration, MCP server or specialist agent.</p>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {CONNECTIONS.map((connection, index) => <article key={connection.title} className="rounded-xl border border-amber-100 bg-white/90 p-5 shadow-sm"><p className="text-sm font-semibold text-amber-700">0{index + 1}</p><h3 className="mt-2 text-base font-semibold text-zinc-950">{connection.title}</h3><p className="mt-2 text-sm leading-6 text-zinc-700">{connection.description}</p></article>)}
         </div>
@@ -147,7 +146,7 @@ export default function AboutPage() {
         <div>
           <p className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Start with real work</p>
           <h2 className="mt-2 text-2xl font-semibold text-zinc-950">Help people with activities they already perform</h2>
-          <p className="mt-3 text-sm leading-6 text-zinc-700">KB Sandbox does not begin by declaring an enterprise inefficient. It begins by finding where approved knowledge and well-governed AI can remove friction, improve judgment and preserve useful learning.</p>
+          <p className="mt-3 text-sm leading-6 text-zinc-700">Ember does not begin by declaring an enterprise inefficient. It begins by finding where approved knowledge and well-governed AI can remove friction, improve judgment and preserve useful learning.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">{EXAMPLES.map((example) => <div key={example} className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">{example}</div>)}</div>
         <figure className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 lg:col-span-2">

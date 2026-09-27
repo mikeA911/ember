@@ -291,9 +291,9 @@ export function getAssistantDescriptor(): AssistantDescriptor {
     id: 'workbench-assistant',
     name: 'Workbench Assistant',
     purpose:
-      'Helps users navigate and operate KB Sandbox: choosing the right Workbench method, searching approved platform knowledge, and setting up projects and workstreams.',
+      'Helps users navigate and operate Ember: choosing the right Workbench method, searching approved platform knowledge, and setting up projects and workstreams.',
     status: 'active',
-    owner: 'KB Sandbox platform team',
+    owner: 'Ember platform team',
     promptVersion: ASSISTANT_PROMPT_VERSION,
     modelRole: 'conversational',
     maxToolIterations: MAX_TOOL_ITERATIONS,

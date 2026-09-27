@@ -37,13 +37,13 @@ export default async function Home() {
       <ShowcaseJourney />
 
       <div className="flex flex-col items-center gap-3 rounded-3xl border border-zinc-200 bg-white p-6 text-center sm:p-10">
-        <p className="text-sm text-zinc-600">Ready to see the complete published catalogue, or how KB Sandbox actually works?</p>
+        <p className="text-sm text-zinc-600">Ready to see the complete published catalogue, or how Ember actually works?</p>
         <div className="flex gap-3">
           <Link href="/examples" className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
             Browse all Examples
           </Link>
           <Link href="/about" className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium">
-            About KB Sandbox
+            About Ember
           </Link>
         </div>
       </div>

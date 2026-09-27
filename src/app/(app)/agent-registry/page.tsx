@@ -26,7 +26,7 @@ export default async function AgentRegistryPage() {
           <h1 className="text-xl font-semibold">Builder Registry</h1>
           <p className="mt-1 text-sm text-zinc-600">
             External agents and MCP servers built by builders (students, founders, software houses) and registered here for
-            KB Sandbox to govern -- versioned spec, certification status, evidence, and which Projects may use it. See the{' '}
+            Ember to govern -- versioned spec, certification status, evidence, and which Projects may use it. See the{' '}
             <Link href="/wiki/what-kb-sandbox-actually-does-a-capability-overview" className="underline">
               Workbench Handbook
             </Link>{' '}

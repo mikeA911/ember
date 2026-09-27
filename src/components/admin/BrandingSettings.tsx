@@ -40,7 +40,7 @@ export function BrandingSettings({ current }: { current: BrandingUrls }) {
     <section className="flex flex-col gap-4">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Branding</h2>
       <p className="text-sm text-zinc-600">
-        Used as the site logo, browser tab icon, and the icon shown when someone installs KB Sandbox as an app
+        Used as the site logo, browser tab icon, and the icon shown when someone installs Ember as an app
         (PWA home-screen / app icon). Square images work best &mdash; non-square uploads are center-cropped.
       </p>
 
