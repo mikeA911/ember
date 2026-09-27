@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPublicArticleBySlug, listRelatedExamples } from '@/lib/wiki/public'
 import { Markdown } from '@/components/shared/Markdown'
 import { SectionHero } from '@/components/SectionHero'
+import { PUBLIC_EXAMPLES_ENABLED } from '@/lib/showcases/public-examples'
 
 // Per-article banners are a deliberate one-off, not a general "every
 // article gets custom art" system -- only the articles an actual asset was
@@ -27,7 +28,7 @@ export default async function PublicArticlePage({ params }: { params: Promise<{ 
   if (!result) notFound()
   const { article, version } = result
 
-  const relatedExamples = await listRelatedExamples(supabase, slug)
+  const relatedExamples = PUBLIC_EXAMPLES_ENABLED ? await listRelatedExamples(supabase, slug) : []
   const banner = ARTICLE_BANNERS[slug]
 
   return (

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
 import { env } from '@/lib/env'
+import { PUBLIC_EXAMPLES_ENABLED } from '@/lib/showcases/public-examples'
 
 // Allow-list approach, not a deny-list: everything is disallowed by
 // default ("disallow: '/'"), then the handful of genuinely public routes
@@ -17,7 +18,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       disallow: '/',
-      allow: ['/$', '/about', '/blog', '/knowledge', '/examples'],
+      allow: ['/$', '/about', '/blog', '/knowledge', ...(PUBLIC_EXAMPLES_ENABLED ? ['/examples'] : [])],
     },
     sitemap: `${siteUrl}/sitemap.xml`,
   }

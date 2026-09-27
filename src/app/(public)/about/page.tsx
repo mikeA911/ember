@@ -1,6 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { SectionHero } from '@/components/SectionHero'
+import { PUBLIC_EXAMPLES_ENABLED } from '@/lib/showcases/public-examples'
 
 const EXPERIENCES = [
   {
@@ -45,7 +46,9 @@ const EXAMPLES = [
 
 const EXPLORE = [
   { title: 'Wiki', description: 'Read approved concepts, guidance and Workbench material.', href: '/knowledge' },
-  { title: 'Showcases', description: 'See realistic problems used to develop and test the Workbench.', href: '/examples' },
+  ...(PUBLIC_EXAMPLES_ENABLED
+    ? [{ title: 'Showcases', description: 'See realistic problems used to develop and test the Workbench.', href: '/examples' }]
+    : []),
   { title: 'Blog and insights', description: 'Explore practical thinking about governed enterprise AI.', href: '/blog' },
   { title: 'Document-first AI development', description: 'Learn why architecture and evidence should come before generated code.', href: '/blog/the-document-first-principle-for-enterprise-ai' },
   { title: 'Deployment options', description: 'Consider cloud, dedicated, regional and private deployment choices.', href: '/blog/deployment-and-server-options' },
@@ -68,7 +71,7 @@ export default function AboutPage() {
         </div>
         <div className="mt-7 flex flex-wrap gap-3">
           <Link href="/login" className="rounded bg-amber-800 px-5 py-3 text-sm font-medium text-white hover:bg-amber-900">Sign in to Ember</Link>
-          <Link href="/examples" className="rounded border border-zinc-300 bg-white px-5 py-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50">Explore showcases</Link>
+          {PUBLIC_EXAMPLES_ENABLED && <Link href="/examples" className="rounded border border-zinc-300 bg-white px-5 py-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50">Explore showcases</Link>}
         </div>
       </section>
 

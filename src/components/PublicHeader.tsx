@@ -1,5 +1,6 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import { PUBLIC_EXAMPLES_ENABLED } from '@/lib/showcases/public-examples'
 
 // Works for both a sessionless visitor and a logged-in user browsing the
 // same public pages -- unlike (app)/layout.tsx's Header, this never
@@ -23,7 +24,7 @@ export function PublicHeader({ isAuthenticated, logoUrl }: { isAuthenticated: bo
                 authenticated Wiki management app, reusing it here would
                 collide. "Wiki" is the label the design note wants. */}
             <Link href="/knowledge" className="hover:text-zinc-900">Wiki</Link>
-            <Link href="/examples" className="hover:text-zinc-900">Examples</Link>
+            {PUBLIC_EXAMPLES_ENABLED && <Link href="/examples" className="hover:text-zinc-900">Examples</Link>}
             <Link href="/blog" className="hover:text-zinc-900">Blog</Link>
           </nav>
         </div>
