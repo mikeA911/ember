@@ -55,7 +55,7 @@ export default async function ProfilePage() {
 
       {profile.role === 'anonymous' ? (
         <p className="rounded border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
-          You&rsquo;re exploring KB Sandbox anonymously. Create an account to save preferences and unlock consultant
+          You&rsquo;re exploring Ember anonymously. Create an account to save preferences and unlock consultant
           features like running evaluations.
         </p>
       ) : (
@@ -75,7 +75,7 @@ export default async function ProfilePage() {
         <div className="rounded border border-zinc-200 bg-white p-4 text-sm">
           <span className="font-medium">Journal</span>
           <p className="mt-1 text-zinc-500">
-            Generate a private, reflective summary of your own activity in KB Sandbox -- your Assistant conversations, projects, and
+            Generate a private, reflective summary of your own activity in Ember -- your Assistant conversations, projects, and
             more -- as a Word document. Only you can see or download it, unless you choose to share the file yourself.
           </p>
           <Link href="/profile/journal" className="mt-2 inline-block rounded border border-zinc-300 px-3 py-1.5 text-sm hover:border-zinc-400">

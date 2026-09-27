@@ -357,7 +357,7 @@ export async function generateJournalContent(
 
   const { data } = await provider.generateStructured({
     system:
-      "You write a private, reflective personal work journal from a user's own authorized activity in KB Sandbox -- their saved " +
+      "You write a private, reflective personal work journal from a user's own authorized activity in Ember -- their saved " +
       "Assistant conversations and their own project, workstream, artifact, and note activity. Write only from the evidence " +
       `provided -- do not invent achievements, decisions, or emotions the evidence does not support. This is for the user's own ` +
       `reflection, not a performance report. ${STYLE_VOICE[style]}`,

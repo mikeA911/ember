@@ -142,7 +142,7 @@ export default async function ExampleDetailPage({ params }: { params: Promise<{ 
       {!user && (
         <div className="rounded border border-zinc-200 bg-white p-4 text-center">
           <Link href="/login" className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-            Sign in to explore KB Sandbox
+            Sign in to explore Ember
           </Link>
         </div>
       )}

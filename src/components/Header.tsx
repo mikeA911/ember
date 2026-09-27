@@ -68,9 +68,9 @@ export function Header({
     <header className="border-b border-zinc-200 bg-white">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-y-2 px-4 py-3">
         <div className="flex items-center gap-6">
-          <Link href="/about" aria-label="About KB Sandbox" className="shrink-0">
+          <Link href="/about" aria-label="About Ember" className="shrink-0">
             <span className="relative block h-9 w-9 overflow-hidden rounded-full">
-              <Image src={logoUrl} alt="KB Sandbox" fill className="object-cover" />
+              <Image src={logoUrl} alt="Ember" fill className="object-cover" />
             </span>
           </Link>
           <nav className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-600">

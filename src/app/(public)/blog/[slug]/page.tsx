@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const imageUrl = post.cover_image_path ? getBlogMediaUrl(supabase, post.cover_image_path) : undefined
 
   return {
-    title: `${post.title} | KB Sandbox Blog`,
+    title: `${post.title} | Ember Blog`,
     description: post.excerpt ?? undefined,
     alternates: { canonical: url },
     openGraph: {
@@ -65,7 +65,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     datePublished: post.published_at ?? undefined,
     dateModified: post.updated_at,
     ...(coverImageUrl ? { image: coverImageUrl } : {}),
-    publisher: { '@type': 'Organization', name: 'KB Sandbox' },
+    publisher: { '@type': 'Organization', name: 'Ember' },
   }
 
   return (

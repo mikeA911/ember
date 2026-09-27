@@ -97,7 +97,7 @@ interface ToolDefinition<TInput, TOutput> {
 const tools: Record<string, ToolDefinition<any, any>> = {
   get_navigation_guide: {
     description:
-      "Look up how a user accomplishes something in KB Sandbox's own UI -- which page to start at, who is allowed to do it, and what to expect. Use this for questions about KB Sandbox's navigation, pages, or workflows (e.g. \"where do I create a project\", \"who can approve a Wiki article\", \"how do I register an external agent\"), not for domain/business knowledge -- use search_wiki for that. Optionally pass a topic keyword to narrow the result; omit it to get the full navigation map and every capability entry.",
+      "Look up how a user accomplishes something in Ember's own UI -- which page to start at, who is allowed to do it, and what to expect. Use this for questions about Ember's navigation, pages, or workflows (e.g. \"where do I create a project\", \"who can approve a Wiki article\", \"how do I register an external agent\"), not for domain/business knowledge -- use search_wiki for that. Optionally pass a topic keyword to narrow the result; omit it to get the full navigation map and every capability entry.",
     inputSchema: z.object({ topic: z.string().optional() }),
     outputSchema: z.object({ guide: z.string() }),
     handler: async (_ctx, input: { topic?: string }) => {

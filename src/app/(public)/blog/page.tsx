@@ -6,16 +6,16 @@ import { getBlogMediaUrl } from '@/lib/blog/media'
 import { SectionHero } from '@/components/SectionHero'
 import { env } from '@/lib/env'
 
-const DESCRIPTION = 'Notes on building, evaluating, and deploying KB Sandbox.'
+const DESCRIPTION = 'Notes on building, evaluating, and deploying Ember.'
 
 export function generateMetadata(): Metadata {
   const url = `${env.siteUrl()}/blog`
   return {
-    title: 'Blog | KB Sandbox',
+    title: 'Blog | Ember',
     description: DESCRIPTION,
     alternates: { canonical: url },
-    openGraph: { title: 'KB Sandbox Blog', description: DESCRIPTION, url, type: 'website' },
-    twitter: { card: 'summary', title: 'KB Sandbox Blog', description: DESCRIPTION },
+    openGraph: { title: 'Ember Blog', description: DESCRIPTION, url, type: 'website' },
+    twitter: { card: 'summary', title: 'Ember Blog', description: DESCRIPTION },
   }
 }
 
@@ -41,7 +41,7 @@ export default async function BlogIndexPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <SectionHero image="/images/sections/front-page-ghibli.png" height="standard" priority />
+      <SectionHero image="/images/sections/kb-sandbox.png" height="standard" priority />
 
       <div className="flex items-start justify-between gap-4">
         <div>

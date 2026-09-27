@@ -45,7 +45,7 @@ export function AskQuestionForm() {
             rows={3}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask about anything covered by approved KB Sandbox knowledge…"
+            placeholder="Ask about anything covered by approved Ember knowledge…"
             className="rounded border border-zinc-300 px-3 py-2 text-sm"
           />
         </label>

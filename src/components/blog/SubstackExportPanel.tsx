@@ -134,7 +134,7 @@ export function SubstackExportPanel({ postId }: { postId: string }) {
               <p className="text-sm text-zinc-700">{pkg.substackNote}</p>
 
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-zinc-500">Canonical KB Sandbox URL</span>
+                <span className="text-xs font-medium text-zinc-500">Canonical Ember URL</span>
                 <CopyButton label="URL" text={pkg.canonicalUrl} onCopied={() => setHasCopiedOnce(true)} />
               </div>
               <p className="text-sm text-zinc-700">{pkg.canonicalUrl}</p>

@@ -29,7 +29,7 @@ function slugify(title: string) {
 }
 
 function emailFor(id: string | null, emailById: Map<string, string>): string {
-  if (!id) return 'KB Sandbox editorial seed'
+  if (!id) return 'Ember editorial seed'
   return emailById.get(id) ?? id
 }
 

@@ -36,7 +36,7 @@ const InputSchema = z.object({
 export const SEARCH_WEB_TOOL: ToolSpec = {
   name: SEARCH_WEB_TOOL_NAME,
   description:
-    "Search the public web via Tavily. Use for pre-sales/competitive research about a prospective client or competitor -- something NOT already covered by search_project_knowledge or search_wiki. Results are NOT vetted KB Sandbox evidence: never present them as facts about the platform's own data, never cite them via present_assistant_response's citations field (that's reserved for verified internal retrieval), and never claim anything found here is 'in the knowledge base' -- it becomes real project knowledge only after you propose it as a research_dossier artifact via attach_workstream_artifact and a curator approves it.",
+    "Search the public web via Tavily. Use for pre-sales/competitive research about a prospective client or competitor -- something NOT already covered by search_project_knowledge or search_wiki. Results are NOT vetted Ember evidence: never present them as facts about the platform's own data, never cite them via present_assistant_response's citations field (that's reserved for verified internal retrieval), and never claim anything found here is 'in the knowledge base' -- it becomes real project knowledge only after you propose it as a research_dossier artifact via attach_workstream_artifact and a curator approves it.",
   parameters: z.toJSONSchema(InputSchema),
 }
 

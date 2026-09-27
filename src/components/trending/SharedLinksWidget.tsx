@@ -23,7 +23,7 @@ export function SharedLinksWidget({
         <div>
           <h2 className="font-medium">Shared links</h2>
           <p className="mt-0.5 text-xs text-zinc-500">
-            Shared by Workbench users. Links are recommendations, not approved KB Sandbox knowledge.
+            Shared by Workbench users. Links are recommendations, not approved Ember knowledge.
           </p>
         </div>
         <Link href="/trending" className="shrink-0 text-sm text-zinc-500 hover:text-zinc-900">

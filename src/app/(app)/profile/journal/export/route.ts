@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   const body = parsed.data
 
   const buffer = await renderJournalDocx({
-    title: 'My KB Sandbox Journal',
+    title: 'My Ember Journal',
     rangeLabel: body.rangeLabel,
     content: body.content,
     conversations: body.conversations,

@@ -12,7 +12,7 @@ function statusLabel(post: BlogPost): string {
 }
 
 function authorEmail(id: string | null, emailById: Map<string, string>): string {
-  if (!id) return 'KB Sandbox editorial seed'
+  if (!id) return 'Ember editorial seed'
   return emailById.get(id) ?? id
 }
 

@@ -92,7 +92,7 @@ export default async function WorkbenchAssistantAgentPage() {
               {canSeePromptText && (
                 <>
                   <p className="mt-1 text-xs text-zinc-500">
-                    Enforcement: {t.enforcement === 'kb_sandbox_enforced' ? 'Enforced by KB Sandbox' : 'Declared'} ({t.enforcedBy})
+                    Enforcement: {t.enforcement === 'kb_sandbox_enforced' ? 'Enforced by Ember' : 'Declared'} ({t.enforcedBy})
                   </p>
                   <pre className="mt-1 overflow-x-auto rounded bg-zinc-50 p-2 font-mono text-xs text-zinc-600">
                     {JSON.stringify(t.parametersSchema, null, 2)}

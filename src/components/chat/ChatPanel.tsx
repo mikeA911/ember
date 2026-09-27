@@ -60,11 +60,11 @@ function detectProjectIdFromPath(pathname: string, projects: MemberProjectOption
 // never persisted, so it has no model cost or provenance (Acceptance
 // criteria #1-2).
 const ONBOARDING_GREETING =
-  "Hi! I’m Ember, your Workbench Assistant, and I’m excited to explore KB Sandbox with you. We can investigate what you’re trying to accomplish, find the right Workbench method, check what information you already have, search approved platform guidance, and help you create projects or workstreams.\n\nYour conversations with me are saved to your account, so you can return to them in future sessions. What would you like to explore first?"
+  "Hi! I’m Ember, your Workbench Assistant, and I’m excited to explore the platform with you. We can investigate what you’re trying to accomplish, find the right Workbench method, check what information you already have, search approved platform guidance, and help you create projects or workstreams.\n\nYour conversations with me are saved to your account, so you can return to them in future sessions. What would you like to explore first?"
 
 const STARTER_PROMPTS = [
   'Help me choose the right Workbench method.',
-  'Show me what KB Sandbox can do.',
+  'Show me what Ember can do.',
   'Help me turn an idea into a project.',
   'Explain what information I need to get started.',
 ]
@@ -85,7 +85,7 @@ const STARTER_PROMPTS_BUILDER = [
   'What are you trying to help this customer accomplish?',
   'Help me pick the right Method for this problem.',
   'Help me start a new workstream for a customer.',
-  'Show me what KB Sandbox Builder can do.',
+  'Show me what Ember Builder can do.',
 ]
 
 const SHORT_WELCOME_BUILDER = "Welcome back — continue an existing workstream, or start a new one?"
@@ -1115,7 +1115,7 @@ export function ChatPanel({
           aria-label="Ask Ember"
           className="block h-14 w-14 overflow-hidden rounded-full shadow-lg transition-transform hover:scale-105"
         >
-          <Image src="/images/assistant-icon.png" alt="" width={56} height={56} priority className="h-full w-full object-cover" />
+          <Image src="/images/ember-icon.png" alt="" width={56} height={56} priority className="h-full w-full object-cover" />
         </button>
       )}
     </div>
