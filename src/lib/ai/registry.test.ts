@@ -6,6 +6,7 @@ import {
   assertModelCapability,
   listChatCapableModels,
   listStructuredOutputCapableModels,
+  listEmbeddingCapableModels,
   AIConfigError,
 } from './registry'
 import type { AIModelRow, AIProviderRow } from '@/types/database'
@@ -170,6 +171,37 @@ describe('listStructuredOutputCapableModels', () => {
         modelId: 'openai/gpt-oss-120b',
         modelDisplayName: 'GPT-4o mini',
         modelDbId: 'm1',
+        isDefault: true,
+      },
+    ])
+  })
+})
+
+describe('listEmbeddingCapableModels', () => {
+  it('maps embedding models to role options, keeps the embedding default flag, and drops models whose provider is not enabled', async () => {
+    const supabase = createFakeSupabase({
+      ai_providers: [{ data: [provider({ id: 'openai-provider', name: 'openai', display_name: 'OpenAI' })], error: null }],
+      ai_models: [
+        {
+          data: [
+            model({ id: 'e1', provider_id: 'openai-provider', model_id: 'text-embedding-3-small', display_name: 'text-embedding-3-small', model_type: 'embedding', is_default: true }),
+            model({ id: 'e2', provider_id: 'disabled-provider', model_id: 'gemini-embedding-001', model_type: 'embedding' }),
+          ],
+          error: null,
+        },
+      ],
+    }) as never
+
+    const options = await listEmbeddingCapableModels(supabase)
+
+    expect(options).toEqual([
+      {
+        providerName: 'openai',
+        providerDisplayName: 'OpenAI',
+        providerDbId: 'openai-provider',
+        modelId: 'text-embedding-3-small',
+        modelDisplayName: 'text-embedding-3-small',
+        modelDbId: 'e1',
         isDefault: true,
       },
     ])
