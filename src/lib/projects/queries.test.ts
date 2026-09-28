@@ -17,6 +17,7 @@ describe('getSourceReviewCounts', () => {
               { document_id: 'doc-1', review_status: 'approved' },
               { document_id: 'doc-2', review_status: 'pending' },
               { document_id: 'doc-2', review_status: 'approved' },
+              { document_id: 'doc-2', review_status: 'rejected' },
             ],
             error: null,
           },
@@ -27,9 +28,9 @@ describe('getSourceReviewCounts', () => {
     const counts = await getSourceReviewCounts(['doc-1', 'doc-2', 'doc-3'])
 
     expect(Object.fromEntries(counts)).toEqual({
-      'doc-1': { total: 2, approved: 2 },
-      'doc-2': { total: 2, approved: 1 },
-      'doc-3': { total: 0, approved: 0 },
+      'doc-1': { total: 2, approved: 2, rejected: 0 },
+      'doc-2': { total: 3, approved: 1, rejected: 1 },
+      'doc-3': { total: 0, approved: 0, rejected: 0 },
     })
   })
 
