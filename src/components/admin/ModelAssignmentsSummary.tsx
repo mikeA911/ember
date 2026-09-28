@@ -14,6 +14,15 @@ export interface RoleOption {
 export interface ModelAssignmentsSummaryProps {
   conversational: { current: RoleOption | null; options: RoleOption[] }
   structuredOutput: { current: RoleOption | null; options: RoleOption[] }
+  embedding: { current: RoleOption | null; options: RoleOption[] }
+}
+
+type Role = 'conversational' | 'structuredOutput' | 'embedding'
+
+const ROLE_LABEL: Record<Role, string> = {
+  conversational: 'Conversational AI',
+  structuredOutput: 'Structured-output',
+  embedding: 'Embedding',
 }
 
 function optionKey(o: RoleOption): string {
@@ -27,13 +36,15 @@ function optionLabel(o: RoleOption): string {
 // docs/dev-request-ai-model-role-clarity.md, section 1 -- a global summary
 // so an admin can see (and change) both application-wide model roles
 // without opening every provider page or navigating into model management.
+// The embedding role (added 2026-09-28) was previously only settable from
+// the owning provider's own page.
 // Rendered above AIProvidersList on /admin (AI Config tab) and above
 // ProviderDetail on each provider's own page.
-export function ModelAssignmentsSummary({ conversational, structuredOutput }: ModelAssignmentsSummaryProps) {
+export function ModelAssignmentsSummary({ conversational, structuredOutput, embedding }: ModelAssignmentsSummaryProps) {
   return (
     <section className="flex flex-col gap-3 rounded border border-zinc-200 bg-white p-4">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Model assignments</h2>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <RoleCard
           role="conversational"
           label="Conversational AI default"
@@ -55,10 +66,21 @@ export function ModelAssignmentsSummary({ conversational, structuredOutput }: Mo
             'AI-assisted Wiki draft creation, from approved document chunks or from a workstream artifact.',
           ]}
         />
+        <RoleCard
+          role="embedding"
+          label="Embedding default"
+          description="Turns approved chunks and search questions into vectors for knowledge retrieval."
+          current={embedding.current}
+          options={embedding.options}
+          whereUsed={[
+            'Chunk approval, including auto-approval when a project source submission is approved.',
+            'Knowledge search -- the Assistant, project knowledge and evaluations embed each query with this model.',
+          ]}
+        />
       </div>
       <p className="text-xs text-zinc-500">
         These are application-wide assignments. Changing one here replaces the current assignment, which may belong to
-        another provider. Enabling a model only makes it available; it does not assign either role.
+        another provider. Enabling a model only makes it available; it does not assign any role.
       </p>
     </section>
   )
@@ -72,7 +94,7 @@ function RoleCard({
   options,
   whereUsed,
 }: {
-  role: 'conversational' | 'structuredOutput'
+  role: Role
   label: string
   description: string
   current: RoleOption | null
@@ -91,12 +113,14 @@ function RoleCard({
     if (!selected) return
     setError(null)
 
-    const roleLabel = role === 'conversational' ? 'Conversational AI' : 'Structured-output'
+    const roleLabel = ROLE_LABEL[role]
     const currentLabel = current ? optionLabel(current) : 'no model currently assigned'
     const scopeExplanation =
       role === 'conversational'
         ? 'This changes the application-wide default used by the Workbench Assistant when no per-message model is selected.'
-        : `This changes the application-wide default used when a feature requires validated, schema-constrained AI output, and ${optionLabel(selected)} is confirmed to support structured output.`
+        : role === 'structuredOutput'
+          ? `This changes the application-wide default used when a feature requires validated, schema-constrained AI output, and ${optionLabel(selected)} is confirmed to support structured output.`
+          : 'This changes the model that embeds newly approved chunks and every search query. Chunks already approved keep their old vectors, which are not comparable with the new model -- re-approve them (or re-run their embedding) so search keeps finding them.'
     const confirmed = window.confirm(`Change the ${roleLabel} default from ${currentLabel} to ${optionLabel(selected)}? ${scopeExplanation}`)
     if (!confirmed) return
 
@@ -104,6 +128,8 @@ function RoleCard({
       try {
         if (role === 'conversational') {
           await setDefaultModelAction(selected.modelDbId, selected.providerDbId, 'generation')
+        } else if (role === 'embedding') {
+          await setDefaultModelAction(selected.modelDbId, selected.providerDbId, 'embedding')
         } else {
           await setDefaultStructuredOutputModelAction(selected.modelDbId, selected.providerDbId)
         }

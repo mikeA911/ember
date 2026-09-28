@@ -7,7 +7,7 @@ import { AIProvidersList } from '@/components/admin/AIProvidersList'
 import { ModelAssignmentsSummary } from '@/components/admin/ModelAssignmentsSummary'
 import { PendingApprovals } from '@/components/admin/PendingApprovals'
 import { AdminTabs } from '@/components/admin/AdminTabs'
-import { listProviders, listModels, listChatCapableModels, listStructuredOutputCapableModels, toRoleOption } from '@/lib/ai'
+import { listProviders, listModels, listChatCapableModels, listStructuredOutputCapableModels, listEmbeddingCapableModels, toRoleOption } from '@/lib/ai'
 import { env } from '@/lib/env'
 import { SectionHero } from '@/components/SectionHero'
 import { UnpublishedWikiWidget } from '@/components/wiki/UnpublishedWikiWidget'
@@ -47,6 +47,7 @@ export default async function AdminPage() {
     conversationalOptions,
     structuredOutputOptions,
     blogPosts,
+    embeddingOptions,
   ] = await Promise.all([
     supabase.from('knowledge_bases').select('*').order('name'),
     supabase.from('curation_queue').select('*').order('created_at', { ascending: false }),
@@ -60,6 +61,7 @@ export default async function AdminPage() {
     listChatCapableModels(supabase),
     listStructuredOutputCapableModels(supabase),
     listAllPosts(supabase),
+    listEmbeddingCapableModels(supabase),
   ])
 
   // Workstream Promotion works the same in either deployment mode (a
@@ -88,6 +90,7 @@ export default async function AdminPage() {
 
   const currentConversationalModel = aiModels.find((m) => m.model_type === 'generation' && m.is_default)
   const currentStructuredOutputModel = aiModels.find((m) => m.is_default_structured_output)
+  const currentEmbeddingModel = aiModels.find((m) => m.model_type === 'embedding' && m.is_default)
 
   return (
     <div className="flex flex-col gap-6">
@@ -118,6 +121,10 @@ export default async function AdminPage() {
                   structuredOutput={{
                     current: currentStructuredOutputModel ? toRoleOption(currentStructuredOutputModel, aiProviders) : null,
                     options: structuredOutputOptions,
+                  }}
+                  embedding={{
+                    current: currentEmbeddingModel ? toRoleOption(currentEmbeddingModel, aiProviders) : null,
+                    options: embeddingOptions,
                   }}
                 />
                 <AIProvidersList providers={aiProviders} models={aiModels} configuredByProvider={configuredByProvider} />

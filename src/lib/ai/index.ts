@@ -25,6 +25,7 @@ export {
   resolveChatProvider,
   listChatCapableModels,
   listStructuredOutputCapableModels,
+  listEmbeddingCapableModels,
   instantiateProvider,
 } from './registry'
 export type { ChatProviderInfo, ChatModelOption } from './registry'

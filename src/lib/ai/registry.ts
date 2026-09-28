@@ -335,6 +335,36 @@ export async function listChatCapableModels(supabase: SupabaseClient<Database>):
 }
 
 // Same shape and filtering pattern as listChatCapableModels, for the
+// embedding role -- powers the admin "Model assignments" summary's embedding
+// dropdown. Dedicated embedding models only: the embedding default is the
+// embedding-type is_default (getDefaultModel(..., 'embedding')), and
+// setDefaultModel scopes is_default by the chosen row's own model_type -- so
+// offering a supports_embeddings generation model here would silently move
+// the conversational default instead.
+export async function listEmbeddingCapableModels(supabase: SupabaseClient<Database>): Promise<ChatModelOption[]> {
+  const [providers, models] = await Promise.all([
+    listProviders(supabase, { enabledOnly: true }),
+    listModels(supabase, { modelType: 'embedding', enabledOnly: true }),
+  ])
+  const providerById = new Map(providers.map((p) => [p.id, p]))
+  const options: ChatModelOption[] = []
+  for (const model of models) {
+    const provider = providerById.get(model.provider_id)
+    if (!provider) continue
+    options.push({
+      providerName: provider.name,
+      providerDisplayName: provider.display_name,
+      providerDbId: provider.id,
+      modelId: model.model_id,
+      modelDisplayName: model.display_name,
+      modelDbId: model.id,
+      isDefault: model.is_default,
+    })
+  }
+  return options
+}
+
+// Same shape and filtering pattern as listChatCapableModels, for the
 // structured-output role instead of the conversational one -- powers the
 // admin "Model assignments" summary's structured-output dropdown. isDefault
 // here means is_default_structured_output, not the generation is_default.
