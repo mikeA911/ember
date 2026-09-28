@@ -28,15 +28,33 @@ function slugForFilename(name: string) {
 // viewport) are what get exported -- the whole diagram, at full size,
 // regardless of how much of it happens to be on screen when the button is
 // clicked.
-function serializeSvg(svg: SVGSVGElement): string {
+//
+// Every export is stamped with when it was downloaded -- a footer line drawn
+// into the image itself (so it survives being pasted into a deck) plus the
+// date in the filename -- so a copy that outlives the live, still-changing
+// map is obviously a point-in-time snapshot.
+const STAMP_HEIGHT = 28
+
+function serializeSvg(svg: SVGSVGElement, stamp: string): { source: string; width: number; height: number } {
   const clone = svg.cloneNode(true) as SVGSVGElement
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  const width = Number(svg.getAttribute('width'))
+  const height = Number(svg.getAttribute('height')) + STAMP_HEIGHT
+  clone.setAttribute('height', String(height))
+  clone.setAttribute('viewBox', `0 0 ${width} ${height}`)
+  const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+  text.setAttribute('x', '12')
+  text.setAttribute('y', String(height - 10))
+  text.setAttribute('font-size', '11')
+  text.setAttribute('fill', '#71717a')
+  text.textContent = stamp
+  clone.appendChild(text)
   // Presentation-safe: an <a> inside an exported SVG/PNG is inert anyway,
   // and a white background is assumed below for the PNG canvas -- match it
   // here too so the standalone .svg file doesn't render transparent (and
   // look broken) when dropped into a slide deck with a non-white theme.
   clone.style.backgroundColor = '#ffffff'
-  return new XMLSerializer().serializeToString(clone)
+  return { source: new XMLSerializer().serializeToString(clone), width, height }
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -48,19 +66,17 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-function downloadSvg(svg: SVGSVGElement, filename: string) {
-  const source = serializeSvg(svg)
+function downloadSvg(svg: SVGSVGElement, stamp: string, filename: string) {
+  const { source } = serializeSvg(svg, stamp)
   triggerDownload(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }), filename)
 }
 
 // SVG -> Image -> Canvas -> PNG blob -- no external library, same technique
 // browsers use natively for "download as image." Rendered at 2x for a
 // crisper result when the PNG is scaled up in a slide deck.
-async function downloadPng(svg: SVGSVGElement, filename: string) {
-  const width = Number(svg.getAttribute('width'))
-  const height = Number(svg.getAttribute('height'))
+async function downloadPng(svg: SVGSVGElement, stamp: string, filename: string) {
   const scale = 2
-  const source = serializeSvg(svg)
+  const { source, width, height } = serializeSvg(svg, stamp)
   const svgUrl = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }))
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -112,19 +128,31 @@ export function OntologyMapDiagram({ layout, projectId, projectName }: { layout:
   const byId = new Map(layout.nodes.map((n) => [n.id, n]))
   const svgRef = useRef<SVGSVGElement>(null)
   const [exportError, setExportError] = useState<string | null>(null)
-  const baseFilename = `${slugForFilename(projectName)}-ontology-map`
+
+  // Computed at click time, in the viewer's own timezone.
+  function exportNames() {
+    const now = new Date()
+    const date = now.toLocaleDateString('en-CA') // YYYY-MM-DD
+    const when = now.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+    return {
+      stamp: `${projectName} -- ontology map -- downloaded ${when}`,
+      baseFilename: `${slugForFilename(projectName)}-ontology-map-${date}`,
+    }
+  }
 
   function handleDownloadSvg() {
     if (!svgRef.current) return
     setExportError(null)
-    downloadSvg(svgRef.current, `${baseFilename}.svg`)
+    const { stamp, baseFilename } = exportNames()
+    downloadSvg(svgRef.current, stamp, `${baseFilename}.svg`)
   }
 
   async function handleDownloadPng() {
     if (!svgRef.current) return
     setExportError(null)
+    const { stamp, baseFilename } = exportNames()
     try {
-      await downloadPng(svgRef.current, `${baseFilename}.png`)
+      await downloadPng(svgRef.current, stamp, `${baseFilename}.png`)
     } catch (err) {
       setExportError(err instanceof Error ? err.message : 'Failed to export the diagram')
     }
