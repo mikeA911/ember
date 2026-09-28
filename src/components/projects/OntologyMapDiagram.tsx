@@ -106,26 +106,65 @@ const NODE_FILL: Record<OntologyMapNode['kind'], string> = { object: '#eff6ff', 
 const NODE_STROKE: Record<OntologyMapNode['kind'], string> = { object: '#93c5fd', workstream: '#fcd34d' }
 const NODE_TEXT: Record<OntologyMapNode['kind'], string> = { object: '#1e3a8a', workstream: '#78350f' }
 
-// Cubic bezier between two node edges, curving from whichever side of
-// `from` actually faces `to` -- object-link edges run right-to-left
-// (workstream cluster back to the object cluster), everything else runs
-// left-to-right, and a single formula handles both by relative x position.
+// Cubic bezier between two nodes. Side by side (a tree's parent and child,
+// pipeline steps) it runs horizontally from whichever side of `from` faces
+// `to`; stacked (a workstream in the band below linking up to an object it
+// reads or writes) it runs vertically between the facing top/bottom edges.
 function edgePath(from: OntologyMapNode, to: OntologyMapNode): string {
   const fromRight = from.x + from.width
   const toRight = to.x + to.width
-  const forward = to.x >= fromRight
-  const startX = forward ? fromRight : from.x
-  const endX = forward ? to.x : toRight
-  const startY = from.y + from.height / 2
-  const endY = to.y + to.height / 2
-  const dx = Math.max(30, Math.abs(endX - startX) / 2)
-  const c1x = forward ? startX + dx : startX - dx
-  const c2x = forward ? endX - dx : endX + dx
-  return `M ${startX} ${startY} C ${c1x} ${startY}, ${c2x} ${endY}, ${endX} ${endY}`
+  if (to.x >= fromRight || toRight <= from.x) {
+    const forward = to.x >= fromRight
+    const startX = forward ? fromRight : from.x
+    const endX = forward ? to.x : toRight
+    const startY = from.y + from.height / 2
+    const endY = to.y + to.height / 2
+    const dx = Math.max(30, Math.abs(endX - startX) / 2)
+    const c1x = forward ? startX + dx : startX - dx
+    const c2x = forward ? endX - dx : endX + dx
+    return `M ${startX} ${startY} C ${c1x} ${startY}, ${c2x} ${endY}, ${endX} ${endY}`
+  }
+  const down = to.y >= from.y
+  const startX = from.x + from.width / 2
+  const endX = to.x + to.width / 2
+  const startY = down ? from.y + from.height : from.y
+  const endY = down ? to.y : to.y + to.height
+  const dy = Math.max(30, Math.abs(endY - startY) / 2)
+  return `M ${startX} ${startY} C ${startX} ${down ? startY + dy : startY - dy}, ${endX} ${down ? endY - dy : endY + dy}, ${endX} ${endY}`
 }
+
+// The colour key, drawn into the SVG itself (above the diagram) rather than
+// as page text, so it's the first thing read and it survives an SVG/PNG
+// export into a deck or a printout. Two fixed rows -- box colours, then line
+// styles -- rather than wrapping on estimated text widths, which don't
+// match whatever font the viewer's browser actually renders with.
+type LegendItem = { label: string } & ({ swatch: OntologyMapNode['kind'] } | { line: { stroke: string; dash?: string } })
+const LEGEND_ROWS: LegendItem[][] = [
+  [
+    { label: 'Domain object', swatch: 'object' },
+    { label: 'Workstream (click to open)', swatch: 'workstream' },
+  ],
+  [
+    { label: 'Parent / nesting', line: { stroke: '#d4d4d8' } },
+    { label: 'Pipeline order', line: { stroke: '#a78bfa', dash: '5 3' } },
+    { label: 'Reads / writes / creates', line: { stroke: '#5eead4', dash: '1 3' } },
+  ],
+]
+const LEGEND_PADDING = 20
+const LEGEND_ROW_HEIGHT = 20
+const LEGEND_COLUMN_WIDTH = 210
+// Legend rows, plus a gap and a divider line before the diagram.
+const LEGEND_HEIGHT = LEGEND_PADDING + LEGEND_ROWS.length * LEGEND_ROW_HEIGHT + 4
+const LEGEND_MIN_WIDTH = LEGEND_PADDING * 2 + 3 * LEGEND_COLUMN_WIDTH
+const LEGEND_ITEMS = LEGEND_ROWS.flatMap((row, r) =>
+  row.map((item, c) => ({ item, x: LEGEND_PADDING + c * LEGEND_COLUMN_WIDTH, y: LEGEND_PADDING + r * LEGEND_ROW_HEIGHT }))
+)
 
 export function OntologyMapDiagram({ layout, projectId, projectName }: { layout: OntologyMapLayout; projectId: string; projectName: string }) {
   const byId = new Map(layout.nodes.map((n) => [n.id, n]))
+  const width = Math.max(layout.width, LEGEND_MIN_WIDTH)
+  const offsetY = LEGEND_HEIGHT
+  const height = layout.height + offsetY
   const svgRef = useRef<SVGSVGElement>(null)
   const [exportError, setExportError] = useState<string | null>(null)
 
@@ -184,11 +223,12 @@ export function OntologyMapDiagram({ layout, projectId, projectName }: { layout:
         <svg
           ref={svgRef}
           role="img"
-          aria-label="Ontology map: this project's domain-object tree and workstreams, with their pipeline order and linked objects"
-          width={layout.width}
-          height={layout.height}
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          aria-label="Ontology map: this project's connected domain objects, its workstreams with their pipeline order and linked objects, and a table of its other domain objects"
+          width={width}
+          height={height}
+          viewBox={`0 0 ${width} ${height}`}
           className="block"
+          fontFamily="ui-sans-serif, system-ui, sans-serif"
         >
           <defs>
             <marker id="ontology-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -196,88 +236,103 @@ export function OntologyMapDiagram({ layout, projectId, projectName }: { layout:
             </marker>
           </defs>
 
-          {layout.edges.map((edge) => {
-            const from = byId.get(edge.fromId)
-            const to = byId.get(edge.toId)
-            if (!from || !to) return null
-            const path = edgePath(from, to)
-            if (edge.kind === 'workstream-flow') {
-              return <path key={edge.id} d={path} fill="none" stroke="#a78bfa" strokeWidth={1.5} strokeDasharray="5 3" markerEnd="url(#ontology-arrow)" />
-            }
-            if (edge.kind === 'object-link') {
-              const midX = (from.x + from.width / 2 + to.x + to.width / 2) / 2
-              const midY = (from.y + from.height / 2 + to.y + to.height / 2) / 2
-              return (
-                <g key={edge.id}>
-                  <path d={path} fill="none" stroke="#5eead4" strokeWidth={1} strokeDasharray="1 3" />
-                  {edge.label && (
-                    <text x={midX} y={midY - 4} fontSize={9} fill="#0f766e" textAnchor="middle">
-                      {edge.label}
-                    </text>
-                  )}
-                </g>
-              )
-            }
-            return <path key={edge.id} d={path} fill="none" stroke="#d4d4d8" strokeWidth={1.5} />
-          })}
-
-          {layout.nodes.map((node) => {
-            const content = (
-              <g>
-                <rect
-                  x={node.x}
-                  y={node.y}
-                  width={node.width}
-                  height={node.height}
-                  rx={6}
-                  fill={NODE_FILL[node.kind]}
-                  stroke={NODE_STROKE[node.kind]}
-                />
-                <text
-                  x={node.x + node.width / 2}
-                  y={node.y + node.height / 2 + 4}
-                  textAnchor="middle"
-                  fontSize={12}
-                  fill={NODE_TEXT[node.kind]}
-                >
-                  {node.label}
+          <g fontSize={11} fill="#52525b">
+            {LEGEND_ITEMS.map(({ item, x, y }) => (
+              <g key={item.label}>
+                {'swatch' in item ? (
+                  <rect x={x} y={y - 9} width={14} height={11} rx={2} fill={NODE_FILL[item.swatch]} stroke={NODE_STROKE[item.swatch]} />
+                ) : (
+                  <line x1={x} y1={y - 4} x2={x + 18} y2={y - 4} stroke={item.line.stroke} strokeWidth={1.5} strokeDasharray={item.line.dash} />
+                )}
+                <text x={x + 22} y={y}>
+                  {item.label}
                 </text>
               </g>
-            )
-            if (node.kind === 'workstream') {
+            ))}
+            <line x1={0} y1={offsetY - 4} x2={width} y2={offsetY - 4} stroke="#f4f4f5" />
+          </g>
+
+          <g transform={`translate(0 ${offsetY})`}>
+            {layout.headings.map((heading) => (
+              <text key={heading.text} x={heading.x} y={heading.y} fontSize={12} fontWeight={600} fill="#3f3f46">
+                {heading.text}
+              </text>
+            ))}
+
+            {layout.edges.map((edge) => {
+              const from = byId.get(edge.fromId)
+              const to = byId.get(edge.toId)
+              if (!from || !to) return null
+              const path = edgePath(from, to)
+              if (edge.kind === 'workstream-flow') {
+                return <path key={edge.id} d={path} fill="none" stroke="#a78bfa" strokeWidth={1.5} strokeDasharray="5 3" markerEnd="url(#ontology-arrow)" />
+              }
+              if (edge.kind === 'object-link') {
+                const midX = (from.x + from.width / 2 + to.x + to.width / 2) / 2
+                const midY = (from.y + from.height / 2 + to.y + to.height / 2) / 2
+                return (
+                  <g key={edge.id}>
+                    <path d={path} fill="none" stroke="#5eead4" strokeWidth={1} strokeDasharray="1 3" />
+                    {edge.label && (
+                      <text x={midX} y={midY - 4} fontSize={9} fill="#0f766e" textAnchor="middle">
+                        {edge.label}
+                      </text>
+                    )}
+                  </g>
+                )
+              }
+              return <path key={edge.id} d={path} fill="none" stroke="#d4d4d8" strokeWidth={1.5} />
+            })}
+
+            {layout.nodes.map((node) => {
+              // A standalone-objects table cell: square, touching its
+              // neighbours, smaller left-aligned text.
+              const content = node.compact ? (
+                <g>
+                  <rect x={node.x} y={node.y} width={node.width} height={node.height} fill={NODE_FILL[node.kind]} stroke={NODE_STROKE[node.kind]} strokeWidth={0.75} />
+                  <text x={node.x + 8} y={node.y + node.height / 2 + 4} fontSize={11} fill={NODE_TEXT[node.kind]}>
+                    {node.label}
+                  </text>
+                </g>
+              ) : (
+                <g>
+                  <rect
+                    x={node.x}
+                    y={node.y}
+                    width={node.width}
+                    height={node.height}
+                    rx={6}
+                    fill={NODE_FILL[node.kind]}
+                    stroke={NODE_STROKE[node.kind]}
+                  />
+                  <text
+                    x={node.x + node.width / 2}
+                    y={node.y + node.height / 2 + 4}
+                    textAnchor="middle"
+                    fontSize={12}
+                    fill={NODE_TEXT[node.kind]}
+                  >
+                    {node.label}
+                  </text>
+                </g>
+              )
+              if (node.kind === 'workstream') {
+                return (
+                  <a key={node.id} href={`/projects/${projectId}/workstreams/${node.id}`}>
+                    <title>{node.label}</title>
+                    {content}
+                  </a>
+                )
+              }
               return (
-                <a key={node.id} href={`/projects/${projectId}/workstreams/${node.id}`}>
+                <g key={node.id}>
                   <title>{node.label}</title>
                   {content}
-                </a>
+                </g>
               )
-            }
-            return (
-              <g key={node.id}>
-                <title>{node.label}</title>
-                {content}
-              </g>
-            )
-          })}
+            })}
+          </g>
         </svg>
-      </div>
-
-      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-zinc-100 px-3 py-2 text-xs text-zinc-500">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm border border-blue-300 bg-blue-50" /> Domain object
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm border border-amber-300 bg-amber-50" /> Workstream (click to open)
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-px w-4 border-t border-zinc-300" /> Parent / nesting
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-px w-4 border-t border-dashed border-violet-400" /> Pipeline order
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-px w-4 border-t border-dotted border-teal-400" /> Reads / writes / creates
-        </span>
       </div>
     </div>
   )
