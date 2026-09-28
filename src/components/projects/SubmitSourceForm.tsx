@@ -81,32 +81,54 @@ export function SubmitSourceForm({
 
   return (
     <div className="flex flex-col gap-3 rounded border border-zinc-200 bg-white p-4">
-      <div className="flex items-center gap-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Submit a source</h3>
-        <div className="flex gap-3 text-xs">
-          <label className="flex items-center gap-1">
-            <input type="radio" checked={kind === 'file'} onChange={() => setKind('file')} /> File
-          </label>
-          {artifacts.length > 0 && (
-            <label className="flex items-center gap-1">
-              <input type="radio" checked={kind === 'artifact'} onChange={() => setKind('artifact')} /> Workstream artifact
-            </label>
-          )}
-        </div>
+      <div>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Propose a new source</h3>
+        <p className="mt-1 text-xs text-zinc-500">
+          Add a document to one of this project&apos;s knowledge bases. It appears under Pending sources and only becomes
+          searchable once a project curator or owner approves it.
+        </p>
       </div>
 
-      <select value={knowledgeBaseId} onChange={(e) => setKnowledgeBaseId(e.target.value)} className="rounded border border-zinc-300 px-3 py-2 text-sm">
-        {knowledgeBases.map((kb) => (
-          <option key={kb.id} value={kb.id}>
-            {kb.name}
-          </option>
-        ))}
-      </select>
+      {/* Only offer the choice when there's actually an approved artifact
+          to pick -- a lone "File" radio reads as a setting, not a choice. */}
+      {artifacts.length > 0 && (
+        <fieldset className="flex gap-3 text-xs">
+          <legend className="sr-only">What to submit</legend>
+          <label className="flex items-center gap-1">
+            <input type="radio" checked={kind === 'file'} onChange={() => setKind('file')} /> Upload a file
+          </label>
+          <label className="flex items-center gap-1">
+            <input type="radio" checked={kind === 'artifact'} onChange={() => setKind('artifact')} /> An approved workstream artifact
+          </label>
+        </fieldset>
+      )}
+
+      <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
+        Knowledge base
+        <select value={knowledgeBaseId} onChange={(e) => setKnowledgeBaseId(e.target.value)} className="rounded border border-zinc-300 px-3 py-2 text-sm font-normal text-zinc-900">
+          {knowledgeBases.map((kb) => (
+            <option key={kb.id} value={kb.id}>
+              {kb.name}
+            </option>
+          ))}
+        </select>
+      </label>
 
       {kind === 'file' ? (
         <form onSubmit={handleFileSubmit} className="flex flex-col gap-2">
-          <input type="file" name="file" required accept=".pdf,.docx,.txt" className="text-sm" />
-          <input name="sourceUrl" type="url" placeholder="Source URL (optional citation)" className="rounded border border-zinc-300 px-3 py-2 text-sm" />
+          <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
+            File (PDF, Word .docx, or plain-text .txt)
+            <input type="file" name="file" required accept=".pdf,.docx,.txt" className="text-sm font-normal" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
+            Where it came from (optional)
+            <input
+              name="sourceUrl"
+              type="url"
+              placeholder="https://… -- shown as the source's citation"
+              className="rounded border border-zinc-300 px-3 py-2 text-sm font-normal"
+            />
+          </label>
           <button disabled={isPending} className="self-start rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
             {isPending ? 'Submitting…' : 'Submit for review'}
           </button>
