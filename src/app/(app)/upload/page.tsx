@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { DocumentUploader } from '@/components/curator/DocumentUploader'
 import { DocumentRow } from '@/components/curator/DocumentRow'
+import { documentRowStatus } from '@/lib/curator/document-status'
+import { getSourceReviewCounts } from '@/lib/projects/queries'
 import { SourcesPipelineDiagram } from '@/components/curator/SourcesPipelineDiagram'
 import { listActiveKnowledgeBases } from '@/lib/knowledge-bases'
 
@@ -16,13 +18,17 @@ export default async function UploadPage({
     supabase.from('documents').select('*').order('upload_date', { ascending: false }).limit(50),
   ])
 
-  const stats = {
-    total: documents?.length ?? 0,
-    inReview: documents?.filter((d) => d.processing_status === 'review').length ?? 0,
-    submitted: documents?.filter((d) => d.processing_status === 'submitted').length ?? 0,
-    completed: documents?.filter((d) => d.processing_status === 'completed').length ?? 0,
-    failed: documents?.filter((d) => d.processing_status === 'failed').length ?? 0,
-  }
+  // Chunk review counts, not the documents' workflow stage, decide what
+  // each row and tile says -- see documentRowStatus.
+  const countsByDocumentId = await getSourceReviewCounts((documents ?? []).map((d) => d.id))
+  const statuses = (documents ?? []).map((d) => documentRowStatus(d, countsByDocumentId.get(d.id)))
+  const stats: [string, number][] = [
+    ['Total', statuses.length],
+    ['Needs review', statuses.filter((s) => s.needsReview).length],
+    ['Searchable', statuses.filter((s) => s.label === 'Searchable').length],
+    ['Awaiting admin sign-off', (documents ?? []).filter((d) => d.processing_status === 'submitted').length],
+    ['Failed', statuses.filter((s) => s.label === 'Failed').length],
+  ]
   const activeDefaultKb = knowledgeBases.some((item) => item.id === kb) ? kb : undefined
 
   return (
@@ -42,7 +48,7 @@ export default async function UploadPage({
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-        {Object.entries(stats).map(([label, value]) => (
+        {stats.map(([label, value]) => (
           <div key={label} className="rounded border border-zinc-200 bg-white p-4">
             <div className="text-2xl font-semibold">{value}</div>
             <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
@@ -63,7 +69,7 @@ export default async function UploadPage({
           </thead>
           <tbody>
             {(documents ?? []).map((doc) => (
-              <DocumentRow key={doc.id} document={doc} />
+              <DocumentRow key={doc.id} document={doc} counts={countsByDocumentId.get(doc.id)} />
             ))}
             {(documents ?? []).length === 0 && (
               <tr>

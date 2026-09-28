@@ -3,19 +3,12 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import type { Document } from '@/types/database'
+import type { SourceReviewCounts } from '@/lib/projects/queries'
+import { documentRowStatus } from '@/lib/curator/document-status'
 import { deleteDocumentAction } from '@/app/actions/curator'
 
-const STATUS_STYLES: Record<Document['processing_status'], string> = {
-  pending: 'bg-zinc-100 text-zinc-700',
-  parsing: 'bg-blue-100 text-blue-700',
-  chunking: 'bg-blue-100 text-blue-700',
-  review: 'bg-amber-100 text-amber-800',
-  submitted: 'bg-purple-100 text-purple-800',
-  completed: 'bg-green-100 text-green-800',
-  failed: 'bg-red-100 text-red-800',
-}
-
-export function DocumentRow({ document }: { document: Document }) {
+export function DocumentRow({ document, counts }: { document: Document; counts: SourceReviewCounts | undefined }) {
+  const status = documentRowStatus(document, counts)
   const [isPending, startTransition] = useTransition()
   const [deleted, setDeleted] = useState(false)
 
@@ -32,7 +25,7 @@ export function DocumentRow({ document }: { document: Document }) {
   return (
     <tr className="border-b border-zinc-100 last:border-0">
       <td className="px-4 py-3">
-        {document.processing_status === 'review' ? (
+        {(counts?.total ?? 0) > 0 ? (
           <Link href={`/review/${document.id}`} className="font-medium underline">
             {document.original_filename}
           </Link>
@@ -47,12 +40,18 @@ export function DocumentRow({ document }: { document: Document }) {
       </td>
       <td className="px-4 py-3 text-zinc-600">{document.doc_type}</td>
       <td className="px-4 py-3">
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[document.processing_status]}`}>
-          {document.processing_status}
-        </span>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status.className}`}>{status.label}</span>
+        {status.note && <p className="mt-1 text-xs text-zinc-500">{status.note}</p>}
       </td>
       <td className="px-4 py-3 text-zinc-600">
-        {document.approved_chunks}/{document.total_chunks ?? '—'} approved
+        {counts && counts.total > 0 ? (
+          <>
+            {counts.approved}/{counts.total} approved
+            {counts.rejected > 0 && <span className="text-zinc-400"> · {counts.rejected} rejected</span>}
+          </>
+        ) : (
+          '—'
+        )}
       </td>
       <td className="px-4 py-3 text-right">
         <button
