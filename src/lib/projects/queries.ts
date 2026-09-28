@@ -1,6 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function getProjectStats(supabase: SupabaseClient<Database>) {
   const { data, error } = await supabase.from('projects').select('status')
@@ -152,6 +153,8 @@ export interface ProjectKnowledgeSource {
   sourceUrl: string | null
   versionNumber: number | null
   lifecycleStatus: string
+  // The source's current version -- what /review/[docId] reviews.
+  documentId: string | null
 }
 
 // Backs the project page's Knowledge section source list -- members asked to
@@ -187,7 +190,34 @@ export async function listSourcesForKnowledgeBases(supabase: SupabaseClient<Data
     sourceUrl: s.source_url,
     versionNumber: s.current_version_id ? (versionNumberById.get(s.current_version_id) ?? null) : null,
     lifecycleStatus: s.lifecycle_status,
+    documentId: s.current_version_id,
   }))
+}
+
+export interface SourceReviewCounts {
+  total: number
+  approved: number
+}
+
+// How much of each document is actually searchable: retrieval only uses
+// approved chunks (approveChunk embeds on approval), so a listed source can
+// sit un-searchable until a curator reviews it -- the project page shows
+// this next to each source. document_chunks RLS (chunks_select_staff) only
+// lets platform curators/admins read chunks, while any project member sees
+// the source list, so this counts through the admin client and returns only
+// per-document counts, never chunk content.
+export async function getSourceReviewCounts(documentIds: string[]): Promise<Map<string, SourceReviewCounts>> {
+  const counts = new Map<string, SourceReviewCounts>(documentIds.map((id) => [id, { total: 0, approved: 0 }]))
+  if (documentIds.length === 0) return counts
+  const { data, error } = await createAdminClient().from('document_chunks').select('document_id, review_status').in('document_id', documentIds)
+  if (error) throw error
+  for (const chunk of data ?? []) {
+    const entry = counts.get(chunk.document_id)
+    if (!entry) continue
+    entry.total++
+    if (chunk.review_status === 'approved') entry.approved++
+  }
+  return counts
 }
 
 export interface ProjectKnowledgeSummary {

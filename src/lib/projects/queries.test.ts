@@ -1,6 +1,44 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
-import { getProjectStats, listProjectsWithDraftUpdates, listProjectsWithKnowledge, listKnowledgeBasesForProject } from './queries'
+
+const createAdminClientMock = vi.fn()
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: (...args: unknown[]) => createAdminClientMock(...args) }))
+
+import { getProjectStats, listProjectsWithDraftUpdates, listProjectsWithKnowledge, listKnowledgeBasesForProject, getSourceReviewCounts } from './queries'
+
+describe('getSourceReviewCounts', () => {
+  it('counts total and approved chunks per document, including documents with no chunks yet', async () => {
+    createAdminClientMock.mockReturnValue(
+      createFakeSupabase({
+        document_chunks: [
+          {
+            data: [
+              { document_id: 'doc-1', review_status: 'approved' },
+              { document_id: 'doc-1', review_status: 'approved' },
+              { document_id: 'doc-2', review_status: 'pending' },
+              { document_id: 'doc-2', review_status: 'approved' },
+            ],
+            error: null,
+          },
+        ],
+      })
+    )
+
+    const counts = await getSourceReviewCounts(['doc-1', 'doc-2', 'doc-3'])
+
+    expect(Object.fromEntries(counts)).toEqual({
+      'doc-1': { total: 2, approved: 2 },
+      'doc-2': { total: 2, approved: 1 },
+      'doc-3': { total: 0, approved: 0 },
+    })
+  })
+
+  it('skips the query entirely when there are no documents', async () => {
+    createAdminClientMock.mockReset()
+    expect((await getSourceReviewCounts([])).size).toBe(0)
+    expect(createAdminClientMock).not.toHaveBeenCalled()
+  })
+})
 
 describe('getProjectStats', () => {
   it('counts total projects and how many are active', async () => {

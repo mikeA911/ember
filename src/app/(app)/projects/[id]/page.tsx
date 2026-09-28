@@ -10,7 +10,7 @@ import { ProjectStatusSection } from '@/components/projects/ProjectStatusSection
 import { listWorkstreams } from '@/lib/projects/workstreams'
 import { listProjectNotes } from '@/lib/projects/notes'
 import { listAttachableKnowledgeBases } from '@/lib/knowledge-bases'
-import { listKnowledgeBasesForProject, listSourcesForKnowledgeBases } from '@/lib/projects/queries'
+import { listKnowledgeBasesForProject, listSourcesForKnowledgeBases, getSourceReviewCounts } from '@/lib/projects/queries'
 import { listArticlesForProject } from '@/lib/wiki/project-links'
 import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton } from '@/components/projects/KnowledgeBaseAttachManager'
 import { getOrganizationExplorer } from '@/lib/projects/explorer'
@@ -314,6 +314,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       sourcesByKbId.set(source.knowledgeBaseId, [...(sourcesByKbId.get(source.knowledgeBaseId) ?? []), source])
     }
   }
+  const reviewCountsByDocumentId = await getSourceReviewCounts(
+    [...sourcesByKbId.values()].flat().map((s) => s.documentId).filter((id): id is string => !!id)
+  )
+  // Chunk review (/review/[docId] and its approve actions) is a platform
+  // curator/admin tool, so only they get the "Review" link.
+  const canReviewChunks = viewerProfile?.role === 'admin' || viewerProfile?.role === 'curator'
 
   const ontologyMapLayout = computeOntologyMapLayout(ontologyMapData)
 
@@ -454,6 +460,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                             </>
                           )}
                           {s.lifecycleStatus !== 'active' && <span> -- {s.lifecycleStatus}</span>}
+                          <SourceReviewBadge
+                            counts={s.documentId ? reviewCountsByDocumentId.get(s.documentId) : undefined}
+                            reviewHref={canReviewChunks && s.documentId ? `/review/${s.documentId}` : null}
+                          />
                         </li>
                       ))}
                     </ul>
@@ -659,5 +669,31 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         )}
       </section>
     </div>
+  )
+}
+
+// Whether a listed source is actually searchable yet. Retrieval only ever
+// uses approved chunks, so "listed" alone isn't "usable".
+function SourceReviewBadge({ counts, reviewHref }: { counts: { total: number; approved: number } | undefined; reviewHref: string | null }) {
+  if (!counts) return null
+  if (counts.total > 0 && counts.approved === counts.total) {
+    return <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">Searchable</span>
+  }
+  const label =
+    counts.total === 0 ? 'Not processed yet' : `Awaiting review · ${counts.approved}/${counts.total} chunks approved`
+  return (
+    <>
+      <span
+        className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900"
+        title="Not searchable by the Assistant until a curator approves its chunks"
+      >
+        {label}
+      </span>
+      {reviewHref && counts.total > 0 && (
+        <Link href={reviewHref} className="ml-2 text-[11px] font-medium text-blue-700 underline">
+          Review
+        </Link>
+      )}
+    </>
   )
 }
