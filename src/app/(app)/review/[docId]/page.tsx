@@ -34,5 +34,17 @@ export default async function ReviewPage({ params }: { params: Promise<{ docId: 
     : new Set<string>()
   const sourceRestricted = !!document.knowledge_source_id && restrictedIds.has(document.knowledge_source_id)
 
-  return <ChunkReviewer document={document} chunks={chunks ?? []} sourceRestricted={sourceRestricted} />
+  // Where "done reviewing" leads: a project this document's knowledge base
+  // is attached to, if the reviewer can see one (RLS-scoped), else the
+  // curator dashboard.
+  const { data: attachment } = await supabase
+    .from('project_knowledge_bases')
+    .select('project:projects(id, name)')
+    .eq('knowledge_base_id', document.doc_type)
+    .limit(1)
+    .maybeSingle()
+  const project = attachment?.project as { id: string; name: string } | null | undefined
+  const backLink = project ? { href: `/projects/${project.id}`, label: `Back to ${project.name}` } : { href: '/dashboard', label: 'Back to dashboard' }
+
+  return <ChunkReviewer document={document} chunks={chunks ?? []} sourceRestricted={sourceRestricted} backLink={backLink} />
 }

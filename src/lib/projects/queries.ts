@@ -197,6 +197,7 @@ export async function listSourcesForKnowledgeBases(supabase: SupabaseClient<Data
 export interface SourceReviewCounts {
   total: number
   approved: number
+  rejected: number
 }
 
 // How much of each document is actually searchable: retrieval only uses
@@ -207,7 +208,7 @@ export interface SourceReviewCounts {
 // the source list, so this counts through the admin client and returns only
 // per-document counts, never chunk content.
 export async function getSourceReviewCounts(documentIds: string[]): Promise<Map<string, SourceReviewCounts>> {
-  const counts = new Map<string, SourceReviewCounts>(documentIds.map((id) => [id, { total: 0, approved: 0 }]))
+  const counts = new Map<string, SourceReviewCounts>(documentIds.map((id) => [id, { total: 0, approved: 0, rejected: 0 }]))
   if (documentIds.length === 0) return counts
   const { data, error } = await createAdminClient().from('document_chunks').select('document_id, review_status').in('document_id', documentIds)
   if (error) throw error
@@ -216,6 +217,7 @@ export async function getSourceReviewCounts(documentIds: string[]): Promise<Map<
     if (!entry) continue
     entry.total++
     if (chunk.review_status === 'approved') entry.approved++
+    if (chunk.review_status === 'rejected') entry.rejected++
   }
   return counts
 }

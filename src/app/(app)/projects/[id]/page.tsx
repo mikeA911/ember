@@ -16,6 +16,7 @@ import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton } from '@/compone
 import { getOrganizationExplorer } from '@/lib/projects/explorer'
 import { OrganizationExplorer } from '@/components/projects/OrganizationExplorer'
 import { SubmitSourceForm } from '@/components/projects/SubmitSourceForm'
+import { ApproveSourceButton } from '@/components/projects/ApproveSourceButton'
 import { SourceSubmissionsReview } from '@/components/projects/SourceSubmissionsReview'
 import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamPromotionsReview'
 import { listPendingWorkstreamPromotionsForProject } from '@/lib/workbench/workstream-promotions'
@@ -463,6 +464,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                           <SourceReviewBadge
                             counts={s.documentId ? reviewCountsByDocumentId.get(s.documentId) : undefined}
                             reviewHref={canReviewChunks && s.documentId ? `/review/${s.documentId}` : null}
+                            approveAll={canReviewChunks && s.documentId ? { documentId: s.documentId, title: s.title } : null}
                           />
                         </li>
                       ))}
@@ -673,14 +675,30 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 }
 
 // Whether a listed source is actually searchable yet. Retrieval only ever
-// uses approved chunks, so "listed" alone isn't "usable".
-function SourceReviewBadge({ counts, reviewHref }: { counts: { total: number; approved: number } | undefined; reviewHref: string | null }) {
+// uses approved chunks, so "listed" alone isn't "usable". Fully reviewed
+// with at least one approved chunk counts as searchable, even if some
+// chunks were deliberately rejected.
+function SourceReviewBadge({
+  counts,
+  reviewHref,
+  approveAll,
+}: {
+  counts: { total: number; approved: number; rejected: number } | undefined
+  reviewHref: string | null
+  approveAll: { documentId: string; title: string } | null
+}) {
   if (!counts) return null
-  if (counts.total > 0 && counts.approved === counts.total) {
-    return <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">Searchable</span>
+  const undecided = counts.total - counts.approved - counts.rejected
+  if (counts.total > 0 && undecided === 0) {
+    return counts.approved > 0 ? (
+      <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+        Searchable{counts.rejected > 0 ? ` · ${counts.rejected} chunk${counts.rejected === 1 ? '' : 's'} left out` : ''}
+      </span>
+    ) : (
+      <span className="ml-2 rounded-full bg-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-700">All chunks rejected -- not searchable</span>
+    )
   }
-  const label =
-    counts.total === 0 ? 'Not processed yet' : `Awaiting review · ${counts.approved}/${counts.total} chunks approved`
+  const label = counts.total === 0 ? 'Not processed yet' : `Awaiting review · ${counts.approved}/${counts.total} chunks approved`
   return (
     <>
       <span
@@ -689,9 +707,12 @@ function SourceReviewBadge({ counts, reviewHref }: { counts: { total: number; ap
       >
         {label}
       </span>
+      {approveAll && undecided > 0 && (
+        <ApproveSourceButton documentId={approveAll.documentId} title={approveAll.title} remaining={undecided} />
+      )}
       {reviewHref && counts.total > 0 && (
         <Link href={reviewHref} className="ml-2 text-[11px] font-medium text-blue-700 underline">
-          Review
+          Review chunks
         </Link>
       )}
     </>

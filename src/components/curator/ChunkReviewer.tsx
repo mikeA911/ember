@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import type { Document, DocumentChunk } from '@/types/database'
 import {
   approveChunkAction,
@@ -37,10 +38,12 @@ export function ChunkReviewer({
   document,
   chunks,
   sourceRestricted,
+  backLink,
 }: {
   document: Document
   chunks: DocumentChunk[]
   sourceRestricted: boolean
+  backLink: { href: string; label: string }
 }) {
   const router = useRouter()
   const [index, setIndex] = useState(0)
@@ -106,6 +109,39 @@ export function ChunkReviewer({
     })
   }
 
+  // Approve / reject the chunk on screen, then say plainly what happened and
+  // what to do next -- the page moves on to the next undecided chunk, which
+  // is easy to miss without a message.
+  function decide(kind: 'approve' | 'reject') {
+    const current = Math.min(index, visible.length - 1)
+    const target = visible[current]
+    const wasUndecided = !isDecided(target)
+    const remainingAfter = remainingCount - (wasUndecided ? 1 : 0)
+    const nextIndex =
+      visible.findIndex((c, i) => i > current && !isDecided(c)) !== -1
+        ? visible.findIndex((c, i) => i > current && !isDecided(c))
+        : visible.findIndex((c, i) => i !== current && !isDecided(c))
+    const outcome =
+      kind === 'approve' ? `Chunk ${current + 1} approved -- it's now searchable.` : `Chunk ${current + 1} rejected -- it won't be searchable.`
+    const nextStep =
+      remainingAfter > 0 && nextIndex !== -1
+        ? ` ${remainingAfter} left to review: chunk ${nextIndex + 1} is shown below${remainingAfter > 1 ? ', or use Approve all remaining above' : ''}.`
+        : remainingAfter === 0
+          ? ' That was the last one -- this document is fully reviewed.'
+          : ''
+    run(
+      () =>
+        kind === 'approve'
+          ? approveChunkAction(target.id, document.id, notes || null)
+          : rejectChunkAction(target.id, document.id, notes || null),
+      {
+        advance: true,
+        busy: kind === 'approve' ? 'Approving -- embedding this chunk…' : undefined,
+        done: (result) => (result.ok ? outcome + nextStep : null),
+      }
+    )
+  }
+
   function approveAllRemaining() {
     const confirmed = window.confirm(
       `Approve all ${remainingCount} remaining chunk${remainingCount === 1 ? '' : 's'}? Each one is embedded and becomes searchable by the Assistant. Chunks you already approved or rejected are left as they are.`
@@ -115,7 +151,11 @@ export function ChunkReviewer({
       busy: `Approving ${remainingCount} chunk${remainingCount === 1 ? '' : 's'} -- embedding each one. This can take a minute; please don't leave the page.`,
       done: (result) => {
         const approved = (result as { approved?: number }).approved ?? 0
-        return result.ok ? `Approved ${approved} chunk${approved === 1 ? '' : 's'}.` : approved > 0 ? `Approved ${approved} before the error -- click again to continue.` : null
+        return result.ok
+          ? `Approved ${approved} chunk${approved === 1 ? '' : 's'} -- ${approved === 1 ? "it's" : "they're"} now searchable. This document is fully reviewed.`
+          : approved > 0
+            ? `Approved ${approved} before the error -- click again to continue.`
+            : null
       },
     })
   }
@@ -177,7 +217,11 @@ export function ChunkReviewer({
         ) : (
           <div className="flex flex-wrap items-center gap-2 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
             <span>
-              All chunks reviewed -- {approvedCount} searchable{rejectedCount > 0 ? `, ${rejectedCount} left out` : ''}.
+              <strong>You&apos;re done.</strong> All chunks reviewed -- {approvedCount} searchable
+              {rejectedCount > 0 ? `, ${rejectedCount} left out` : ''}.{' '}
+              <Link href={backLink.href} className="font-medium underline">
+                {backLink.label}
+              </Link>
             </span>
             {document.processing_status === 'review' && allDecided && (
               <span className="ml-auto flex items-center gap-2">
@@ -206,7 +250,11 @@ export function ChunkReviewer({
           {busyMessage}
         </p>
       )}
-      {notice && !busyMessage && <p className="text-sm text-green-800">{notice}</p>}
+      {notice && !busyMessage && (
+        <p role="status" aria-live="polite" className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
+          ✓ {notice}
+        </p>
+      )}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       <div className="flex flex-col gap-3 rounded border border-zinc-200 bg-zinc-50 p-4">
@@ -292,7 +340,7 @@ export function ChunkReviewer({
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <span className="text-green-800">This chunk is approved and searchable.</span>
             <button
-              onClick={() => run(() => rejectChunkAction(chunk.id, document.id, notes || null), { advance: true })}
+              onClick={() => decide('reject')}
               disabled={isPending}
               className="rounded border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50"
             >
@@ -303,7 +351,7 @@ export function ChunkReviewer({
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <span className="text-red-800">This chunk is rejected and not searchable.</span>
             <button
-              onClick={() => run(() => approveChunkAction(chunk.id, document.id, notes || null), { advance: true })}
+              onClick={() => decide('approve')}
               disabled={isPending}
               className="rounded border border-green-700 px-3 py-1.5 text-xs font-medium text-green-800 disabled:opacity-50"
             >
@@ -313,14 +361,14 @@ export function ChunkReviewer({
         ) : (
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => run(() => approveChunkAction(chunk.id, document.id, notes || null), { advance: true, busy: 'Approving -- embedding this chunk…' })}
+              onClick={() => decide('approve')}
               disabled={isPending}
               className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               Approve this chunk
             </button>
             <button
-              onClick={() => run(() => rejectChunkAction(chunk.id, document.id, notes || null), { advance: true })}
+              onClick={() => decide('reject')}
               disabled={isPending}
               className="rounded bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
