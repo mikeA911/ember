@@ -36,23 +36,57 @@ describe('computeOntologyMapLayout', () => {
     expect(layout.edges).toContainEqual(expect.objectContaining({ fromId: 'root', toId: 'child-2', kind: 'object-parent' }))
   })
 
-  it('treats a dangling parentId (pointing at a row outside this project) as a root, without a phantom edge', () => {
+  it('treats a dangling parentId (pointing at a row outside this project) as standalone, without a phantom edge', () => {
     const layout = computeOntologyMapLayout(emptyData({ objects: [{ id: 'orphan', name: 'Orphan', parentId: 'does-not-exist' }] }))
     expect(layout.nodes).toHaveLength(1)
-    expect(layout.nodes[0].x).toBe(20) // PADDING -- placed as a root, not nested
+    expect(layout.nodes[0]).toMatchObject({ x: 20, compact: true }) // PADDING -- a standalone table cell, not nested
     expect(layout.edges).toEqual([])
   })
 
-  it('places the workstream cluster to the right of the object cluster, with a gap', () => {
+  it('stacks connected objects, then workstreams, then the standalone-objects table, top to bottom', () => {
     const layout = computeOntologyMapLayout(
       emptyData({
-        objects: [{ id: 'obj-1', name: 'A Fairly Long Object Name', parentId: null }],
-        workstreams: [{ id: 'ws-1', name: 'WS', parentId: null }],
+        objects: [
+          { id: 'root', name: 'Organization', parentId: null },
+          { id: 'child', name: 'Vendor', parentId: 'root' },
+          { id: 'linked', name: 'Incident', parentId: null },
+          { id: 'solo', name: 'Benchmark', parentId: null },
+        ],
+        workstreams: [{ id: 'ws-1', name: 'Dispatch', parentId: null }],
+        linkEdges: [{ workstreamId: 'ws-1', objectId: 'linked', accessModes: ['reads'] }],
       })
     )
-    const obj = layout.nodes.find((n) => n.id === 'obj-1')!
-    const ws = layout.nodes.find((n) => n.id === 'ws-1')!
-    expect(ws.x).toBeGreaterThan(obj.x + obj.width)
+    const node = (id: string) => layout.nodes.find((n) => n.id === id)!
+    const connectedBottom = Math.max(...['root', 'child', 'linked'].map((id) => node(id).y + node(id).height))
+    expect(node('ws-1').y).toBeGreaterThan(connectedBottom)
+    expect(node('solo').y).toBeGreaterThan(node('ws-1').y + node('ws-1').height)
+    // Only the object with no parent, children or workstream link is a table cell.
+    expect(layout.nodes.filter((n) => n.compact).map((n) => n.id)).toEqual(['solo'])
+    expect(layout.headings.map((h) => h.text)).toEqual([
+      'Connected domain objects -- hierarchies and workstream links',
+      'Workstreams',
+      'Other domain objects -- not nested or linked (1)',
+    ])
+    expect(layout.height).toBeGreaterThanOrEqual(node('solo').y + node('solo').height)
+  })
+
+  it('packs standalone objects into an alphabetical table filled column by column, with no overlapping cells', () => {
+    const names = Array.from({ length: 30 }, (_, i) => `Class${String(i).padStart(2, '0')}`)
+    const layout = computeOntologyMapLayout(
+      emptyData({ objects: [...names].reverse().map((name) => ({ id: name, name, parentId: null })) })
+    )
+    const cells = layout.nodes
+    expect(cells.every((c) => c.compact)).toBe(true)
+    const columns = new Set(cells.map((c) => c.x)).size
+    expect(columns).toBeGreaterThan(1)
+    // Alphabetical down the first column, then on to the next.
+    const first = cells.find((c) => c.label === 'Class00')!
+    const second = cells.find((c) => c.label === 'Class01')!
+    expect(second.x).toBe(first.x)
+    expect(second.y).toBeGreaterThan(first.y)
+    const positions = new Set(cells.map((c) => `${c.x},${c.y}`))
+    expect(positions.size).toBe(cells.length)
+    expect(layout.headings).toEqual([expect.objectContaining({ text: 'Other domain objects -- not nested or linked (30)' })])
   })
 
   it('produces a workstream-flow edge for a pipeline edge between two workstreams', () => {

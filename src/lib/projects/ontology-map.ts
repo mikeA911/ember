@@ -57,6 +57,9 @@ export interface OntologyMapNode {
   y: number
   width: number
   height: number
+  // A cell of the compact "standalone objects" table at the bottom, drawn
+  // smaller and left-aligned rather than as a free-floating box.
+  compact?: boolean
 }
 
 export interface OntologyMapEdge {
@@ -67,9 +70,18 @@ export interface OntologyMapEdge {
   label?: string
 }
 
+// A band title ("Connected domain objects", "Workstreams", ...) drawn above
+// its band.
+export interface OntologyMapHeading {
+  text: string
+  x: number
+  y: number
+}
+
 export interface OntologyMapLayout {
   nodes: OntologyMapNode[]
   edges: OntologyMapEdge[]
+  headings: OntologyMapHeading[]
   width: number
   height: number
 }
@@ -77,11 +89,18 @@ export interface OntologyMapLayout {
 const NODE_HEIGHT = 32
 const ROW_HEIGHT = 44
 const COLUMN_GAP = 48
-const CLUSTER_GAP = 96
+const BAND_GAP = 28
+const HEADING_HEIGHT = 26
 const PADDING = 20
 const CHAR_WIDTH = 7
 const MIN_NODE_WIDTH = 90
 const MAX_NODE_WIDTH = 220
+// Standalone-objects table: small cells, as many per row as fit the
+// diagram's width (never narrower than this, so a small ontology still gets
+// a few columns instead of one long list).
+const CELL_HEIGHT = 24
+const CELL_CHAR_WIDTH = 6.5
+const MIN_TABLE_WIDTH = 760
 
 function nodeWidth(label: string): number {
   return Math.min(MAX_NODE_WIDTH, Math.max(MIN_NODE_WIDTH, label.length * CHAR_WIDTH + 24))
@@ -93,13 +112,13 @@ function nodeWidth(label: string): number {
 // technique: a leaf gets the next sequential row slot; a parent's row is
 // the average of its children's rows -- guarantees no vertical overlap
 // without a general force-directed layout, and works for a forest (many
-// disconnected roots) as well as a single tree, which is exactly this
-// ontology's own shape (most classes are standalone roots; a few branch).
+// disconnected roots) as well as a single tree.
 function layoutTree(
   items: { id: string; label: string; parentId: string | null }[],
   kind: OntologyMapNode['kind'],
-  startX: number
-): { nodes: OntologyMapNode[]; maxDepth: number } {
+  startX: number,
+  startY: number
+): OntologyMapNode[] {
   const byId = new Map(items.map((i) => [i.id, i]))
   const childrenByParent = new Map<string | null, typeof items>()
   for (const item of items) {
@@ -112,10 +131,8 @@ function layoutTree(
   const rowById = new Map<string, number>()
   const depthById = new Map<string, number>()
   let nextLeafRow = 0
-  let maxDepth = 0
 
   function place(id: string, depth: number): number {
-    maxDepth = Math.max(maxDepth, depth)
     depthById.set(id, depth)
     const children = childrenByParent.get(id) ?? []
     let row: number
@@ -145,42 +162,107 @@ function layoutTree(
     cursor += (widthByDepth[d] ?? MIN_NODE_WIDTH) + COLUMN_GAP
   }
 
-  const nodes: OntologyMapNode[] = items.map((item) => {
+  return items.map((item) => {
     const depth = depthById.get(item.id) ?? 0
     return {
       id: item.id,
       label: item.label,
       kind,
       x: xByDepth[depth],
-      y: (rowById.get(item.id) ?? 0) * ROW_HEIGHT,
+      y: startY + (rowById.get(item.id) ?? 0) * ROW_HEIGHT,
       width: nodeWidth(item.label),
       height: NODE_HEIGHT,
     }
   })
-  return { nodes, maxDepth }
 }
 
+function bottomOf(nodes: OntologyMapNode[]): number {
+  return nodes.reduce((max, n) => Math.max(max, n.y + n.height), 0)
+}
+
+// Top to bottom, so the part worth looking at comes first (and a printout
+// doesn't spend its first page on a list):
+//   1. Connected domain objects -- every object in a parent/child hierarchy
+//      or read/written/created by a workstream, as left-to-right trees.
+//   2. Workstreams, with their nesting and pipeline order.
+//   3. Every other domain object -- standalone classes with no parent,
+//      children or workstream link -- as a compact alphabetical table,
+//      filled column by column.
 export function computeOntologyMapLayout(data: OntologyMapData): OntologyMapLayout {
-  const { nodes: objectNodes } = layoutTree(
-    data.objects.map((o) => ({ id: o.id, label: o.name, parentId: o.parentId })),
-    'object',
-    PADDING
-  )
-  const objectsRightEdge = objectNodes.reduce((max, n) => Math.max(max, n.x + n.width), PADDING)
-  const workstreamStartX = data.objects.length > 0 ? objectsRightEdge + CLUSTER_GAP : PADDING
+  const objectIds = new Set(data.objects.map((o) => o.id))
+  const workstreamIds = new Set(data.workstreams.map((w) => w.id))
+  const connected = new Set<string>()
+  for (const o of data.objects) {
+    if (o.parentId && objectIds.has(o.parentId)) {
+      connected.add(o.id)
+      connected.add(o.parentId)
+    }
+  }
+  for (const l of data.linkEdges) {
+    if (objectIds.has(l.objectId) && workstreamIds.has(l.workstreamId)) connected.add(l.objectId)
+  }
+  const connectedObjects = data.objects.filter((o) => connected.has(o.id))
+  const standaloneObjects = data.objects.filter((o) => !connected.has(o.id)).sort((a, b) => a.name.localeCompare(b.name))
 
-  const { nodes: workstreamNodes } = layoutTree(
-    data.workstreams.map((w) => ({ id: w.id, label: w.name, parentId: w.parentId })),
-    'workstream',
-    workstreamStartX
-  )
+  const headings: OntologyMapHeading[] = []
+  const nodes: OntologyMapNode[] = []
+  let cursorY = PADDING
 
-  const nodes = [...objectNodes, ...workstreamNodes]
+  function band(text: string, place: (startY: number) => OntologyMapNode[]) {
+    headings.push({ text, x: PADDING, y: cursorY + 14 })
+    const placed = place(cursorY + HEADING_HEIGHT)
+    nodes.push(...placed)
+    cursorY = bottomOf(placed) + BAND_GAP
+  }
+
+  if (connectedObjects.length > 0) {
+    band('Connected domain objects -- hierarchies and workstream links', (y) =>
+      layoutTree(
+        connectedObjects.map((o) => ({ id: o.id, label: o.name, parentId: o.parentId })),
+        'object',
+        PADDING,
+        y
+      )
+    )
+  }
+  if (data.workstreams.length > 0) {
+    band('Workstreams', (y) =>
+      layoutTree(
+        data.workstreams.map((w) => ({ id: w.id, label: w.name, parentId: w.parentId })),
+        'workstream',
+        PADDING,
+        y
+      )
+    )
+  }
+  if (standaloneObjects.length > 0) {
+    const diagramWidth = nodes.reduce((max, n) => Math.max(max, n.x + n.width), 0) + PADDING
+    const tableWidth = Math.max(diagramWidth, MIN_TABLE_WIDTH) - PADDING * 2
+    const cellWidth = Math.min(
+      MAX_NODE_WIDTH,
+      Math.max(MIN_NODE_WIDTH, ...standaloneObjects.map((o) => Math.ceil(o.name.length * CELL_CHAR_WIDTH) + 16))
+    )
+    const columns = Math.max(1, Math.min(standaloneObjects.length, Math.floor(tableWidth / cellWidth)))
+    const rows = Math.ceil(standaloneObjects.length / columns)
+    band(`Other domain objects -- not nested or linked (${standaloneObjects.length})`, (y) =>
+      standaloneObjects.map((o, i) => ({
+        id: o.id,
+        label: o.name,
+        kind: 'object' as const,
+        x: PADDING + Math.floor(i / rows) * cellWidth,
+        y: y + (i % rows) * CELL_HEIGHT,
+        width: cellWidth,
+        height: CELL_HEIGHT,
+        compact: true,
+      }))
+    )
+  }
+
   const byId = new Map(nodes.map((n) => [n.id, n]))
 
   const edges: OntologyMapEdge[] = []
   for (const o of data.objects) {
-    if (o.parentId && byId.has(o.parentId)) {
+    if (o.parentId && byId.has(o.parentId) && byId.has(o.id)) {
       edges.push({ id: `op-${o.parentId}-${o.id}`, fromId: o.parentId, toId: o.id, kind: 'object-parent' })
     }
   }
@@ -207,7 +289,7 @@ export function computeOntologyMapLayout(data: OntologyMapData): OntologyMapLayo
   }
 
   const width = nodes.reduce((max, n) => Math.max(max, n.x + n.width), 0) + PADDING
-  const height = nodes.reduce((max, n) => Math.max(max, n.y + n.height), 0) + PADDING
+  const height = nodes.length > 0 ? cursorY - BAND_GAP + PADDING : 0
 
-  return { nodes, edges, width: Math.max(width, PADDING * 2), height: Math.max(height, PADDING * 2) }
+  return { nodes, edges, headings, width: Math.max(width, PADDING * 2), height: Math.max(height, PADDING * 2) }
 }
