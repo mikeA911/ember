@@ -31,7 +31,7 @@ import { listMyWorkingKnowledge, listSharedWorkingKnowledge } from '@/lib/projec
 import { WorkingKnowledgePanel } from '@/components/projects/WorkingKnowledgePanel'
 import { CloneProjectButton } from '@/components/projects/CloneProjectButton'
 import { getOntologyMapData, computeOntologyMapLayout } from '@/lib/projects/ontology-map'
-import { OntologyMapDiagram } from '@/components/projects/OntologyMapDiagram'
+import { OntologyMapButton } from '@/components/projects/OntologyMapButton'
 
 const TYPE_LABELS: Record<string, string> = {
   learning: 'Learning',
@@ -356,6 +356,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           <ProjectCategorySelector projectId={project.id} category={project.portfolio_category} canEdit={canCurateWorkstreams} />
           <span className="text-zinc-300">·</span>
           <ProjectDiscoverabilitySelector projectId={project.id} discoverability={project.discoverability} canEdit={canCurateWorkstreams} />
+          {ontologyMapLayout.nodes.length > 0 && (
+            <>
+              <span className="text-zinc-300">·</span>
+              <OntologyMapButton layout={ontologyMapLayout} projectId={project.id} projectName={project.name} />
+            </>
+          )}
         </div>
         {clonedFromProjectName && (
           <p className="mt-1 text-xs text-zinc-500">
@@ -577,17 +583,6 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           <p className="text-sm text-zinc-500">No workstreams defined yet.</p>
         )}
       </section>
-
-      {ontologyMapLayout.nodes.length > 0 && (
-        <section id="ontology-map" className="flex flex-col gap-3 scroll-mt-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Ontology Map</h2>
-          <p className="text-xs text-zinc-500">
-            This project&apos;s domain objects and workstreams -- their nesting, pipeline order, and which objects
-            each workstream reads, writes, or creates.
-          </p>
-          <OntologyMapDiagram layout={ontologyMapLayout} projectId={project.id} projectName={project.name} />
-        </section>
-      )}
 
       {canCurateWorkstreams && pendingWorkstreamPromotions.length > 0 && (
         <section className="flex flex-col gap-3">

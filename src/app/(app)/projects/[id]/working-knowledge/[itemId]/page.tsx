@@ -53,21 +53,31 @@ export default async function WorkingKnowledgeDetailPage({ params }: { params: P
     candidates = (profiles ?? []).map((p) => ({ userId: p.id, email: p.email }))
   }
 
-  // KB Sandbox Builder MVP: the promotion target is the operator's
-  // Organization Home Project (OR-036) -- safe, narrow metadata-only lookup
-  // via the admin client (name + attached KBs, never content), same pattern
-  // as getOrganizationPortfolio/listDiscoverableProjects. Every account is
-  // already auto-enrolled there as a viewer (enrollInOrganizationHome), so
-  // this never depends on the current Project's own membership.
-  let promoteTarget: { projectId: string; projectName: string; knowledgeBases: { id: string; name: string }[] } | null = null
+  // Promotion targets: the notebook's own Project first (a note belongs to
+  // the Project it was written in), then the operator's Organization Home
+  // Project (OR-036) when one exists and differs. Each needs at least one
+  // active attached knowledge base -- submitWorkingKnowledgeSource re-checks
+  // membership, attachment and ownership server-side regardless. Safe,
+  // narrow metadata-only lookups via the admin client (name + attached KBs,
+  // never content), same pattern as getOrganizationPortfolio/
+  // listDiscoverableProjects. Every account is already auto-enrolled in the
+  // Organization Home as a viewer (enrollInOrganizationHome).
+  const promoteTargets: { projectId: string; projectName: string; knowledgeBases: { id: string; name: string }[] }[] = []
   if (isOwner && item.trust_status !== 'archived') {
     const admin = createAdminClient()
-    const { data: orgHome } = await admin.from('projects').select('id, name').eq('is_organization_home', true).maybeSingle()
-    if (orgHome) {
-      const { data: links } = await admin.from('project_knowledge_bases').select('knowledge_base_id').eq('project_id', orgHome.id)
+    const [{ data: ownProject }, { data: orgHome }] = await Promise.all([
+      admin.from('projects').select('id, name').eq('id', id).maybeSingle(),
+      admin.from('projects').select('id, name').eq('is_organization_home', true).maybeSingle(),
+    ])
+    for (const project of [ownProject, orgHome && orgHome.id !== id ? orgHome : null]) {
+      if (!project) continue
+      const { data: links } = await admin.from('project_knowledge_bases').select('knowledge_base_id').eq('project_id', project.id)
       const kbIds = (links ?? []).map((l) => l.knowledge_base_id)
-      const { data: kbs } = kbIds.length > 0 ? await admin.from('knowledge_bases').select('id, name').in('id', kbIds) : { data: [] }
-      if (kbs && kbs.length > 0) promoteTarget = { projectId: orgHome.id, projectName: orgHome.name, knowledgeBases: kbs }
+      const { data: kbs } =
+        kbIds.length > 0
+          ? await admin.from('knowledge_bases').select('id, name').in('id', kbIds).eq('lifecycle_status', 'active').order('name')
+          : { data: [] }
+      if (kbs && kbs.length > 0) promoteTargets.push({ projectId: project.id, projectName: project.name, knowledgeBases: kbs })
     }
   }
 
@@ -113,14 +123,15 @@ export default async function WorkingKnowledgeDetailPage({ params }: { params: P
 
       {isOwner && <WorkingKnowledgeShareManager projectId={id} itemId={item.id} candidates={candidates} shares={shares} />}
 
-      {promoteTarget && (
+      {promoteTargets.map((target) => (
         <WorkingKnowledgePromoteForm
+          key={target.projectId}
           workingKnowledgeItemId={item.id}
-          targetProjectId={promoteTarget.projectId}
-          targetProjectName={promoteTarget.projectName}
-          knowledgeBases={promoteTarget.knowledgeBases}
+          targetProjectId={target.projectId}
+          targetProjectName={target.projectName}
+          knowledgeBases={target.knowledgeBases}
         />
-      )}
+      ))}
 
       {isOwner && item.trust_status !== 'archived' && (
         <form action={async () => {

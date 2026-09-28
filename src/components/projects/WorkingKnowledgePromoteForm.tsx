@@ -4,14 +4,12 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitWorkingKnowledgeSourceAction } from '@/app/actions/source-submissions'
 
-// KB Sandbox Builder MVP (docs/dev-request-kb-sandbox-builder-product.md):
-// the promotion bridge from a private notebook to curator-reviewed content
-// -- most concretely the operator's Organization Home Project KB every
-// builder is already a viewer of. Deliberately not folded into
-// SubmitSourceForm.tsx, which submits *from* a project you're viewing *into
-// that same project's* own attached KB -- this submits into a DIFFERENT
-// project (the Organization Home) than the one the notebook itself lives
-// in, so it needs its own target project id.
+// The promotion bridge from a private notebook to curator-reviewed content
+// in one target Project's knowledge base -- the notebook's own Project, or
+// the operator's Organization Home Project (docs/dev-request-kb-sandbox-
+// builder-product.md); the detail page renders one form per target.
+// Deliberately not folded into SubmitSourceForm.tsx, which submits files and
+// artifacts from the Project page itself rather than a notebook.
 export function WorkingKnowledgePromoteForm({
   workingKnowledgeItemId,
   targetProjectId,
