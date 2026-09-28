@@ -34,38 +34,120 @@ export async function uploadAndProcessDocument(formData: FormData) {
   return { documentId: doc.id }
 }
 
-export async function enrichMoreChunks(documentId: string, docType: string) {
-  const { user, supabase } = await requireRole('curator')
-  const provider = await getActiveStructuredOutputProvider(supabase, { documentId, requestedBy: user.id })
-  const result = await enrichDocumentChunks(supabase, provider, documentId, docType, 10)
-  revalidatePath(`/review/${documentId}`)
-  return result
+// The chunk-review actions below return failures instead of throwing them:
+// in production a thrown Server Action error reaches the reviewer only as a
+// generic digest (React #441), which hides fixable causes like a missing or
+// rejected AI provider key. They're curator-only, so the message is shown
+// as-is and also logged.
+export type ReviewActionResult = { ok: true } | { ok: false; error: string }
+
+function failure(label: string, err: unknown): { ok: false; error: string } {
+  console.error(`${label} failed`, err)
+  return { ok: false, error: err instanceof Error ? err.message : String(err) }
 }
 
-export async function approveChunkAction(chunkId: string, documentId: string, curatorNotes: string | null) {
+export async function enrichMoreChunks(
+  documentId: string,
+  docType: string
+): Promise<({ ok: true } & Awaited<ReturnType<typeof enrichDocumentChunks>>) | { ok: false; error: string }> {
   const { user, supabase } = await requireRole('curator')
-  const provider = await getActiveEmbeddingProvider(supabase, { documentId, chunkId, requestedBy: user.id })
-  await approveChunk(supabase, provider, { chunkId, curatorNotes, reviewedBy: user.id })
-  revalidatePath(`/review/${documentId}`)
+  try {
+    const provider = await getActiveStructuredOutputProvider(supabase, { documentId, requestedBy: user.id })
+    const result = await enrichDocumentChunks(supabase, provider, documentId, docType, 10)
+    return { ok: true, ...result }
+  } catch (err) {
+    return failure('enrichMoreChunks', err)
+  } finally {
+    revalidatePath(`/review/${documentId}`)
+  }
 }
 
-export async function rejectChunkAction(chunkId: string, documentId: string, curatorNotes: string | null) {
+export async function approveChunkAction(chunkId: string, documentId: string, curatorNotes: string | null): Promise<ReviewActionResult> {
   const { user, supabase } = await requireRole('curator')
-  await rejectChunk(supabase, { chunkId, curatorNotes, reviewedBy: user.id })
-  revalidatePath(`/review/${documentId}`)
+  try {
+    const provider = await getActiveEmbeddingProvider(supabase, { documentId, chunkId, requestedBy: user.id })
+    await approveChunk(supabase, provider, { chunkId, curatorNotes, reviewedBy: user.id })
+    return { ok: true }
+  } catch (err) {
+    return failure('approveChunkAction', err)
+  } finally {
+    revalidatePath(`/review/${documentId}`)
+  }
 }
 
-export async function saveChunkDraftAction(chunkId: string, documentId: string, curatorNotes: string | null) {
+// "Approve all remaining" on the review page: every chunk not yet decided
+// (pending, draft, or whose optional metadata step failed -- never one
+// already approved, rejected, or filtered out by the pipeline) is approved
+// and embedded in document order, with the same
+// approveChunk path as the single-chunk button. Stops at the first failure
+// and reports how many made it, so a retry simply continues where it left
+// off. Sequential embedding calls are well within the review page's
+// maxDuration for a normal document; a very large one can be finished by
+// clicking again.
+export async function approveRemainingChunksAction(
+  documentId: string
+): Promise<{ ok: true; approved: number } | { ok: false; approved: number; error: string }> {
+  const { user, supabase } = await requireRole('curator')
+  let approved = 0
+  try {
+    const { data: chunks, error } = await supabase
+      .from('document_chunks')
+      .select('id')
+      .eq('document_id', documentId)
+      .eq('is_filtered', false)
+      .in('review_status', ['pending', 'draft', 'failed'])
+      .order('chunk_index', { ascending: true })
+    if (error) throw error
+    if (!chunks || chunks.length === 0) return { ok: true, approved: 0 }
+
+    const provider = await getActiveEmbeddingProvider(supabase, { documentId, requestedBy: user.id })
+    for (const chunk of chunks) {
+      await approveChunk(supabase, provider, { chunkId: chunk.id, curatorNotes: null, reviewedBy: user.id })
+      approved++
+    }
+    return { ok: true, approved }
+  } catch (err) {
+    return { ...failure('approveRemainingChunksAction', err), approved }
+  } finally {
+    revalidatePath(`/review/${documentId}`)
+  }
+}
+
+export async function rejectChunkAction(chunkId: string, documentId: string, curatorNotes: string | null): Promise<ReviewActionResult> {
+  const { user, supabase } = await requireRole('curator')
+  try {
+    await rejectChunk(supabase, { chunkId, curatorNotes, reviewedBy: user.id })
+    return { ok: true }
+  } catch (err) {
+    return failure('rejectChunkAction', err)
+  } finally {
+    revalidatePath(`/review/${documentId}`)
+  }
+}
+
+export async function saveChunkDraftAction(chunkId: string, documentId: string, curatorNotes: string | null): Promise<ReviewActionResult> {
   const { supabase } = await requireRole('curator')
-  await saveChunkDraft(supabase, chunkId, curatorNotes)
-  revalidatePath(`/review/${documentId}`)
+  try {
+    await saveChunkDraft(supabase, chunkId, curatorNotes)
+    return { ok: true }
+  } catch (err) {
+    return failure('saveChunkDraftAction', err)
+  } finally {
+    revalidatePath(`/review/${documentId}`)
+  }
 }
 
-export async function submitDocumentAction(documentId: string) {
+export async function submitDocumentAction(documentId: string): Promise<ReviewActionResult> {
   const { supabase } = await requireRole('curator')
-  await submitDocument(supabase, documentId)
-  revalidatePath(`/review/${documentId}`)
-  revalidatePath('/dashboard')
+  try {
+    await submitDocument(supabase, documentId)
+    return { ok: true }
+  } catch (err) {
+    return failure('submitDocumentAction', err)
+  } finally {
+    revalidatePath(`/review/${documentId}`)
+    revalidatePath('/dashboard')
+  }
 }
 
 export async function deleteDocumentAction(documentId: string) {
