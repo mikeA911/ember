@@ -275,6 +275,53 @@ describe('approveSourceSubmission', () => {
   })
 })
 
+describe('approveSourceSubmission rollback', () => {
+  it('when embedding fails for a notebook submission, removes the synthesized source and document and reports why', async () => {
+    const supabase = createFakeSupabase({
+      project_source_submissions: [
+        { data: { id: 'sub-1', project_id: 'proj-1', status: 'pending', source_kind: 'working_knowledge', document_id: null, working_knowledge_item_id: 'wk-1', knowledge_base_id: 'kb-1', submitted_by: 'owner-1' }, error: null },
+      ],
+      project_members: [{ data: { role: 'curator' }, error: null }],
+    })
+    const admin = createFakeSupabase({
+      working_knowledge_items: [{ data: { title: 'NG911 status', content: 'Real notebook content' }, error: null }],
+      document_chunks: [{ data: [{ id: 'chunk-1' }], error: null }],
+      documents: [{ data: { knowledge_source_id: 'src-1' }, error: null }],
+      knowledge_sources: [{ data: null, error: null }],
+    })
+    createAdminClientMock.mockReturnValue(admin)
+    createUploadedDocumentMock.mockResolvedValue({ id: 'doc-synth-1' })
+    approveChunkMock.mockRejectedValue(new Error('Provider "openai" is enabled but OPENAI_API_KEY is not set'))
+
+    await expect(approveSourceSubmission(ctxWith(supabase), 'sub-1')).rejects.toThrow(
+      /Embedding the source failed: Provider "openai" is enabled but OPENAI_API_KEY is not set\. Nothing from this attempt was kept/
+    )
+
+    expect(deleteDocumentByIdMock).toHaveBeenCalledWith(admin, 'doc-synth-1', { id: 'user-1', role: 'admin' })
+    expect(admin._calls).toContainEqual({ table: 'knowledge_sources', method: 'delete', args: undefined })
+    expect(admin._calls).toContainEqual({ table: 'knowledge_sources', method: 'eq', args: { column: 'id', value: 'src-1' } })
+    // The submission stays pending -- no decision is recorded for a failed approval.
+    expect(supabase._calls.find((c) => c.table === 'project_source_submissions' && c.method === 'update')).toBeUndefined()
+  })
+
+  it('when processing fails for a file submission, keeps the uploaded document but clears its chunks for a clean retry', async () => {
+    const supabase = createFakeSupabase({
+      project_source_submissions: [{ data: { id: 'sub-1', project_id: 'proj-1', status: 'pending', source_kind: 'file', document_id: 'doc-1' }, error: null }],
+      project_members: [{ data: { role: 'owner' }, error: null }],
+    })
+    const admin = createFakeSupabase({ document_chunks: [{ data: null, error: null }], documents: [{ data: null, error: null }] })
+    createAdminClientMock.mockReturnValue(admin)
+    processDocumentMock.mockRejectedValue(new Error('Parsing produced no extractable text'))
+
+    await expect(approveSourceSubmission(ctxWith(supabase), 'sub-1')).rejects.toThrow(/^Processing the source failed: Parsing produced no extractable text/)
+
+    expect(deleteDocumentByIdMock).not.toHaveBeenCalled()
+    expect(admin._calls).toContainEqual({ table: 'document_chunks', method: 'delete', args: undefined })
+    expect(admin._calls).toContainEqual({ table: 'documents', method: 'update', args: { processing_status: 'pending', processing_stage: 'upload', total_chunks: null } })
+    expect(approveChunkMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('rejectSourceSubmission', () => {
   it('rejects a caller who is not this project\'s owner/curator/admin', async () => {
     const supabase = createFakeSupabase({

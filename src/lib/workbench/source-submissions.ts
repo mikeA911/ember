@@ -61,6 +61,46 @@ async function autoApproveAllChunks(ctx: WorkbenchCallerContext, documentId: str
   }
 }
 
+// Thrown when approving a submission fails part-way (processing or
+// embedding). The message is written for the curator who clicked Approve --
+// the action layer returns it as-is, because a thrown Server Action error is
+// replaced by a generic digest in production. Whatever this approval attempt
+// created has already been rolled back when it's thrown.
+export class SourceApprovalError extends Error {}
+
+// Undoes what one failed approveSourceSubmission attempt created, so
+// clicking Approve again starts clean instead of leaving a duplicate source
+// behind. A document synthesized for this approval (artifact / notebook
+// kinds) goes entirely: its source row, the document, and -- by cascade --
+// its chunks and any vectors already written. A file-kind submission's
+// document predates the approval (it's what the submitter uploaded), so only
+// the chunks this attempt produced are removed and the document is reset to
+// be processed again. Best-effort: a rollback failure is logged, never
+// allowed to mask the original error.
+async function rollBackFailedApproval(ctx: WorkbenchCallerContext, documentId: string, synthesizedForApproval: boolean): Promise<void> {
+  const admin = createAdminClient()
+  try {
+    if (synthesizedForApproval) {
+      const { data: doc } = await admin.from('documents').select('knowledge_source_id').eq('id', documentId).maybeSingle()
+      await deleteDocumentById(admin, documentId, { id: ctx.user.id, role: 'admin' })
+      if (doc?.knowledge_source_id) {
+        const { error } = await admin.from('knowledge_sources').delete().eq('id', doc.knowledge_source_id)
+        if (error) throw error
+      }
+    } else {
+      const { error: chunkError } = await admin.from('document_chunks').delete().eq('document_id', documentId)
+      if (chunkError) throw chunkError
+      const { error: resetError } = await admin
+        .from('documents')
+        .update({ processing_status: 'pending', processing_stage: 'upload', total_chunks: null })
+        .eq('id', documentId)
+      if (resetError) throw resetError
+    }
+  } catch (rollbackError) {
+    console.error(`Failed to roll back a failed source approval (document ${documentId})`, rollbackError)
+  }
+}
+
 export interface SubmitFileSourceInput {
   projectId: string
   knowledgeBaseId: string
@@ -269,8 +309,19 @@ export async function approveSourceSubmission(ctx: WorkbenchCallerContext, submi
   }
   if (!documentId) throw new ProjectValidationError('This submission has no document to approve')
 
-  await processDocument(admin, documentId)
-  await autoApproveAllChunks(ctx, documentId, ctx.user.id)
+  const synthesizedForApproval = documentId !== submission.document_id
+  let stage: 'process' | 'embed' = 'process'
+  try {
+    await processDocument(admin, documentId)
+    stage = 'embed'
+    await autoApproveAllChunks(ctx, documentId, ctx.user.id)
+  } catch (err) {
+    await rollBackFailedApproval(ctx, documentId, synthesizedForApproval)
+    const reason = (err instanceof Error ? err.message : String(err)).replace(/[.\s]+$/, '')
+    throw new SourceApprovalError(
+      `${stage === 'embed' ? 'Embedding the source failed' : 'Processing the source failed'}: ${reason}. Nothing from this attempt was kept -- fix the cause and approve again.`
+    )
+  }
 
   // Decision update through the caller's own RLS-scoped client, not the
   // admin client -- if requireProjectCuratorOrAdmin above were ever wrong,

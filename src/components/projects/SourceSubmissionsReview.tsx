@@ -27,15 +27,23 @@ export function SourceSubmissionsReview({ projectId, submissions }: { projectId:
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  // Approval processes the source and embeds every chunk before returning --
+  // it can take a while, so say so (and keep both buttons disabled) rather
+  // than leave the curator wondering whether the click registered.
+  const [approvingId, setApprovingId] = useState<string | null>(null)
 
   function approve(submissionId: string) {
     setError(null)
+    setApprovingId(submissionId)
     startTransition(async () => {
       try {
-        await approveSourceSubmissionAction(projectId, submissionId)
+        const result = await approveSourceSubmissionAction(projectId, submissionId)
+        if (!result.ok) setError(result.error)
         router.refresh()
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Action failed')
+      } finally {
+        setApprovingId(null)
       }
     })
   }
@@ -75,7 +83,7 @@ export function SourceSubmissionsReview({ projectId, submissions }: { projectId:
                 onClick={() => approve(s.id)}
                 className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               >
-                Approve
+                {approvingId === s.id ? 'Approving…' : 'Approve'}
               </button>
               <button
                 type="button"
@@ -89,7 +97,13 @@ export function SourceSubmissionsReview({ projectId, submissions }: { projectId:
           </li>
         ))}
       </ul>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {approvingId && (
+        <p role="status" aria-live="polite" className="flex items-center gap-2 rounded border border-amber-200 bg-white px-3 py-2 text-sm text-amber-900">
+          <span aria-hidden="true" className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-amber-300 border-t-amber-800" />
+          Approving -- processing the source and embedding its chunks. This can take a minute; please don&apos;t click again or leave the page.
+        </p>
+      )}
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     </div>
   )
 }

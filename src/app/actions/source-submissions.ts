@@ -1,7 +1,8 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireUser } from '@/lib/auth'
+import { requireUser, AuthError } from '@/lib/auth'
+import { ProjectValidationError } from '@/lib/projects/errors'
 import {
   submitFileSource,
   submitArtifactSource,
@@ -9,6 +10,7 @@ import {
   listSourceSubmissions,
   approveSourceSubmission,
   rejectSourceSubmission,
+  SourceApprovalError,
 } from '@/lib/workbench/source-submissions'
 
 // FormData, not a plain object, since it carries a File -- same shape as
@@ -47,10 +49,28 @@ export async function listSourceSubmissionsAction(projectId: string) {
   return listSourceSubmissions(ctx, projectId)
 }
 
-export async function approveSourceSubmissionAction(projectId: string, submissionId: string) {
+// Returns the failure instead of throwing it: in production a thrown Server
+// Action error reaches the client only as a generic digest (React #441), so
+// the curator would never learn why -- e.g. that the embedding provider's
+// API key isn't configured. Only these known, curator-facing errors are
+// passed through verbatim; anything else is logged server-side.
+export async function approveSourceSubmissionAction(
+  projectId: string,
+  submissionId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const ctx = await requireUser()
-  await approveSourceSubmission(ctx, submissionId)
-  revalidatePath(`/projects/${projectId}`)
+  try {
+    await approveSourceSubmission(ctx, submissionId)
+  } catch (err) {
+    if (err instanceof SourceApprovalError || err instanceof ProjectValidationError || err instanceof AuthError) {
+      return { ok: false, error: err.message }
+    }
+    console.error('approveSourceSubmissionAction failed', err)
+    return { ok: false, error: 'Approving this source failed unexpectedly. Please try again, or ask a platform admin to check the server logs.' }
+  } finally {
+    revalidatePath(`/projects/${projectId}`)
+  }
+  return { ok: true }
 }
 
 export async function rejectSourceSubmissionAction(projectId: string, submissionId: string, reason?: string) {
