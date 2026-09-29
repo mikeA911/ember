@@ -6,6 +6,8 @@ import { getLatestActivityLabel, listRecentConversations, listMessages, toDispla
 import { getProjectContext, describeProjectKnowledgeScope } from '@/lib/chat/project-context'
 import { listChatCapableModels, listProviders, listModels } from '@/lib/ai'
 import { getAssistantDescriptor } from '@/lib/workbench/assistant-descriptor'
+import { parseDocument } from '@/lib/parsing'
+import { attachmentMimeType, truncateAttachmentText, MAX_ATTACHMENT_BYTES, type ChatAttachment } from '@/lib/chat/attachments'
 
 // projectId is only consulted for a brand-new conversation (conversationId
 // null) -- see runAssistantTurn's own comment. Passing it for an existing
@@ -19,6 +21,30 @@ export async function sendChatMessageAction(
 ) {
   const ctx = await requireUser()
   return runAssistantTurn(ctx, conversationId, message, modelSelection, projectId)
+}
+
+// Ember composer's "Attach file" -- parse only, nothing is stored; the
+// returned text rides along in the next sendChatMessageAction message (see
+// src/lib/chat/attachments.ts). Validation failures come back as a value,
+// not a throw, so the reason survives Next's production error masking.
+export async function extractChatAttachmentAction(
+  formData: FormData
+): Promise<{ attachment: ChatAttachment; error?: never } | { attachment?: never; error: string }> {
+  await requireUser()
+  const file = formData.get('file')
+  if (!(file instanceof File)) return { error: 'No file provided' }
+  if (file.size > MAX_ATTACHMENT_BYTES) return { error: 'File exceeds the 5MB attachment limit' }
+  const mimeType = attachmentMimeType(file.name)
+  if (!mimeType) return { error: 'Unsupported file type (pdf, docx, txt, md, csv only)' }
+
+  try {
+    const parsed = await parseDocument(Buffer.from(await file.arrayBuffer()), mimeType)
+    const { text, truncated } = truncateAttachmentText(parsed.pages.map((p) => p.text).join('\n\n'))
+    if (!text) return { error: 'No readable text found in that file' }
+    return { attachment: { name: file.name, text, truncated } }
+  } catch {
+    return { error: 'Could not read that file' }
+  }
 }
 
 export async function listChatModelsAction() {

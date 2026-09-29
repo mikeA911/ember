@@ -14,6 +14,7 @@ import {
   getProjectContextAction,
   getConversationMessagesAction,
   getAssistantOverviewAction,
+  extractChatAttachmentAction,
 } from '@/app/actions/chat'
 import { sendFeedbackMessageAction } from '@/app/actions/feedback'
 import type { ChatModelOption } from '@/lib/ai'
@@ -23,6 +24,7 @@ import type { MemberProjectOption } from '@/lib/projects/queries'
 import type { Conversation, FeedbackType } from '@/types/database'
 import { Markdown } from '@/components/shared/Markdown'
 import { deriveArtifacts, artifactsCount } from '@/lib/chat/artifacts'
+import { formatMessageWithAttachment, ATTACHMENT_ACCEPT, type ChatAttachment } from '@/lib/chat/attachments'
 import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, SuggestedPrompts } from './StructuredResponse'
 import { GatewayInvocationCard } from './GatewayInvocationCard'
 
@@ -143,6 +145,11 @@ export function ChatSession({
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<PanelMessage[]>([])
   const [input, setInput] = useState('')
+  // "Attach file" -- already parsed server-side, waiting to ride along with
+  // the next typed message (see src/lib/chat/attachments.ts).
+  const [attachment, setAttachment] = useState<ChatAttachment | null>(null)
+  const [isAttaching, setIsAttaching] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
   const [models, setModels] = useState<ChatModelOption[]>([])
@@ -509,7 +516,35 @@ export function ChatSession({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    await send(input.trim())
+    const typed = input.trim()
+    if (!attachment) {
+      await send(typed)
+      return
+    }
+    const message = formatMessageWithAttachment(typed, attachment)
+    setAttachment(null)
+    await send(message)
+  }
+
+  async function handleAttachFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    // Reset so picking the same file again (e.g. after removing it) still
+    // fires onChange.
+    e.target.value = ''
+    if (!file) return
+    setError(null)
+    setIsAttaching(true)
+    try {
+      const formData = new FormData()
+      formData.set('file', file)
+      const result = await extractChatAttachmentAction(formData)
+      if (result.error !== undefined) setError(result.error)
+      else setAttachment(result.attachment)
+    } catch {
+      setError('Could not attach that file')
+    } finally {
+      setIsAttaching(false)
+    }
   }
 
   // Any turn in flight for the conversation being left behind must stop
@@ -1037,7 +1072,45 @@ export function ChatSession({
           </div>
         )}
       </div>
-      <form onSubmit={handleSubmit} className="flex gap-2 border-t border-zinc-200 p-2">
+      {attachment && (
+        <div className="flex items-center justify-between gap-2 border-t border-zinc-200 px-2 pt-2 text-xs text-zinc-600">
+          <span className="truncate">
+            Attached: <span className="font-medium">{attachment.name}</span>
+            {attachment.truncated && ' (only the first part will be sent)'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setAttachment(null)}
+            disabled={isPending}
+            className="shrink-0 underline hover:text-zinc-900 disabled:opacity-50"
+          >
+            Remove
+          </button>
+        </div>
+      )}
+      <form onSubmit={handleSubmit} className={`flex gap-2 p-2 ${attachment ? '' : 'border-t border-zinc-200'}`}>
+        {!feedbackCategory && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ATTACHMENT_ACCEPT}
+              onChange={handleAttachFile}
+              className="hidden"
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isPending || isAttaching || showFeedbackChooser}
+              title="Attach a file (pdf, docx, txt, md, csv — max 5MB)"
+              className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {isAttaching ? 'Reading…' : 'Attach'}
+            </button>
+          </>
+        )}
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -1046,7 +1119,7 @@ export function ChatSession({
           className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm"
         />
         <button
-          disabled={isPending || showFeedbackChooser || !input.trim()}
+          disabled={isPending || isAttaching || showFeedbackChooser || (!input.trim() && !attachment)}
           className="rounded bg-zinc-900 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
         >
           Send
