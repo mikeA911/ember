@@ -1,12 +1,16 @@
 'use server'
 
-import { requireUser } from '@/lib/auth'
+import { revalidatePath } from 'next/cache'
+import { requireUser, AuthError } from '@/lib/auth'
 import { runAssistantTurn, type ModelSelection } from '@/lib/chat/loop'
 import { getLatestActivityLabel, listRecentConversations, listMessages, toDisplayMessages } from '@/lib/chat/conversations'
 import { getProjectContext, describeProjectKnowledgeScope } from '@/lib/chat/project-context'
 import { listChatCapableModels, listProviders, listModels } from '@/lib/ai'
 import { getAssistantDescriptor } from '@/lib/workbench/assistant-descriptor'
 import { parseDocument } from '@/lib/parsing'
+import { createWorkingKnowledgeItem } from '@/lib/projects/working-knowledge'
+import { ProjectValidationError } from '@/lib/projects/errors'
+import { conversationToTranscript } from '@/lib/chat/transcript'
 import { attachmentMimeType, truncateAttachmentText, MAX_ATTACHMENT_BYTES, type ChatAttachment } from '@/lib/chat/attachments'
 
 // projectId is only consulted for a brand-new conversation (conversationId
@@ -44,6 +48,44 @@ export async function extractChatAttachmentAction(
     return { attachment: { name: file.name, text, truncated } }
   } catch {
     return { error: 'Could not read that file' }
+  }
+}
+
+// Ember header's "Save as note" -- the whole visible conversation becomes a
+// private Working Knowledge working_note in the chosen project, through the
+// same createWorkingKnowledgeItem path (and RLS: owner + strict project
+// member) as the project page's own note form and Ember's
+// save_working_knowledge tool. Errors come back as a value, same reason as
+// extractChatAttachmentAction above.
+export async function saveConversationAsNoteAction(input: {
+  conversationId: string
+  projectId: string
+  title: string
+}): Promise<{ itemId: string; error?: never } | { itemId?: never; error: string }> {
+  const ctx = await requireUser()
+  // RLS only returns the caller's own conversation.
+  const { data: conversation } = await ctx.supabase.from('conversations').select('id').eq('id', input.conversationId).maybeSingle()
+  if (!conversation) return { error: 'Conversation not found' }
+
+  const content = conversationToTranscript(await listMessages(ctx.supabase, input.conversationId))
+  if (!content) return { error: 'Nothing to save yet -- this conversation has no messages' }
+
+  try {
+    const { itemId } = await createWorkingKnowledgeItem(ctx.supabase, { id: ctx.user.id, role: ctx.profile.role }, {
+      projectId: input.projectId,
+      type: 'working_note',
+      title: input.title,
+      content,
+      sourceConversationId: input.conversationId,
+    })
+    revalidatePath(`/projects/${input.projectId}`)
+    return { itemId }
+  } catch (err) {
+    if (err instanceof AuthError || err instanceof ProjectValidationError) return { error: err.message }
+    if (err && typeof err === 'object' && 'code' in err && err.code === '42501') {
+      return { error: 'You can only save notes to a project you are a member of' }
+    }
+    return { error: 'Could not save the note' }
   }
 }
 

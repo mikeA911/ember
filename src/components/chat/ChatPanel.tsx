@@ -3,9 +3,10 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import {
   sendChatMessageAction,
+  saveConversationAsNoteAction,
   listChatModelsAction,
   getChatActivityAction,
   getConversationPendingStatusAction,
@@ -25,6 +26,7 @@ import type { Conversation, FeedbackType } from '@/types/database'
 import { Markdown } from '@/components/shared/Markdown'
 import { deriveArtifacts, artifactsCount } from '@/lib/chat/artifacts'
 import { formatMessageWithAttachment, ATTACHMENT_ACCEPT, type ChatAttachment } from '@/lib/chat/attachments'
+import { defaultNoteTitle } from '@/lib/chat/transcript'
 import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, SuggestedPrompts } from './StructuredResponse'
 import { GatewayInvocationCard } from './GatewayInvocationCard'
 
@@ -37,6 +39,40 @@ const FEEDBACK_CATEGORIES: { type: FeedbackType; label: string }[] = [
   { type: 'feature_request', label: 'Request a new feature' },
 ]
 const FEEDBACK_LABEL_BY_TYPE: Record<string, string> = Object.fromEntries(FEEDBACK_CATEGORIES.map((c) => [c.type, c.label]))
+
+// Whether the header options are open, remembered per browser. Kept in
+// memory too so the toggle still works where localStorage throws (private
+// mode, blocked storage); read via useSyncExternalStore so the server render
+// (always collapsed) never mismatches hydration.
+const HEADER_EXPANDED_KEY = 'ember:header-options-expanded'
+let headerExpandedMemory: boolean | null = null
+const headerExpandedListeners = new Set<() => void>()
+
+function readHeaderExpanded(): boolean {
+  if (headerExpandedMemory !== null) return headerExpandedMemory
+  try {
+    return window.localStorage.getItem(HEADER_EXPANDED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeHeaderExpanded(value: boolean) {
+  headerExpandedMemory = value
+  try {
+    window.localStorage.setItem(HEADER_EXPANDED_KEY, value ? '1' : '0')
+  } catch {
+    // Best-effort -- the in-memory value above still applies this session.
+  }
+  headerExpandedListeners.forEach((listener) => listener())
+}
+
+function subscribeHeaderExpanded(listener: () => void) {
+  headerExpandedListeners.add(listener)
+  return () => {
+    headerExpandedListeners.delete(listener)
+  }
+}
 
 type PanelMessage = DisplayMessage & { embeddingModelDisplayName?: string }
 type AssistantOverview = Awaited<ReturnType<typeof getAssistantOverviewAction>>
@@ -150,6 +186,25 @@ export function ChatSession({
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null)
   const [isAttaching, setIsAttaching] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Composer: grows with its content up to a few lines; "Expand" gives a
+  // tall editor for drafting longer messages.
+  const [composerExpanded, setComposerExpanded] = useState(false)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  // Header options (project picker, model, knowledge scope, "How Ember
+  // works") are collapsed by default -- screen space is scarce on a tablet
+  // or phone. Remembered per browser once the user opens them.
+  const headerExpanded = useSyncExternalStore(subscribeHeaderExpanded, readHeaderExpanded, () => false)
+  // Only the floating bubble's panel (no className passed) can be enlarged;
+  // EmberHome sizes its own inline panel.
+  const isFloating = !className
+  const [panelLarge, setPanelLarge] = useState(false)
+  // "Save as note" -- the conversation as a private Working Knowledge note.
+  const [showSaveNote, setShowSaveNote] = useState(false)
+  const [noteProjectId, setNoteProjectId] = useState('')
+  const [noteTitle, setNoteTitle] = useState('')
+  const [noteError, setNoteError] = useState<string | null>(null)
+  const [isSavingNote, setIsSavingNote] = useState(false)
+  const [savedNote, setSavedNote] = useState<{ projectId: string; itemId: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
   const [models, setModels] = useState<ChatModelOption[]>([])
@@ -518,11 +573,13 @@ export function ChatSession({
     e.preventDefault()
     const typed = input.trim()
     if (!attachment) {
+      setComposerExpanded(false)
       await send(typed)
       return
     }
     const message = formatMessageWithAttachment(typed, attachment)
     setAttachment(null)
+    setComposerExpanded(false)
     await send(message)
   }
 
@@ -544,6 +601,63 @@ export function ChatSession({
       setError('Could not attach that file')
     } finally {
       setIsAttaching(false)
+    }
+  }
+
+  function toggleHeaderExpanded() {
+    writeHeaderExpanded(!headerExpanded)
+  }
+
+  // Auto-grow the collapsed composer to fit its text (capped by max-h in
+  // its className); the expanded composer has a fixed tall height instead.
+  useEffect(() => {
+    const el = composerRef.current
+    if (!el) return
+    el.style.height = ''
+    if (!composerExpanded) el.style.height = `${el.scrollHeight}px`
+  }, [input, composerExpanded])
+
+  function handleComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return
+    // On touch keyboards (and in the expanded editor) Enter is a newline --
+    // the Send button is right there; elsewhere Enter sends, Shift+Enter
+    // adds a line.
+    if (composerExpanded || window.matchMedia('(pointer: coarse)').matches) return
+    e.preventDefault()
+    e.currentTarget.form?.requestSubmit()
+  }
+
+  function openSaveNote() {
+    if (showSaveNote) {
+      setShowSaveNote(false)
+      return
+    }
+    const firstUser = messages.find((m) => m.role === 'user')?.content
+    const title = conversations.find((c) => c.id === conversationId)?.title
+    setNoteTitle(defaultNoteTitle(title, firstUser))
+    setNoteProjectId(projectId ?? projects[0]?.id ?? '')
+    setNoteError(null)
+    setSavedNote(null)
+    setShowSaveNote(true)
+  }
+
+  async function handleSaveNote(e: React.FormEvent) {
+    e.preventDefault()
+    if (!conversationId || !noteProjectId || !noteTitle.trim()) return
+    setIsSavingNote(true)
+    setNoteError(null)
+    try {
+      const result = await saveConversationAsNoteAction({ conversationId, projectId: noteProjectId, title: noteTitle })
+      if (result.error !== undefined) {
+        setNoteError(result.error)
+      } else {
+        setSavedNote({ projectId: noteProjectId, itemId: result.itemId })
+        setShowSaveNote(false)
+      }
+    } catch {
+      setNoteError('Could not save the note')
+    } finally {
+      setIsSavingNote(false)
     }
   }
 
@@ -680,23 +794,52 @@ export function ChatSession({
   const showScopeMismatchNudge = Boolean(currentPageProjectId && currentPageProjectId !== projectId && currentPageProjectName)
 
   return (
-    <div ref={ref} className={className ?? 'flex h-[32rem] w-96 flex-col rounded border border-zinc-200 bg-white shadow-xl'}>
-      <div className="border-b border-zinc-200 px-3 py-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">
+    <div
+      ref={ref}
+      className={
+        className ??
+        // Never wider/taller than the viewport, so the bubble's panel fits a
+        // phone; "Enlarge" gives it most of a tablet/desktop screen.
+        `flex flex-col rounded border border-zinc-200 bg-white shadow-xl w-[calc(100vw-2rem)] ${
+          panelLarge ? 'h-[calc(100dvh-2rem)] sm:w-[44rem]' : 'h-[min(32rem,calc(100dvh-2rem))] sm:w-96'
+        }`
+      }
+    >
+      <div className="relative border-b border-zinc-200 px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-sm font-medium">
             {feedbackCategory
               ? `Ember -- ${FEEDBACK_LABEL_BY_TYPE[feedbackCategory]}`
               : projectId
                 ? `Ember -- ${projectContext?.name ?? 'this project'}`
                 : 'Ember -- General'}
           </span>
-          {onClose && (
-            <button type="button" onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-700">
-              ✕
+          <div className="flex shrink-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleHeaderExpanded}
+              aria-expanded={headerExpanded}
+              className="text-xs text-zinc-400 hover:text-zinc-600"
+            >
+              {headerExpanded ? 'Hide options' : 'Options'}
             </button>
-          )}
+            {isFloating && (
+              <button
+                type="button"
+                onClick={() => setPanelLarge((v) => !v)}
+                className="text-xs text-zinc-400 hover:text-zinc-600"
+              >
+                {panelLarge ? 'Shrink' : 'Enlarge'}
+              </button>
+            )}
+            {onClose && (
+              <button type="button" onClick={onClose} aria-label="Close" className="text-zinc-400 hover:text-zinc-700">
+                ✕
+              </button>
+            )}
+          </div>
         </div>
-        {!feedbackCategory && !showFeedbackChooser && (
+        {headerExpanded && !feedbackCategory && !showFeedbackChooser && (
           <div className="mt-1">
             <select
               value={projectId ?? ''}
@@ -711,17 +854,19 @@ export function ChatSession({
                 </option>
               ))}
             </select>
-            {showScopeMismatchNudge && (
-              <p className="mt-0.5 text-xs text-amber-700">
-                Viewing <span className="font-medium">{currentPageProjectName}</span> — Ember is still on {selectedProjectName}.{' '}
-                <button type="button" onClick={() => onSelectProject(currentPageProjectId)} className="underline">
-                  Switch
-                </button>
-              </p>
-            )}
           </div>
         )}
-        {projectId && projectContext && !feedbackCategory && !showFeedbackChooser && (
+        {/* Stays visible with options collapsed -- it's the one header
+            message that asks the user to act. */}
+        {showScopeMismatchNudge && !feedbackCategory && !showFeedbackChooser && (
+          <p className="mt-0.5 text-xs text-amber-700">
+            Viewing <span className="font-medium">{currentPageProjectName}</span> — Ember is still on {selectedProjectName}.{' '}
+            <button type="button" onClick={() => onSelectProject(currentPageProjectId)} className="underline">
+              Switch
+            </button>
+          </p>
+        )}
+        {headerExpanded && projectId && projectContext && !feedbackCategory && !showFeedbackChooser && (
           <p className="mt-0.5 text-xs text-zinc-500">Knowledge scope: {projectContext.knowledgeScope}</p>
         )}
         {feedbackCategory && (
@@ -732,7 +877,7 @@ export function ChatSession({
             </button>
           </div>
         )}
-        {models.length > 0 && (
+        {headerExpanded && models.length > 0 && (
           <select
             value={selectedKey ?? ''}
             onChange={(e) => setSelectedKey(e.target.value)}
@@ -747,12 +892,13 @@ export function ChatSession({
             ))}
           </select>
         )}
-        {!models.length && headerModelLabel && <p className="mt-0.5 text-xs text-zinc-400">{headerModelLabel}</p>}
+        {headerExpanded && !models.length && headerModelLabel && <p className="mt-0.5 text-xs text-zinc-400">{headerModelLabel}</p>}
         {!showFeedbackChooser && !feedbackCategory && (
         <>
-        <details className="relative mt-1" onToggle={loadAssistantOverviewOnce}>
+        {headerExpanded && (
+        <details className="mt-1" onToggle={loadAssistantOverviewOnce}>
           <summary className="cursor-pointer list-none text-xs text-zinc-400 hover:text-zinc-600">How Ember works</summary>
-          <div className="absolute left-0 z-10 mt-1 max-h-96 w-80 overflow-y-auto rounded border border-zinc-200 bg-white p-3 text-xs shadow-lg">
+          <div className="absolute inset-x-3 z-10 mt-1 max-h-96 sm:right-auto sm:w-80 overflow-y-auto rounded border border-zinc-200 bg-white p-3 text-xs shadow-lg">
             {!assistantOverview && <p className="text-zinc-400">Loading…</p>}
             {assistantOverview && (
               <div className="flex flex-col gap-2">
@@ -797,11 +943,17 @@ export function ChatSession({
             )}
           </div>
         </details>
+        )}
+        {/* One wrapping row of small links instead of a line each -- every
+            popover below anchors to the header itself (the relative div
+            above), so it stays inside a phone-width panel wherever its
+            link lands in the row. */}
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
         {historyLoaded && (
-          <div className="mt-1 flex items-center justify-between">
-            <details ref={historyDetailsRef} className="relative">
+          <>
+            <details ref={historyDetailsRef}>
               <summary className="cursor-pointer list-none text-xs text-zinc-400 hover:text-zinc-600">History</summary>
-              <div className="absolute left-0 z-10 mt-1 max-h-48 w-64 overflow-y-auto rounded border border-zinc-200 bg-white p-1 shadow-lg">
+              <div className="absolute inset-x-3 z-10 mt-1 max-h-48 sm:right-auto sm:w-64 overflow-y-auto rounded border border-zinc-200 bg-white p-1 shadow-lg">
                 {conversations.length === 0 && <p className="px-2 py-1 text-xs text-zinc-400">No prior conversations yet.</p>}
                 {conversations.map((c) => (
                   <button
@@ -820,13 +972,13 @@ export function ChatSession({
             <button type="button" onClick={handleNewConversation} className="text-xs text-zinc-400 hover:text-zinc-600">
               New conversation
             </button>
-          </div>
+          </>
         )}
-        <details ref={artifactsDetailsRef} className="relative mt-1">
+        <details ref={artifactsDetailsRef}>
           <summary className="cursor-pointer list-none text-xs text-zinc-400 hover:text-zinc-600">
             Artifacts{artifactsTotal > 0 ? ` (${artifactsTotal})` : ''}
           </summary>
-          <div className="absolute left-0 z-10 mt-1 max-h-96 w-80 overflow-y-auto rounded border border-zinc-200 bg-white p-3 text-xs shadow-lg">
+          <div className="absolute inset-x-3 z-10 mt-1 max-h-96 sm:right-auto sm:w-80 overflow-y-auto rounded border border-zinc-200 bg-white p-3 text-xs shadow-lg">
             {artifactsTotal === 0 ? (
               <p className="text-zinc-400">Nothing collected in this conversation yet.</p>
             ) : (
@@ -904,12 +1056,81 @@ export function ChatSession({
             )}
           </div>
         </details>
+        {conversationId && messages.length > 0 && (
+          <button
+            type="button"
+            onClick={openSaveNote}
+            aria-expanded={showSaveNote}
+            disabled={isPending}
+            className="text-xs text-zinc-400 hover:text-zinc-600 disabled:opacity-50"
+          >
+            Save as note
+          </button>
+        )}
+        <button type="button" onClick={openFeedbackChooser} className="text-xs text-zinc-400 hover:text-zinc-600">
+          Feedback
+        </button>
+        </div>
         </>
         )}
-        {!showFeedbackChooser && !feedbackCategory && (
-          <button type="button" onClick={openFeedbackChooser} className="mt-1 block text-xs text-zinc-400 hover:text-zinc-600">
-            Feedback
-          </button>
+        {showSaveNote && !feedbackCategory && !showFeedbackChooser && (
+          <form onSubmit={handleSaveNote} className="mt-2 flex flex-col gap-1.5 rounded border border-zinc-200 bg-zinc-50 p-2 text-xs">
+            {projects.length === 0 ? (
+              <p className="text-zinc-600">Notes are saved inside a project -- join or create a project first.</p>
+            ) : (
+              <>
+                <p className="text-zinc-600">
+                  Saves this whole conversation as a private Working Knowledge note -- only you can see it until you share it from the
+                  project page.
+                </p>
+                <label className="flex flex-col gap-0.5">
+                  <span className="text-zinc-500">Project</span>
+                  <select
+                    value={noteProjectId}
+                    onChange={(e) => setNoteProjectId(e.target.value)}
+                    className="rounded border border-zinc-300 bg-white px-1 py-0.5 text-zinc-700"
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-0.5">
+                  <span className="text-zinc-500">Title</span>
+                  <input
+                    value={noteTitle}
+                    onChange={(e) => setNoteTitle(e.target.value)}
+                    className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-zinc-800"
+                  />
+                </label>
+              </>
+            )}
+            {noteError && <p className="text-red-600">{noteError}</p>}
+            <div className="flex items-center gap-3">
+              {projects.length > 0 && (
+                <button
+                  type="submit"
+                  disabled={isSavingNote || !noteTitle.trim() || !noteProjectId}
+                  className="rounded bg-zinc-900 px-2 py-0.5 font-medium text-white disabled:opacity-50"
+                >
+                  {isSavingNote ? 'Saving…' : 'Save note'}
+                </button>
+              )}
+              <button type="button" onClick={() => setShowSaveNote(false)} className="text-zinc-500 underline hover:text-zinc-700">
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+        {savedNote && !showSaveNote && (
+          <p className="mt-1 text-xs text-green-700">
+            Saved as a private note.{' '}
+            <Link href={`/projects/${savedNote.projectId}/working-knowledge/${savedNote.itemId}`} className="underline">
+              Open note
+            </Link>
+          </p>
         )}
       </div>
       <div ref={messageListRef} className="flex-1 space-y-2 overflow-y-auto p-3">
@@ -988,7 +1209,7 @@ export function ChatSession({
         {!showFeedbackChooser && messages.map((m, i) =>
           m.role === 'user' ? (
             <div key={i} id={`chat-message-${i}`} tabIndex={-1} className="text-right text-sm outline-none">
-              <span className="inline-block max-w-[85%] whitespace-pre-wrap rounded bg-zinc-900 px-2 py-1 text-white">{m.content}</span>
+              <UserMessageBubble content={m.content} />
             </div>
           ) : (
             <div key={i} id={`chat-message-${i}`} tabIndex={-1} className="text-sm outline-none">
@@ -1088,7 +1309,7 @@ export function ChatSession({
           </button>
         </div>
       )}
-      <form onSubmit={handleSubmit} className={`flex gap-2 p-2 ${attachment ? '' : 'border-t border-zinc-200'}`}>
+      <form onSubmit={handleSubmit} className={`flex items-end gap-2 p-2 ${attachment ? '' : 'border-t border-zinc-200'}`}>
         {!feedbackCategory && (
           <>
             <input
@@ -1111,13 +1332,31 @@ export function ChatSession({
             </button>
           </>
         )}
-        <input
+        <textarea
+          ref={composerRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleComposerKeyDown}
+          rows={2}
           placeholder={feedbackCategory ? 'Describe it…' : 'Ask Ember…'}
           disabled={isPending || showFeedbackChooser}
-          className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm"
+          aria-label="Message Ember"
+          className={`min-w-0 flex-1 resize-none rounded border border-zinc-300 px-2 py-1.5 text-sm ${
+            composerExpanded ? 'h-[40dvh] min-h-40' : 'max-h-40 min-h-[3.25rem] overflow-y-auto'
+          }`}
         />
+        <button
+          type="button"
+          onClick={() => {
+            setComposerExpanded((v) => !v)
+            composerRef.current?.focus()
+          }}
+          aria-pressed={composerExpanded}
+          title={composerExpanded ? 'Make the message box smaller' : 'Make the message box bigger'}
+          className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-600 hover:bg-zinc-50"
+        >
+          {composerExpanded ? 'Less' : 'More'}
+        </button>
         <button
           disabled={isPending || isAttaching || showFeedbackChooser || (!input.trim() && !attachment)}
           className="rounded bg-zinc-900 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
@@ -1126,6 +1365,32 @@ export function ChatSession({
         </button>
       </form>
     </div>
+  )
+}
+
+// Long user turns (a pasted document, an attached file's text) collapse to
+// their first few lines so they don't push the conversation off a small
+// screen; "Show more" reveals the rest.
+const COLLAPSE_USER_MESSAGE_CHARS = 400
+
+function UserMessageBubble({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const collapsible = content.length > COLLAPSE_USER_MESSAGE_CHARS
+  const shown = collapsible && !expanded ? `${content.slice(0, COLLAPSE_USER_MESSAGE_CHARS).trimEnd()}…` : content
+  return (
+    <span className="inline-block max-w-[85%] whitespace-pre-wrap rounded bg-zinc-900 px-2 py-1 text-left text-white">
+      {shown}
+      {collapsible && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="mt-1 block text-xs text-zinc-300 underline hover:text-white"
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </span>
   )
 }
 
