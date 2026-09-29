@@ -100,7 +100,7 @@ export default async function AdminPage() {
 
       <AdminTabs
         tabs={[
-          { id: 'approvals', label: 'Pending Approvals', content: <PendingApprovals documents={pendingDocs ?? []} /> },
+          { id: 'approvals', label: 'Document sign-off', content: <PendingApprovals documents={pendingDocs ?? []} /> },
           { id: 'users', label: 'Users', content: <UserManagement profiles={profiles ?? []} knowledgeBases={activeKnowledgeBases} /> },
           { id: 'kbs', label: 'Knowledge Bases', content: <KBManagement knowledgeBases={knowledgeBases ?? []} documents={allDocuments ?? []} /> },
           {

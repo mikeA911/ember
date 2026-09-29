@@ -260,7 +260,20 @@ export async function createProject(
 // to a second project is a legitimate reuse, not an error -- kept curator+
 // (same bar as authoring knowledge/evals generally), unlike project
 // creation itself.
+// Same bar as project_knowledge_bases' own RLS (can_curate_project): this
+// project's owner/curator, or platform admin. The Server Actions used to
+// demand *platform* curator instead, so a project owner who wasn't a
+// platform curator saw the Attach button and then got an error.
+async function requireProjectKnowledgeCurator(ctx: WorkbenchCallerContext, projectId: string): Promise<void> {
+  if (ctx.profile.role === 'admin') return
+  const role = await getActiveProjectRole(ctx, projectId)
+  if (role !== 'owner' && role !== 'curator') {
+    throw new AuthError("Requires this project's owner or curator role (or platform admin) to manage its knowledge bases")
+  }
+}
+
 export async function attachKnowledgeBase(ctx: WorkbenchCallerContext, projectId: string, knowledgeBaseId: string) {
+  await requireProjectKnowledgeCurator(ctx, projectId)
   await requireActiveKnowledgeBase(ctx.supabase, knowledgeBaseId)
 
   // OR-036: the real gate, not just listAttachableKnowledgeBases' UI-level
@@ -270,11 +283,13 @@ export async function attachKnowledgeBase(ctx: WorkbenchCallerContext, projectId
   // project_knowledge_bases membership -- attaching it here would hand the
   // attaching project's own members real content access to a KB meant to
   // stay scoped elsewhere.
-  const { data: kb, error: kbError } = await ctx.supabase.from('knowledge_bases').select('visibility_scope').eq('id', knowledgeBaseId).maybeSingle()
+  const { data: kb, error: kbError } = await ctx.supabase.from('knowledge_bases').select('visibility_scope, status').eq('id', knowledgeBaseId).maybeSingle()
   if (kbError) throw kbError
   if (!kb || (kb.visibility_scope !== 'platform' && kb.visibility_scope !== 'public')) {
     throw new ProjectValidationError('This knowledge base is scoped to a specific project and cannot be attached here')
   }
+  // Pending (awaiting admin review) is fine -- see listAttachableKnowledgeBases.
+  if (kb.status === 'rejected') throw new ProjectValidationError('An admin rejected this knowledge base, so it cannot be attached')
 
   const { error } = await ctx.supabase
     .from('project_knowledge_bases')
@@ -287,7 +302,60 @@ export async function attachKnowledgeBase(ctx: WorkbenchCallerContext, projectId
 // attach or fix one afterward. Detach removes just this project's link row
 // (the KB may still be attached elsewhere); kept curator+ (can_curate_project's
 // own RLS, via project_knowledge_bases_manage_curator), same bar as attaching.
+// Project page's "Create a knowledge base": one step instead of creating it
+// in Sources & Curation, waiting for an admin, then coming back to attach.
+// Created exactly like the /upload flow's own (createKnowledgeBase in
+// app/actions/admin.ts): status 'pending' for admin review, default
+// 'platform' visibility. The insert uses the service-role client because a
+// project owner/curator need not be a platform curator
+// (kb_curator_insert_pending); the attach itself runs under the caller's own
+// RLS. If the attach fails, the just-created KB is removed again.
+export async function createAndAttachKnowledgeBase(
+  ctx: WorkbenchCallerContext,
+  projectId: string,
+  input: { name: string; description?: string }
+): Promise<{ knowledgeBaseId: string }> {
+  await requireProjectKnowledgeCurator(ctx, projectId)
+  const name = input.name.trim()
+  if (!name) throw new ProjectValidationError('Name the knowledge base')
+
+  const admin = createAdminClient()
+  const baseId = knowledgeBaseIdFromName(name)
+  let knowledgeBaseId = baseId
+  let { error: insertError } = await admin
+    .from('knowledge_bases')
+    .insert({ id: knowledgeBaseId, name, description: input.description?.trim() || null, status: 'pending' })
+  // Id (slug) already taken -- retry once with a short suffix, same as
+  // DocumentUploader's own create-a-KB path.
+  if (insertError?.code === '23505') {
+    knowledgeBaseId = `${baseId}-${Date.now().toString(36).slice(-4)}`
+    ;({ error: insertError } = await admin
+      .from('knowledge_bases')
+      .insert({ id: knowledgeBaseId, name, description: input.description?.trim() || null, status: 'pending' }))
+  }
+  if (insertError) throw insertError
+
+  const { error: attachError } = await ctx.supabase
+    .from('project_knowledge_bases')
+    .insert({ project_id: projectId, knowledge_base_id: knowledgeBaseId, attached_by: ctx.user.id })
+  if (attachError) {
+    await admin.from('knowledge_bases').delete().eq('id', knowledgeBaseId)
+    throw attachError
+  }
+  return { knowledgeBaseId }
+}
+
+export function knowledgeBaseIdFromName(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'kb'
+  )
+}
+
 export async function detachKnowledgeBase(ctx: WorkbenchCallerContext, projectId: string, knowledgeBaseId: string) {
+  await requireProjectKnowledgeCurator(ctx, projectId)
   const { error } = await ctx.supabase
     .from('project_knowledge_bases')
     .delete()

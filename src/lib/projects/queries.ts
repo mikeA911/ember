@@ -1,6 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/types/database'
+import type { Database, KnowledgeBase } from '@/types/database'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function getProjectStats(supabase: SupabaseClient<Database>) {
@@ -102,6 +102,8 @@ export async function listActiveProjectsForDashboard(supabase: SupabaseClient<Da
 export interface LinkedKnowledgeBase {
   id: string
   name: string
+  // 'pending' shows a "Pending admin review" label next to it.
+  status?: KnowledgeBase['status']
 }
 
 // Backs the project page's Knowledge section list. Joins through
@@ -120,7 +122,7 @@ export async function listKnowledgeBasesForProject(
   const kbIds = (links ?? []).map((l) => l.knowledge_base_id)
   if (kbIds.length === 0) return []
 
-  const { data: kbs, error: kbError } = await supabase.from('knowledge_bases').select('id, name').in('id', kbIds)
+  const { data: kbs, error: kbError } = await supabase.from('knowledge_bases').select('id, name, status').in('id', kbIds)
   if (kbError) throw kbError
   return kbs ?? []
 }
@@ -140,7 +142,7 @@ export async function listKnowledgeBasesForWorkstream(
   const kbIds = (links ?? []).map((l) => l.knowledge_base_id)
   if (kbIds.length === 0) return []
 
-  const { data: kbs, error: kbError } = await supabase.from('knowledge_bases').select('id, name').in('id', kbIds)
+  const { data: kbs, error: kbError } = await supabase.from('knowledge_bases').select('id, name, status').in('id', kbIds)
   if (kbError) throw kbError
   return kbs ?? []
 }

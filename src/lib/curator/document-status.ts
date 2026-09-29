@@ -18,7 +18,7 @@ const STAGE_LABELS: Partial<Record<Document['processing_status'], string>> = {
 }
 
 const SIGN_OFF_NOTES: Partial<Record<Document['processing_status'], string>> = {
-  submitted: 'Awaiting admin sign-off',
+  submitted: 'Optional admin sign-off requested',
   completed: 'Signed off by admin',
 }
 

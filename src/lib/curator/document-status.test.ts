@@ -26,7 +26,7 @@ describe('documentRowStatus', () => {
   it('keeps admin sign-off as a secondary note', () => {
     expect(documentRowStatus(doc('submitted'), { total: 3, approved: 3, rejected: 0 })).toMatchObject({
       label: 'Searchable',
-      note: 'Awaiting admin sign-off',
+      note: 'Optional admin sign-off requested',
     })
     expect(documentRowStatus(doc('completed'), { total: 3, approved: 3, rejected: 0 }).note).toBe('Signed off by admin')
   })
