@@ -122,6 +122,10 @@ export function KBManagement({ knowledgeBases, documents }: { knowledgeBases: Kn
       {pendingReview.length > 0 && (
         <div className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Pending review</h3>
+          <p className="text-xs text-zinc-500">
+            Already usable: curators can attach these to projects and add sources while they wait. Approving confirms them;
+            rejecting stops new attachments.
+          </p>
           <ul className="flex flex-col gap-2">
             {pendingReview.map((kb) => (
               <li key={kb.id} className="flex items-start justify-between gap-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm">

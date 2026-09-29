@@ -12,7 +12,7 @@ import { listProjectNotes } from '@/lib/projects/notes'
 import { listAttachableKnowledgeBases } from '@/lib/knowledge-bases'
 import { listKnowledgeBasesForProject, listSourcesForKnowledgeBases, getSourceReviewCounts } from '@/lib/projects/queries'
 import { listArticlesForProject } from '@/lib/wiki/project-links'
-import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton } from '@/components/projects/KnowledgeBaseAttachManager'
+import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton, PendingReviewBadge } from '@/components/projects/KnowledgeBaseAttachManager'
 import { getOrganizationExplorer } from '@/lib/projects/explorer'
 import { OrganizationExplorer } from '@/components/projects/OrganizationExplorer'
 import { SubmitSourceForm } from '@/components/projects/SubmitSourceForm'
@@ -284,7 +284,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       const { data: links } = await admin.from('project_knowledge_bases').select('knowledge_base_id').eq('project_id', id)
       const kbIds = (links ?? []).map((l) => l.knowledge_base_id)
       if (kbIds.length > 0) {
-        const { data: kbs } = await admin.from('knowledge_bases').select('id, name').in('id', kbIds)
+        const { data: kbs } = await admin.from('knowledge_bases').select('id, name, status').in('id', kbIds)
         effectiveKnowledgeBases = kbs ?? []
         effectiveUnattachedKnowledgeBases = unattachedKnowledgeBases.filter((kb) => !kbIds.includes(kb.id))
       }
@@ -440,8 +440,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
               return (
                 <li key={kb.id} className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    Project Knowledge: {kb.name}
-                    {canManage && <KnowledgeBaseDetachButton projectId={project.id} knowledgeBaseId={kb.id} />}
+                    <span>
+                      Project Knowledge: {kb.name}
+                      {kb.status === 'pending' && <PendingReviewBadge />}
+                    </span>
+                    {/* Owner/curator/admin -- the same bar as project_knowledge_bases' RLS. */}
+                    {canCurateWorkstreams && <KnowledgeBaseDetachButton projectId={project.id} knowledgeBaseId={kb.id} />}
                   </div>
                   {sources.length > 0 && (
                     <ul className="ml-4 flex flex-col gap-0.5 text-xs text-zinc-600">
@@ -477,7 +481,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         ) : (
           <p className="text-sm text-zinc-500">No project-specific knowledge base attached yet.</p>
         )}
-        {canManage && <KnowledgeBaseAttachManager projectId={project.id} availableKnowledgeBases={effectiveUnattachedKnowledgeBases} />}
+        {canCurateWorkstreams && <KnowledgeBaseAttachManager projectId={project.id} availableKnowledgeBases={effectiveUnattachedKnowledgeBases} />}
 
         {effectiveLinkedArticles.length > 0 && (
           <ul className="mt-1 flex flex-col gap-1 text-sm">

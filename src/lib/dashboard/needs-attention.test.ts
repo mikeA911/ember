@@ -35,7 +35,7 @@ describe('getNeedsAttention', () => {
     const result = await getNeedsAttention(supabase)
 
     expect(result).toEqual([
-      { label: 'documents awaiting curation', count: 1, href: '/upload' },
+      { label: 'documents sent for optional admin sign-off', count: 1, href: '/upload' },
       { label: 'Wiki articles awaiting approval', count: 2, href: '/wiki' },
       { label: 'failed evaluation runs', count: 2, href: '/evals' },
       { label: 'unpublished project updates', count: 0, href: '/projects' },

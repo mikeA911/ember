@@ -9,7 +9,11 @@ export function PendingApprovals({ documents }: { documents: Document[] }) {
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Pending final approval</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Optional document sign-off</h2>
+      <p className="text-xs text-zinc-500">
+        These documents&apos; approved chunks are already searchable. Signing off only marks a document as finally checked -- nothing
+        waits on it.
+      </p>
       {documents.length === 0 ? (
         <p className="text-sm text-zinc-500">Nothing waiting.</p>
       ) : (

@@ -38,7 +38,7 @@ export async function getNeedsAttention(supabase: SupabaseClient<Database>): Pro
   ])
 
   return [
-    { label: 'documents awaiting curation', count: (submittedDocs ?? []).length, href: '/upload' },
+    { label: 'documents sent for optional admin sign-off', count: (submittedDocs ?? []).length, href: '/upload' },
     { label: 'Wiki articles awaiting approval', count: unpublishedArticles.length, href: '/wiki' },
     { label: 'failed evaluation runs', count: (failedRuns ?? []).length, href: '/evals' },
     { label: 'unpublished project updates', count: draftProjects.length, href: '/projects' },

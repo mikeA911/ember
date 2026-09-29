@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { attachWorkstreamKnowledgeBaseAction, detachWorkstreamKnowledgeBaseAction } from '@/app/actions/workstream-knowledge-bases'
+import { PendingReviewBadge } from './KnowledgeBaseAttachManager'
 
 // Builder Ontology, Part D: same card-list shape as the Project page's own
 // KnowledgeBaseAttachManager -- listAttachableKnowledgeBasesForWorkstream
@@ -15,7 +16,7 @@ export function WorkstreamKnowledgeBaseAttachManager({
 }: {
   projectId: string
   workstreamId: string
-  availableKnowledgeBases: { id: string; name: string; description: string | null }[]
+  availableKnowledgeBases: { id: string; name: string; description: string | null; status?: string }[]
 }) {
   const router = useRouter()
   const [pendingId, setPendingId] = useState<string | null>(null)
@@ -27,10 +28,11 @@ export function WorkstreamKnowledgeBaseAttachManager({
     setPendingId(id)
     startTransition(async () => {
       try {
-        await attachWorkstreamKnowledgeBaseAction(projectId, workstreamId, id)
-        router.refresh()
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to attach knowledge base')
+        const result = await attachWorkstreamKnowledgeBaseAction(projectId, workstreamId, id)
+        if (result.error) setError(result.error)
+        else router.refresh()
+      } catch {
+        setError('Failed to attach knowledge base')
       } finally {
         setPendingId(null)
       }
@@ -48,7 +50,10 @@ export function WorkstreamKnowledgeBaseAttachManager({
         {availableKnowledgeBases.map((kb) => (
           <li key={kb.id} className="flex items-start justify-between gap-3 rounded border border-zinc-200 bg-white p-2 text-xs">
             <div>
-              <div className="font-medium">{kb.name}</div>
+              <div className="font-medium">
+                {kb.name}
+                {kb.status === 'pending' && <PendingReviewBadge />}
+              </div>
               {kb.description && <p className="mt-0.5 text-zinc-500">{kb.description}</p>}
             </div>
             <button

@@ -44,11 +44,13 @@ export async function attachWorkstreamKnowledgeBase(
   const projectId = await requireCuratorForWorkstream(ctx, workstreamId, 'attach a knowledge base to this workstream')
   await requireActiveKnowledgeBase(ctx.supabase, knowledgeBaseId)
 
-  const { data: kb, error: kbError } = await ctx.supabase.from('knowledge_bases').select('visibility_scope').eq('id', knowledgeBaseId).maybeSingle()
+  const { data: kb, error: kbError } = await ctx.supabase.from('knowledge_bases').select('visibility_scope, status').eq('id', knowledgeBaseId).maybeSingle()
   if (kbError) throw kbError
   if (!kb || (kb.visibility_scope !== 'platform' && kb.visibility_scope !== 'public')) {
     throw new ProjectValidationError('This knowledge base is scoped to a specific project and cannot be attached here')
   }
+  // Pending (awaiting admin review) is fine -- see listAttachableKnowledgeBases.
+  if (kb.status === 'rejected') throw new ProjectValidationError('An admin rejected this knowledge base, so it cannot be attached')
 
   const { error } = await ctx.supabase
     .from('workstream_knowledge_bases')

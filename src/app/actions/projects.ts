@@ -1,7 +1,8 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireUser, requireRole } from '@/lib/auth'
+import { requireUser, requireRole, AuthError } from '@/lib/auth'
+import { ProjectValidationError } from '@/lib/projects/errors'
 import * as workbench from '@/lib/workbench/projects'
 import { suggestProjectOntology } from '@/lib/workbench/project-ontology-suggestions'
 import { cloneProject } from '@/lib/workbench/project-cloning'
@@ -61,16 +62,50 @@ export async function cloneProjectAction(projectId: string) {
   return { projectId: result.projectId }
 }
 
-export async function attachKnowledgeBaseAction(projectId: string, knowledgeBaseId: string) {
-  const ctx = await requireRole('curator')
-  await workbench.attachKnowledgeBase(ctx, projectId, knowledgeBaseId)
+// Project owner/curator (or admin) -- checked inside workbench.*, matching
+// project_knowledge_bases' RLS -- rather than platform curator role.
+// Failures come back as { error } so the reason survives Next's production
+// masking of thrown Server Action errors.
+export async function attachKnowledgeBaseAction(projectId: string, knowledgeBaseId: string): Promise<{ error?: string }> {
+  const ctx = await requireUser()
+  try {
+    await workbench.attachKnowledgeBase(ctx, projectId, knowledgeBaseId)
+  } catch (err) {
+    return { error: knowledgeBaseActionError(err, 'Could not attach the knowledge base') }
+  }
   revalidatePath(`/projects/${projectId}`)
+  return {}
+}
+
+export async function createAndAttachKnowledgeBaseAction(
+  projectId: string,
+  input: { name: string; description?: string }
+): Promise<{ error?: string }> {
+  const ctx = await requireUser()
+  try {
+    await workbench.createAndAttachKnowledgeBase(ctx, projectId, input)
+  } catch (err) {
+    return { error: knowledgeBaseActionError(err, 'Could not create the knowledge base') }
+  }
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath('/upload')
+  revalidatePath('/admin')
+  return {}
 }
 
 export async function detachKnowledgeBaseAction(projectId: string, knowledgeBaseId: string) {
-  const ctx = await requireRole('curator')
+  const ctx = await requireUser()
   await workbench.detachKnowledgeBase(ctx, projectId, knowledgeBaseId)
   revalidatePath(`/projects/${projectId}`)
+}
+
+function knowledgeBaseActionError(err: unknown, fallback: string): string {
+  if (err instanceof AuthError || err instanceof ProjectValidationError) return err.message
+  if (err && typeof err === 'object' && 'code' in err) {
+    if (err.code === '23505') return 'That knowledge base is already attached to this project'
+    if (err.code === '42501') return "Requires this project's owner or curator role (or platform admin)"
+  }
+  return fallback
 }
 
 export async function attachEvalDatasetAction(projectId: string, datasetId: string) {

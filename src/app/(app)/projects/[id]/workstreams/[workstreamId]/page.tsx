@@ -18,6 +18,7 @@ import {
   WorkstreamKnowledgeBaseAttachManager,
   WorkstreamKnowledgeBaseDetachButton,
 } from '@/components/projects/WorkstreamKnowledgeBaseAttachManager'
+import { PendingReviewBadge } from '@/components/projects/KnowledgeBaseAttachManager'
 import { listKnowledgeBasesForWorkstream } from '@/lib/projects/queries'
 import { listAttachableKnowledgeBasesForWorkstream } from '@/lib/knowledge-bases'
 import { GeneratePresentationButton } from '@/components/projects/GeneratePresentationButton'
@@ -210,7 +211,10 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
           <ul className="flex flex-col gap-1 text-sm">
             {workstreamKnowledgeBases.map((kb) => (
               <li key={kb.id} className="flex items-center gap-2">
-                {kb.name}
+                <span>
+                  {kb.name}
+                  {kb.status === 'pending' && <PendingReviewBadge />}
+                </span>
                 {canEdit && <WorkstreamKnowledgeBaseDetachButton projectId={id} workstreamId={workstream.id} knowledgeBaseId={kb.id} />}
               </li>
             ))}

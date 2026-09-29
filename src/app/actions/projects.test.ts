@@ -20,6 +20,7 @@ vi.mock('@/lib/knowledge-bases', () => ({ requireActiveKnowledgeBase: vi.fn() })
 const {
   createProjectAction,
   attachKnowledgeBaseAction,
+  createAndAttachKnowledgeBaseAction,
   updateProjectNotesAction,
   updateProjectGoalAction,
   approveProjectAction,
@@ -146,18 +147,119 @@ describe('createProjectAction', () => {
 })
 
 describe('attachKnowledgeBaseAction', () => {
-  it('requires curator or above', async () => {
+  it("lets this project's owner attach even without the platform curator role", async () => {
     const supabase = createFakeSupabase({
-      knowledge_bases: [{ data: { visibility_scope: 'platform' }, error: null }],
+      project_members: [{ data: { role: 'owner' }, error: null }],
+      knowledge_bases: [{ data: { visibility_scope: 'platform', status: 'approved' }, error: null }],
       project_knowledge_bases: [{ data: null, error: null }],
     })
-    requireRoleMock.mockResolvedValue({ user: { id: 'user-1' }, supabase })
+    requireUserMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'member' }, supabase })
 
-    await attachKnowledgeBaseAction('project-1', 'kb-1')
+    expect(await attachKnowledgeBaseAction('project-1', 'kb-1')).toEqual({})
 
-    expect(requireRoleMock).toHaveBeenCalledWith('curator')
     const insert = supabase._calls.find((c) => c.table === 'project_knowledge_bases' && c.method === 'insert')
     expect(insert?.args).toMatchObject({ project_id: 'project-1', knowledge_base_id: 'kb-1' })
+  })
+
+  it('attaches a knowledge base still pending admin review', async () => {
+    const supabase = createFakeSupabase({
+      project_members: [{ data: { role: 'curator' }, error: null }],
+      knowledge_bases: [{ data: { visibility_scope: 'platform', status: 'pending' }, error: null }],
+      project_knowledge_bases: [{ data: null, error: null }],
+    })
+    requireUserMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'consultant' }, supabase })
+
+    expect(await attachKnowledgeBaseAction('project-1', 'kb-1')).toEqual({})
+    expect(supabase._calls.some((c) => c.table === 'project_knowledge_bases' && c.method === 'insert')).toBe(true)
+  })
+
+  it('refuses a rejected knowledge base, with the reason', async () => {
+    const supabase = createFakeSupabase({
+      project_members: [{ data: { role: 'owner' }, error: null }],
+      knowledge_bases: [{ data: { visibility_scope: 'platform', status: 'rejected' }, error: null }],
+    })
+    requireUserMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'curator' }, supabase })
+
+    const result = await attachKnowledgeBaseAction('project-1', 'kb-1')
+    expect(result.error).toMatch(/rejected/)
+    expect(supabase._calls.some((c) => c.table === 'project_knowledge_bases' && c.method === 'insert')).toBe(false)
+  })
+
+  it("refuses a caller who isn't this project's owner or curator", async () => {
+    const supabase = createFakeSupabase({ project_members: [{ data: { role: 'member' }, error: null }] })
+    requireUserMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'curator' }, supabase })
+
+    const result = await attachKnowledgeBaseAction('project-1', 'kb-1')
+    expect(result.error).toMatch(/owner or curator/)
+    expect(supabase._calls.some((c) => c.table === 'project_knowledge_bases')).toBe(false)
+  })
+})
+
+describe('createAndAttachKnowledgeBaseAction', () => {
+  it('creates a pending knowledge base and attaches it to the project in one step', async () => {
+    const supabase = createFakeSupabase({
+      project_members: [{ data: { role: 'owner' }, error: null }],
+      project_knowledge_bases: [{ data: null, error: null }],
+    })
+    adminSupabase = createFakeSupabase({ knowledge_bases: [{ data: null, error: null }] })
+    requireUserMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'member' }, supabase })
+
+    expect(await createAndAttachKnowledgeBaseAction('project-1', { name: '  Supplier Contracts ', description: 'Signed terms' })).toEqual({})
+
+    const kbInsert = adminSupabase._calls.find((c) => c.table === 'knowledge_bases' && c.method === 'insert')
+    expect(kbInsert?.args).toEqual({ id: 'supplier-contracts', name: 'Supplier Contracts', description: 'Signed terms', status: 'pending' })
+    const link = supabase._calls.find((c) => c.table === 'project_knowledge_bases' && c.method === 'insert')
+    expect(link?.args).toMatchObject({ project_id: 'project-1', knowledge_base_id: 'supplier-contracts', attached_by: 'user-1' })
+  })
+
+  it('retries with a suffixed id when the name is already taken', async () => {
+    const supabase = createFakeSupabase({
+      project_members: [{ data: { role: 'curator' }, error: null }],
+      project_knowledge_bases: [{ data: null, error: null }],
+    })
+    adminSupabase = createFakeSupabase({
+      knowledge_bases: [
+        { data: null, error: Object.assign(new Error('duplicate key'), { code: '23505' }) },
+        { data: null, error: null },
+      ],
+    })
+    requireUserMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'member' }, supabase })
+
+    expect(await createAndAttachKnowledgeBaseAction('project-1', { name: 'Contracts' })).toEqual({})
+
+    const inserts = adminSupabase._calls.filter((c) => c.table === 'knowledge_bases' && c.method === 'insert')
+    expect(inserts).toHaveLength(2)
+    expect((inserts[1].args as { id: string }).id).toMatch(/^contracts-[a-z0-9]+$/)
+  })
+
+  it('removes the new knowledge base again if attaching it fails', async () => {
+    const supabase = createFakeSupabase({
+      project_members: [{ data: { role: 'owner' }, error: null }],
+      project_knowledge_bases: [{ data: null, error: Object.assign(new Error('rls'), { code: '42501' }) }],
+    })
+    adminSupabase = createFakeSupabase({ knowledge_bases: [{ data: null, error: null }, { data: null, error: null }] })
+    requireUserMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'member' }, supabase })
+
+    const result = await createAndAttachKnowledgeBaseAction('project-1', { name: 'Contracts' })
+    expect(result.error).toMatch(/owner or curator/)
+    expect(adminSupabase._calls.some((c) => c.table === 'knowledge_bases' && c.method === 'delete')).toBe(true)
+  })
+
+  it("refuses a caller who isn't this project's owner or curator before creating anything", async () => {
+    const supabase = createFakeSupabase({ project_members: [{ data: null, error: null }] })
+    adminSupabase = createFakeSupabase({})
+    requireUserMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'curator' }, supabase })
+
+    const result = await createAndAttachKnowledgeBaseAction('project-1', { name: 'Contracts' })
+    expect(result.error).toMatch(/owner or curator/)
+    expect(adminSupabase._calls).toHaveLength(0)
+  })
+
+  it('requires a name', async () => {
+    const supabase = createFakeSupabase({ project_members: [{ data: { role: 'owner' }, error: null }] })
+    requireUserMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'member' }, supabase })
+
+    expect((await createAndAttachKnowledgeBaseAction('project-1', { name: '   ' })).error).toMatch(/Name/)
   })
 })
 

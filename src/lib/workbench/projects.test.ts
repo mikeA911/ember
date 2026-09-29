@@ -188,7 +188,10 @@ describe('searchProjects', () => {
 
 describe('detachKnowledgeBase -- Project-Aware Knowledge and Assistant Context (Stage 1)', () => {
   it('removes only this project\'s link row, not the knowledge base itself', async () => {
-    const supabase = createFakeSupabase({ project_knowledge_bases: [{ data: null, error: null }] })
+    const supabase = createFakeSupabase({
+      project_members: [{ data: { role: 'curator' }, error: null }],
+      project_knowledge_bases: [{ data: null, error: null }],
+    })
     await detachKnowledgeBase(ctxWith(supabase), 'project-1', 'kb-1')
 
     const del = supabase._calls.find((c) => c.table === 'project_knowledge_bases' && c.method === 'delete')

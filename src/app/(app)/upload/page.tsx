@@ -26,7 +26,7 @@ export default async function UploadPage({
     ['Total', statuses.length],
     ['Needs review', statuses.filter((s) => s.needsReview).length],
     ['Searchable', statuses.filter((s) => s.label === 'Searchable').length],
-    ['Awaiting admin sign-off', (documents ?? []).filter((d) => d.processing_status === 'submitted').length],
+    ['Sent for optional sign-off', (documents ?? []).filter((d) => d.processing_status === 'submitted').length],
     ['Failed', statuses.filter((s) => s.label === 'Failed').length],
   ]
   const activeDefaultKb = knowledgeBases.some((item) => item.id === kb) ? kb : undefined

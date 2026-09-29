@@ -42,9 +42,12 @@ export async function listAttachableKnowledgeBases(
   if (linkedError) throw linkedError
   const attachedIds = (linked ?? []).map((l) => l.knowledge_base_id)
 
-  // Only admin-approved knowledge can be attached to a project -- a project
-  // attaching a KB is a stronger, "this is now trusted project knowledge"
-  // signal than just being able to upload more sources into it.
+  // A pending KB (curator-created, awaiting admin review) is attachable --
+  // admin review is a quality check, not a setup gate: requiring it here
+  // meant a brand-new KB silently vanished from this picker until an admin
+  // got to it, while the new-project wizard (listActiveKnowledgeBases) already
+  // allowed attaching it. The picker labels it "Pending admin review"; only
+  // a rejected KB drops out. Retrieval never depended on KB status.
   //
   // OR-036: also excludes a project_private/selected_projects KB entirely --
   // neither this function nor attachKnowledgeBase (src/lib/workbench/
@@ -60,7 +63,7 @@ export async function listAttachableKnowledgeBases(
     .from('knowledge_bases')
     .select('*')
     .eq('lifecycle_status', 'active')
-    .eq('status', 'approved')
+    .neq('status', 'rejected')
     .in('visibility_scope', ['platform', 'public'])
     .order('name')
   if (attachedIds.length > 0) query = query.not('id', 'in', `(${attachedIds.join(',')})`)
@@ -90,7 +93,7 @@ export async function listAttachableKnowledgeBasesForWorkstream(
     .from('knowledge_bases')
     .select('*')
     .eq('lifecycle_status', 'active')
-    .eq('status', 'approved')
+    .neq('status', 'rejected')
     .in('visibility_scope', ['platform', 'public'])
     .order('name')
   if (attachedIds.length > 0) query = query.not('id', 'in', `(${attachedIds.join(',')})`)
