@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatMessageWithAttachments,
+  isZipFileName,
   attachmentMimeType,
+  extractAttachmentsFromMessage,
   formatMessageWithAttachment,
   truncateAttachmentText,
   MAX_ATTACHMENT_CHARS,
@@ -52,5 +55,36 @@ describe('formatMessageWithAttachment', () => {
   it('uses a fence longer than any tilde run in the content', () => {
     const out = formatMessageWithAttachment('', { name: 'a.md', text: 'x\n~~~~\ny', truncated: false })
     expect(out).toContain('\n~~~~~\nx\n~~~~\ny\n~~~~~')
+  })
+})
+
+describe('extractAttachmentsFromMessage', () => {
+  it('round-trips what formatMessageWithAttachment wrote', () => {
+    const text = '@prefix ex: <x#> .\n# comment\nex:A ~~~~ ex:B .'
+    const message = formatMessageWithAttachment('Import this please', { name: 'onto.ttl', text, truncated: false })
+    expect(extractAttachmentsFromMessage(message)).toEqual([{ name: 'onto.ttl', text, truncated: false }])
+  })
+
+  it('flags a truncated attachment and ignores messages without one', () => {
+    const message = formatMessageWithAttachment('', { name: 'big.ttl', text: 'abc', truncated: true })
+    expect(extractAttachmentsFromMessage(message)).toEqual([{ name: 'big.ttl', text: 'abc', truncated: true }])
+    expect(extractAttachmentsFromMessage('Just a question about Attached file: nothing')).toEqual([])
+  })
+})
+
+describe('formatMessageWithAttachments', () => {
+  it('appends each attachment as its own block, recoverable one by one', () => {
+    const files = [
+      { name: 'ontology.ttl', text: 'ex:A a owl:Class .', truncated: false },
+      { name: 'shapes.ttl', text: 'ex:AShape a sh:NodeShape .', truncated: false },
+    ]
+    const message = formatMessageWithAttachments('Import these', files)
+    expect(message.startsWith('Import these\n\nAttached file: ontology.ttl')).toBe(true)
+    expect(extractAttachmentsFromMessage(message)).toEqual(files)
+  })
+
+  it('recognises zip names', () => {
+    expect(isZipFileName('Files.ZIP')).toBe(true)
+    expect(isZipFileName('onto.ttl')).toBe(false)
   })
 })

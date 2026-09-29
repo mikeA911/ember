@@ -11,7 +11,8 @@ import { parseDocument } from '@/lib/parsing'
 import { createWorkingKnowledgeItem } from '@/lib/projects/working-knowledge'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import { conversationToTranscript, isTranscriptRow, messagePreview } from '@/lib/chat/transcript'
-import { attachmentMimeType, truncateAttachmentText, MAX_ATTACHMENT_BYTES, ATTACHMENT_TYPES_LABEL, type ChatAttachment } from '@/lib/chat/attachments'
+import { attachmentMimeType, isZipFileName, truncateAttachmentText, MAX_ATTACHMENT_BYTES, ATTACHMENT_TYPES_LABEL, type ChatAttachment } from '@/lib/chat/attachments'
+import { readZipAttachments, ZipAttachmentError } from '@/lib/chat/zip-attachments'
 
 // projectId is only consulted for a brand-new conversation (conversationId
 // null) -- see runAssistantTurn's own comment. Passing it for an existing
@@ -33,11 +34,20 @@ export async function sendChatMessageAction(
 // not a throw, so the reason survives Next's production error masking.
 export async function extractChatAttachmentAction(
   formData: FormData
-): Promise<{ attachment: ChatAttachment; error?: never } | { attachment?: never; error: string }> {
+): Promise<{ attachments: ChatAttachment[]; skipped: string[]; error?: never } | { attachments?: never; skipped?: never; error: string }> {
   await requireUser()
   const file = formData.get('file')
   if (!(file instanceof File)) return { error: 'No file provided' }
   if (file.size > MAX_ATTACHMENT_BYTES) return { error: 'File exceeds the 5MB attachment limit' }
+
+  if (isZipFileName(file.name)) {
+    try {
+      return await readZipAttachments(Buffer.from(await file.arrayBuffer()))
+    } catch (err) {
+      return { error: err instanceof ZipAttachmentError ? err.message : "Could not read that zip file" }
+    }
+  }
+
   const mimeType = attachmentMimeType(file.name)
   if (!mimeType) return { error: `Unsupported file type (${ATTACHMENT_TYPES_LABEL} only)` }
 
@@ -45,7 +55,7 @@ export async function extractChatAttachmentAction(
     const parsed = await parseDocument(Buffer.from(await file.arrayBuffer()), mimeType)
     const { text, truncated } = truncateAttachmentText(parsed.pages.map((p) => p.text).join('\n\n'))
     if (!text) return { error: 'No readable text found in that file' }
-    return { attachment: { name: file.name, text, truncated } }
+    return { attachments: [{ name: file.name, text, truncated }], skipped: [] }
   } catch {
     return { error: 'Could not read that file' }
   }

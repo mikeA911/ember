@@ -53,6 +53,14 @@ import {
   runCreateProjectOntology,
 } from './project-ontology-tool'
 import {
+  PREVIEW_ONTOLOGY_FILE_IMPORT_TOOL,
+  PREVIEW_ONTOLOGY_FILE_IMPORT_TOOL_NAME,
+  IMPORT_ONTOLOGY_FILE_TOOL,
+  IMPORT_ONTOLOGY_FILE_TOOL_NAME,
+  runPreviewOntologyFileImport,
+  runImportOntologyFile,
+} from './ontology-file-import-tool'
+import {
   SEARCH_MY_WORKING_KNOWLEDGE_TOOL,
   SEARCH_MY_WORKING_KNOWLEDGE_TOOL_NAME,
   SEARCH_SHARED_WORKING_KNOWLEDGE_TOOL,
@@ -74,7 +82,7 @@ import type { FeedbackType } from '@/types/database'
 // changes meaningfully enough that old provenance is worth distinguishing
 // from new. Not tied to a package/app version; this is specifically about
 // "which assistant behavior produced this row."
-export const ASSISTANT_PROMPT_VERSION = 'm7-v11'
+export const ASSISTANT_PROMPT_VERSION = 'm7-v12'
 
 const SYSTEM_PROMPT = `You are the Ember Workbench Assistant. You help users navigate and operate the platform: search the Wiki, look up project notes, create projects and workstreams, and attach evidence artifacts.
 
@@ -85,6 +93,8 @@ Ember is an AI Workbench, not an autonomous software-development environment. It
 Ember supports these engineering/knowledge/evaluation activities as named "Workbench methods" -- documented in the platform_handbook Wiki category, not hard-coded here. search_wiki returns each matched article's full content, not just a title -- one call is normally enough to both find the matching Workbench Handbook article and read its Goal/Requirements (Required / Recommended / Optional, plus a Git-required flag)/Deliverables/Boundary sections directly in the result. You are allowed at most 2 search_wiki calls per turn (enforced -- a 3rd call will be refused); a second call is only worth making if the user's reply raises a genuinely new question (e.g. naming a prerequisite method you haven't looked up yet), never to re-ask something you already searched. If a search doesn't surface a clearly matching method, say so and ask the user what they're trying to accomplish rather than searching again.
 
 Reply directly, reasoning from what you found: name the method that fits, and note anything Required that seems to be missing and ask for it specifically. If the user then confirms a Required input is genuinely missing, look up which method produces that missing input (e.g. no OpenAPI spec before MCP Architecture -> search for OpenAPI Discovery) and name that prerequisite method explicitly, rather than offering to generate the missing input yourself. Keep replies conversational, not an exhaustive checklist.
+
+Updating a project's Ontology Map (including importing an attached ontology file) only works in a conversation bound to that project. If you are not in one and the user asks for it, tell them to switch Ember to the project first (Options, then the project picker) and attach the file again there -- never claim you updated an ontology map from here, and don't attach the file as an artifact instead unless they ask for that.
 
 Before proposing to create a new project, call search_projects with a likely keyword (a company/client name, for example) -- reuse or reference an existing project instead of creating a duplicate when one already covers the same work. Only create a new project once you've checked and found nothing suitable, or the user explicitly asks for a new one.
 
@@ -132,7 +142,11 @@ You also have list_workstreams (no Project ID needed) for this project's existin
 
 If the user asks you to sketch, suggest, or "produce" a domain-object ontology for this project (the business's own noun types, e.g. Plane/Route -- not instances), call suggest_project_ontology. Present what it suggests in your own words -- don't just dump the raw tool output -- and wait for the user's explicit confirmation, or their requested changes, in their next message. Only once they've clearly agreed to a specific set of objects and workstreams, call create_project_ontology with exactly that tree (keeping each item's tempId/parentTempId links intact, or adjusted consistently if they asked for changes) -- never in the same turn you proposed it. After it succeeds, tell the user their new project's Ontology Map -- a visual diagram of what you just created -- is on the project page, and give them the ontologyMapUrl the tool returned.
 
-If the user attaches or pastes an ontology of their own (a message containing "Attached file:" with e.g. Turtle, OWL/RDF, JSON-LD, JSON, YAML, or a CSV/list of classes), don't call suggest_project_ontology -- map THEIR file instead: its classes/entity types become objects (subclass/parent relationships become parentTempId links; descriptions/comments become the description), and only include workstreams if the file actually describes units of work. Say how many objects you found, show the tree (or a representative part of it if it's large) in your own words, and point out anything you had to leave out or interpret (properties, individuals/instances, imports). Then wait for the user's explicit confirmation, exactly as above, before calling create_project_ontology with that tree.
+If the user attaches a Turtle ontology file (.ttl/.n3/.nt -- a message containing "Attached file:" with that extension) and wants it on this project's ontology/Ontology Map, call preview_ontology_file_import with that fileName. Never rebuild a Turtle file's tree yourself and never use create_project_ontology for it. Present the preview in your own words: how many objects it would create, a short version of the outline (the top-level groups and a few examples are enough for a long one), anything already on the map (skipped), and what's left out. If canImport is false, say they need the project's owner or curator to run it. Then wait for the user's explicit confirmation in their next message, and only then call import_ontology_file with the same fileName -- it is refused in the same turn as the preview. After it succeeds, give them the ontologyMapUrl. If the file is attached as an artifact too, that's separate: attaching an artifact never changes the Ontology Map.
+
+For an ontology in another format (OWL/RDF-XML, JSON-LD, JSON, YAML, or a CSV/list of classes), map THEIR file yourself instead: its classes/entity types become objects (subclass/parent relationships become parentTempId links; descriptions/comments become the description), and only include workstreams if the file actually describes units of work. Say how many objects you found, show the tree (or a representative part of it if it's large), and point out anything you had to leave out or interpret. Then wait for the user's explicit confirmation, exactly as above, before calling create_project_ontology with that tree.
+
+Never tell the user the Ontology Map was created or updated unless import_ontology_file or create_project_ontology actually succeeded in this conversation.
 
 You also have search_my_working_knowledge and search_shared_working_knowledge (no Project ID needed) -- Working Knowledge is the current user's own private research notebooks and working notes in this project (plus, for the "shared" tool, notebooks other members have explicitly shared with them), used for continuity across conversations (e.g. "continue my research from yesterday"). It is NOT approved organizational knowledge and must never be presented as such -- always call it out as working/unverified material when you use it, and if it conflicts with search_project_knowledge's approved evidence, disclose the conflict explicitly rather than silently preferring one. A working-knowledge result CAN be cited (sourceType 'working_knowledge', sourceId is that result's id) -- it just renders with a distinct "working" badge, never the approved-evidence one.
 
@@ -470,6 +484,8 @@ export async function runAssistantTurn(
           LIST_WORKSTREAMS_TOOL,
           SUGGEST_PROJECT_ONTOLOGY_TOOL,
           CREATE_PROJECT_ONTOLOGY_TOOL,
+          PREVIEW_ONTOLOGY_FILE_IMPORT_TOOL,
+          IMPORT_ONTOLOGY_FILE_TOOL,
           SEARCH_MY_WORKING_KNOWLEDGE_TOOL,
           SEARCH_SHARED_WORKING_KNOWLEDGE_TOOL,
           SAVE_WORKING_KNOWLEDGE_TOOL,
@@ -822,6 +838,22 @@ export async function runAssistantTurn(
             for (const workstreamId of output.workstreamIds) {
               createdRecordRefs.push({ kind: 'workstream', id: workstreamId })
             }
+          } catch (err) {
+            toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
+          }
+        }
+      } else if (toolCall.name === PREVIEW_ONTOLOGY_FILE_IMPORT_TOOL_NAME || toolCall.name === IMPORT_ONTOLOGY_FILE_TOOL_NAME) {
+        // Same interception reason as the ontology pair above, plus both
+        // read the attached file back from this conversation's messages.
+        if (!resolvedProjectId) {
+          toolResultText = JSON.stringify({ error: `${toolCall.name} is only available in a project-bound conversation.` })
+        } else {
+          try {
+            const output =
+              toolCall.name === PREVIEW_ONTOLOGY_FILE_IMPORT_TOOL_NAME
+                ? await runPreviewOntologyFileImport(ctx, resolvedProjectId, conversation.id, toolCall.arguments)
+                : await runImportOntologyFile(ctx, resolvedProjectId, conversation.id, toolCall.arguments)
+            toolResultText = JSON.stringify(output)
           } catch (err) {
             toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
           }
