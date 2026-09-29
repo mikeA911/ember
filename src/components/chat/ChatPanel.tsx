@@ -26,7 +26,14 @@ import type { MemberProjectOption } from '@/lib/projects/queries'
 import type { Conversation, FeedbackType } from '@/types/database'
 import { Markdown } from '@/components/shared/Markdown'
 import { deriveArtifacts, artifactsCount } from '@/lib/chat/artifacts'
-import { formatMessageWithAttachment, ATTACHMENT_ACCEPT, ATTACHMENT_TYPES_LABEL, type ChatAttachment } from '@/lib/chat/attachments'
+import {
+  formatMessageWithAttachments,
+  totalAttachmentChars,
+  ATTACHMENT_ACCEPT,
+  ATTACHMENT_TYPES_LABEL,
+  MAX_TOTAL_ATTACHMENT_CHARS,
+  type ChatAttachment,
+} from '@/lib/chat/attachments'
 import { defaultNoteTitle } from '@/lib/chat/transcript'
 import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, SuggestedPrompts } from './StructuredResponse'
 import { GatewayInvocationCard } from './GatewayInvocationCard'
@@ -184,7 +191,11 @@ export function ChatSession({
   const [input, setInput] = useState('')
   // "Attach file" -- already parsed server-side, waiting to ride along with
   // the next typed message (see src/lib/chat/attachments.ts).
-  const [attachment, setAttachment] = useState<ChatAttachment | null>(null)
+  // Several at once: picked together, added one after another, or the
+  // files inside a zip.
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([])
+  // e.g. what a zip contained that couldn't be attached.
+  const [attachNotice, setAttachNotice] = useState<string | null>(null)
   const [isAttaching, setIsAttaching] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Composer: grows with its content up to a few lines; "Expand" gives a
@@ -577,36 +588,56 @@ export function ChatSession({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const typed = input.trim()
-    if (!attachment) {
+    if (attachments.length === 0) {
       setComposerExpanded(false)
       await send(typed)
       return
     }
-    const message = formatMessageWithAttachment(typed, attachment)
-    setAttachment(null)
+    if (totalAttachmentChars(attachments) > MAX_TOTAL_ATTACHMENT_CHARS) {
+      setError(`Attachments are too large to send together (over ${MAX_TOTAL_ATTACHMENT_CHARS.toLocaleString('en-US')} characters) -- remove some and send them in a separate message.`)
+      return
+    }
+    const message = formatMessageWithAttachments(typed, attachments)
+    setAttachments([])
+    setAttachNotice(null)
     setComposerExpanded(false)
     await send(message)
   }
 
   async function handleAttachFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
+    const files = [...(e.target.files ?? [])]
     // Reset so picking the same file again (e.g. after removing it) still
     // fires onChange.
     e.target.value = ''
-    if (!file) return
+    if (files.length === 0) return
     setError(null)
+    setAttachNotice(null)
     setIsAttaching(true)
+    const errors: string[] = []
+    const skipped: string[] = []
     try {
-      const formData = new FormData()
-      formData.set('file', file)
-      const result = await extractChatAttachmentAction(formData)
-      if (result.error !== undefined) setError(result.error)
-      else setAttachment(result.attachment)
-    } catch {
-      setError('Could not attach that file')
+      // One request per file, so each stays under the 5MB upload limit.
+      for (const file of files) {
+        const formData = new FormData()
+        formData.set('file', file)
+        try {
+          const result = await extractChatAttachmentAction(formData)
+          if (result.error !== undefined) {
+            errors.push(`${file.name}: ${result.error}`)
+            continue
+          }
+          skipped.push(...result.skipped)
+          // Re-attaching a file with the same name replaces it.
+          setAttachments((prev) => [...prev.filter((a) => !result.attachments.some((n) => n.name === a.name)), ...result.attachments])
+        } catch {
+          errors.push(`${file.name}: could not be attached`)
+        }
+      }
     } finally {
       setIsAttaching(false)
     }
+    if (errors.length > 0) setError(errors.join(' · '))
+    if (skipped.length > 0) setAttachNotice(`Skipped: ${skipped.join(', ')}`)
   }
 
   function toggleHeaderExpanded() {
@@ -1365,29 +1396,38 @@ export function ChatSession({
           </div>
         )}
       </div>
-      {attachment && (
-        <div className="flex items-center justify-between gap-2 border-t border-zinc-200 px-2 pt-2 text-xs text-zinc-600">
-          <span className="truncate">
-            Attached: <span className="font-medium">{attachment.name}</span>
-            {attachment.truncated && ' (only the first part will be sent)'}
-          </span>
-          <button
-            type="button"
-            onClick={() => setAttachment(null)}
-            disabled={isPending}
-            className="shrink-0 underline hover:text-zinc-900 disabled:opacity-50"
-          >
-            Remove
-          </button>
+      {(attachments.length > 0 || attachNotice) && (
+        <div className="flex max-h-28 flex-col gap-0.5 overflow-y-auto border-t border-zinc-200 px-2 pt-2 text-xs text-zinc-600">
+          {attachments.map((a) => (
+            <div key={a.name} className="flex items-center justify-between gap-2">
+              <span className="truncate">
+                Attached: <span className="font-medium">{a.name}</span>
+                {a.truncated && ' (only the first part will be sent)'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setAttachments((prev) => prev.filter((p) => p.name !== a.name))}
+                disabled={isPending}
+                className="shrink-0 underline hover:text-zinc-900 disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          {attachNotice && <p className="text-zinc-400">{attachNotice}</p>}
         </div>
       )}
-      <form onSubmit={handleSubmit} className={`flex items-end gap-2 p-2 ${attachment ? '' : 'border-t border-zinc-200'}`}>
+      <form
+        onSubmit={handleSubmit}
+        className={`flex items-end gap-2 p-2 ${attachments.length > 0 || attachNotice ? '' : 'border-t border-zinc-200'}`}
+      >
         {!feedbackCategory && (
           <>
             <input
               ref={fileInputRef}
               type="file"
               accept={ATTACHMENT_ACCEPT}
+              multiple
               onChange={handleAttachFile}
               className="hidden"
               aria-hidden="true"
@@ -1397,7 +1437,7 @@ export function ChatSession({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isPending || isAttaching || showFeedbackChooser}
-              title={`Attach a file (${ATTACHMENT_TYPES_LABEL} — max 5MB)`}
+              title={`Attach files (${ATTACHMENT_TYPES_LABEL} — max 5MB each)`}
               className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
             >
               {isAttaching ? 'Reading…' : 'Attach'}
@@ -1430,7 +1470,7 @@ export function ChatSession({
           {composerExpanded ? 'Less' : 'More'}
         </button>
         <button
-          disabled={isPending || isAttaching || showFeedbackChooser || (!input.trim() && !attachment)}
+          disabled={isPending || isAttaching || showFeedbackChooser || (!input.trim() && attachments.length === 0)}
           className="rounded bg-zinc-900 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
         >
           Send

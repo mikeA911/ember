@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
-import { formatMessageWithAttachment } from './attachments'
+import { formatMessageWithAttachment, formatMessageWithAttachments } from './attachments'
 import { runImportOntologyFile, runPreviewOntologyFileImport, PREVIEW_ONTOLOGY_FILE_IMPORT_TOOL_NAME } from './ontology-file-import-tool'
 
 const TTL = `@prefix ex: <https://example.org/x#> .
@@ -38,6 +38,33 @@ describe('runPreviewOntologyFileImport', () => {
     const supabase = createFakeSupabase({ chat_messages: [{ data: [truncated], error: null }] })
 
     await expect(runPreviewOntologyFileImport(fakeCtx(supabase), 'proj-1', 'conv-1', {})).rejects.toThrow(/too large/)
+  })
+
+  it('picks the ontology over a shapes file attached with it (e.g. from one zip)', async () => {
+    const shapes = `@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix ex: <https://example.org/x#> .
+ex:AssetShape a sh:NodeShape ; sh:targetClass ex:Asset .`
+    const both = {
+      role: 'user',
+      content: formatMessageWithAttachments('Import these', [
+        { name: 'files/fleet.ttl', text: TTL, truncated: false },
+        { name: 'files/fleet-shapes.ttl', text: shapes, truncated: false },
+      ]),
+    }
+    const supabase = createFakeSupabase({
+      chat_messages: [{ data: [both], error: null }],
+      project_objects: [{ data: [], error: null }],
+      project_members: [{ data: { role: 'owner' }, error: null }],
+    })
+
+    expect((await runPreviewOntologyFileImport(fakeCtx(supabase), 'proj-1', 'conv-1', {})).fileName).toBe('files/fleet.ttl')
+
+    const byBareName = createFakeSupabase({
+      chat_messages: [{ data: [both], error: null }],
+      project_objects: [{ data: [], error: null }],
+      project_members: [{ data: { role: 'owner' }, error: null }],
+    })
+    expect((await runPreviewOntologyFileImport(fakeCtx(byBareName), 'proj-1', 'conv-1', { fileName: 'fleet.ttl' })).classes).toBe(2)
   })
 })
 

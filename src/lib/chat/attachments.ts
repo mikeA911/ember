@@ -11,13 +11,23 @@ export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
 // Keeps a single attachment from swamping the model's context window --
 // roughly 12k tokens, room for a modest ontology or a long document.
 export const MAX_ATTACHMENT_CHARS = 50_000
+// All attachments on one message together (several picked files, or the
+// files inside a zip) -- about 25k tokens, which every later turn of the
+// conversation also carries.
+export const MAX_TOTAL_ATTACHMENT_CHARS = 100_000
 
 // Plain-text formats (notes, tables, and the usual ontology/schema
 // serializations) are read as-is; PDF and Word go through parseDocument's
 // real extractors.
-const TEXT_EXTENSIONS = ['txt', 'md', 'csv', 'json', 'jsonld', 'ttl', 'owl', 'rdf', 'xml', 'yaml', 'yml']
-export const ATTACHMENT_TYPES_LABEL = 'pdf, docx, txt, md, csv, json, jsonld, ttl, owl, rdf, xml, yaml'
-export const ATTACHMENT_ACCEPT = ['pdf', 'docx', ...TEXT_EXTENSIONS].map((ext) => `.${ext}`).join(',')
+const TEXT_EXTENSIONS = ['txt', 'md', 'csv', 'json', 'jsonld', 'ttl', 'n3', 'nt', 'owl', 'rdf', 'xml', 'yaml', 'yml']
+export const ATTACHMENT_TYPES_LABEL = 'pdf, docx, txt, md, csv, json, jsonld, ttl, owl, rdf, xml, yaml, or a zip of them'
+// A .zip is unpacked server-side into one attachment per supported file
+// inside (src/lib/chat/zip-attachments.ts).
+export const ATTACHMENT_ACCEPT = ['pdf', 'docx', ...TEXT_EXTENSIONS, 'zip'].map((ext) => `.${ext}`).join(',')
+
+export function isZipFileName(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith('.zip')
+}
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: 'application/pdf',
@@ -46,6 +56,14 @@ export function truncateAttachmentText(text: string): { text: string; truncated:
 
 // A tilde fence longer than any tilde run inside the text, so file content
 // can never close the block early.
+export function formatMessageWithAttachments(message: string, attachments: ChatAttachment[]): string {
+  return attachments.reduce((text, attachment) => formatMessageWithAttachment(text, attachment), message)
+}
+
+export function totalAttachmentChars(attachments: ChatAttachment[]): number {
+  return attachments.reduce((sum, a) => sum + a.text.length, 0)
+}
+
 export function formatMessageWithAttachment(message: string, attachment: ChatAttachment): string {
   const longestRun = Math.max(0, ...(attachment.text.match(/~+/g) ?? []).map((run) => run.length))
   const fence = '~'.repeat(Math.max(3, longestRun + 1))

@@ -55,16 +55,32 @@ function extensionOf(name: string): string {
   return name.toLowerCase().split('.').pop() ?? ''
 }
 
-// Newest first, so a re-attached revision of the same file wins.
+const baseName = (name: string) => name.split('/').pop()!.toLowerCase()
+
+// Newest first, so a re-attached revision of the same file wins. A zip's
+// files carry their path inside it ("files/onto.ttl"), so a bare name
+// matches too. Without a name, the newest Turtle file that actually defines
+// classes -- a zip usually pairs the ontology with a shapes file.
 function findAttachedTurtleFile(rows: Pick<ChatMessageRow, 'role' | 'content'>[], fileName?: string): ChatAttachment {
   const attachments = rows
     .filter((r) => r.role === 'user' && r.content)
     .flatMap((r) => extractAttachmentsFromMessage(r.content!))
     .reverse()
   const wanted = fileName?.trim().toLowerCase()
-  const match = wanted
-    ? attachments.find((a) => a.name.toLowerCase() === wanted)
-    : attachments.find((a) => TURTLE_EXTENSIONS.includes(extensionOf(a.name)))
+  let match: ChatAttachment | undefined
+  if (wanted) {
+    match = attachments.find((a) => a.name.toLowerCase() === wanted) ?? attachments.find((a) => baseName(a.name) === baseName(wanted))
+  } else {
+    const turtle = attachments.filter((a) => TURTLE_EXTENSIONS.includes(extensionOf(a.name)))
+    match =
+      turtle.find((a) => {
+        try {
+          return !a.truncated && planTurtleOntologyImport(a.text).classCount > 0
+        } catch {
+          return false
+        }
+      }) ?? turtle[0]
+  }
   if (!match) {
     throw new OntologyImportError(
       wanted
