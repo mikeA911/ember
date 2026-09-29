@@ -21,6 +21,8 @@ import { SourceSubmissionsReview } from '@/components/projects/SourceSubmissions
 import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamPromotionsReview'
 import { listPendingWorkstreamPromotionsForProject } from '@/lib/workbench/workstream-promotions'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
+import type { WorkstreamArtifactStatus } from '@/types/database'
+import { countArtifacts } from '@/lib/projects/artifact-summary'
 import { ProjectCategorySelector } from '@/components/projects/ProjectCategorySelector'
 import { ProjectDiscoverabilitySelector } from '@/components/projects/ProjectDiscoverabilitySelector'
 import { RequestToJoinButton } from '@/components/projects/RequestToJoinButton'
@@ -141,6 +143,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     { data: sourceSubmissions },
     { data: joinRequests },
     ontologyMapData,
+    { data: projectArtifacts },
   ] = await Promise.all([
     listKnowledgeBasesForProject(supabase, id),
     supabase.from('eval_datasets').select('id, name, status').eq('project_id', id),
@@ -192,6 +195,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     // sourceSubmissions above.
     user ? supabase.from('project_join_requests').select('*').eq('project_id', id).order('created_at', { ascending: false }) : Promise.resolve({ data: null }),
     getOntologyMapData(supabase, id),
+    // Per-workstream artifact counts for the Workstreams list below --
+    // status only, RLS-scoped like the rest of this page.
+    supabase
+      .from('workstream_artifacts')
+      .select('workstream_id, status, workstream:project_workstreams!inner(project_id)')
+      .eq('workstream.project_id', id),
   ])
   const statusHistoryActorIds = [...new Set((statusHistory ?? []).map((h) => h.actor_id).filter((x): x is string => !!x))]
   const { data: statusHistoryActors } =
@@ -323,6 +332,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const canReviewChunks = viewerProfile?.role === 'admin' || viewerProfile?.role === 'curator'
 
   const ontologyMapLayout = computeOntologyMapLayout(ontologyMapData)
+
+  const artifactStatusesByWorkstream = new Map<string, { status: WorkstreamArtifactStatus }[]>()
+  for (const a of projectArtifacts ?? []) {
+    const list = artifactStatusesByWorkstream.get(a.workstream_id) ?? []
+    list.push({ status: a.status as WorkstreamArtifactStatus })
+    artifactStatusesByWorkstream.set(a.workstream_id, list)
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -583,13 +599,26 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           <ul className="flex flex-col gap-1 text-sm">
             {workstreams.map((w) => {
               const completed = w.deliverables.filter((d) => d.completed).length
+              const artifactCounts = countArtifacts(artifactStatusesByWorkstream.get(w.id) ?? [])
               return (
                 <li key={w.id}>
                   <Link href={`/projects/${project.id}/workstreams/${w.id}`} className="underline">
                     {w.name}
                   </Link>{' '}
                   <span className="text-zinc-500">
-                    ({w.status} · {completed}/{w.deliverables.length} deliverables)
+                    ({w.status} · {completed}/{w.deliverables.length} deliverables
+                    {artifactCounts.total > 0 && (
+                      <>
+                        {' · '}
+                        <Link href={`/projects/${project.id}/workstreams/${w.id}#artifacts`} className="hover:underline">
+                          {artifactCounts.total} {artifactCounts.total === 1 ? 'artifact' : 'artifacts'}
+                        </Link>
+                        {artifactCounts.awaitingReview > 0 && (
+                          <span className="font-medium text-amber-700"> ({artifactCounts.awaitingReview} to review)</span>
+                        )}
+                      </>
+                    )}
+                    )
                   </span>
                 </li>
               )
