@@ -8,19 +8,24 @@
 // Under next.config's 6MB serverActions.bodySizeLimit, same headroom
 // reasoning as the branding icon cap.
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
-// Keeps a single attachment from swamping the model's context window.
-export const MAX_ATTACHMENT_CHARS = 20_000
-export const ATTACHMENT_ACCEPT = '.pdf,.docx,.txt,.md,.csv'
+// Keeps a single attachment from swamping the model's context window --
+// roughly 12k tokens, room for a modest ontology or a long document.
+export const MAX_ATTACHMENT_CHARS = 50_000
+
+// Plain-text formats (notes, tables, and the usual ontology/schema
+// serializations) are read as-is; PDF and Word go through parseDocument's
+// real extractors.
+const TEXT_EXTENSIONS = ['txt', 'md', 'csv', 'json', 'jsonld', 'ttl', 'owl', 'rdf', 'xml', 'yaml', 'yml']
+export const ATTACHMENT_TYPES_LABEL = 'pdf, docx, txt, md, csv, json, jsonld, ttl, owl, rdf, xml, yaml'
+export const ATTACHMENT_ACCEPT = ['pdf', 'docx', ...TEXT_EXTENSIONS].map((ext) => `.${ext}`).join(',')
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: 'application/pdf',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  txt: 'text/plain',
-  md: 'text/plain',
-  csv: 'text/plain',
+  ...Object.fromEntries(TEXT_EXTENSIONS.map((ext) => [ext, 'text/plain'])),
 }
 
-// Browsers report '' or inconsistent types for .md/.csv, so the extension
+// Browsers report '' or inconsistent types for .md/.ttl/.owl etc., so the extension
 // decides -- mapped onto the three MIME types parseDocument understands.
 export function attachmentMimeType(fileName: string): string | null {
   const ext = fileName.toLowerCase().split('.').pop() ?? ''

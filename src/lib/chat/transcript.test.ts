@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { conversationToTranscript, defaultNoteTitle } from './transcript'
+import { conversationToTranscript, defaultNoteTitle, messagePreview } from './transcript'
 
 describe('conversationToTranscript', () => {
   it('keeps only visible user/assistant turns, in order', () => {
@@ -31,5 +31,17 @@ describe('defaultNoteTitle', () => {
     const title = defaultNoteTitle(null, 'x'.repeat(200))
     expect(title).toHaveLength(80)
     expect(title.endsWith('…')).toBe(true)
+  })
+})
+
+describe('messagePreview', () => {
+  it('collapses whitespace onto one line', () => {
+    expect(messagePreview('  Compare\n\nvendors   A and B ')).toBe('Compare vendors A and B')
+  })
+
+  it('caps long messages', () => {
+    const preview = messagePreview('y'.repeat(500))
+    expect(preview).toHaveLength(140)
+    expect(preview.endsWith('…')).toBe(true)
   })
 })

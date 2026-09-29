@@ -13,6 +13,12 @@ describe('attachmentMimeType', () => {
     expect(attachmentMimeType('a.b.docx')).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
   })
 
+  it('reads ontology serializations as plain text', () => {
+    for (const name of ['onto.ttl', 'onto.owl', 'onto.rdf', 'onto.jsonld', 'onto.json', 'onto.yaml', 'onto.yml', 'onto.xml']) {
+      expect(attachmentMimeType(name)).toBe('text/plain')
+    }
+  })
+
   it('rejects unsupported or missing extensions', () => {
     expect(attachmentMimeType('image.png')).toBeNull()
     expect(attachmentMimeType('README')).toBeNull()
@@ -40,7 +46,7 @@ describe('formatMessageWithAttachment', () => {
 
   it('works with no typed message and notes truncation', () => {
     const out = formatMessageWithAttachment('', { name: 'a.txt', text: 'hello', truncated: true })
-    expect(out.startsWith('Attached file: a.txt (first 20,000 characters)')).toBe(true)
+    expect(out.startsWith('Attached file: a.txt (first 50,000 characters)')).toBe(true)
   })
 
   it('uses a fence longer than any tilde run in the content', () => {

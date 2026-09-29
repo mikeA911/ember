@@ -10,8 +10,8 @@ import { getAssistantDescriptor } from '@/lib/workbench/assistant-descriptor'
 import { parseDocument } from '@/lib/parsing'
 import { createWorkingKnowledgeItem } from '@/lib/projects/working-knowledge'
 import { ProjectValidationError } from '@/lib/projects/errors'
-import { conversationToTranscript } from '@/lib/chat/transcript'
-import { attachmentMimeType, truncateAttachmentText, MAX_ATTACHMENT_BYTES, type ChatAttachment } from '@/lib/chat/attachments'
+import { conversationToTranscript, isTranscriptRow, messagePreview } from '@/lib/chat/transcript'
+import { attachmentMimeType, truncateAttachmentText, MAX_ATTACHMENT_BYTES, ATTACHMENT_TYPES_LABEL, type ChatAttachment } from '@/lib/chat/attachments'
 
 // projectId is only consulted for a brand-new conversation (conversationId
 // null) -- see runAssistantTurn's own comment. Passing it for an existing
@@ -39,7 +39,7 @@ export async function extractChatAttachmentAction(
   if (!(file instanceof File)) return { error: 'No file provided' }
   if (file.size > MAX_ATTACHMENT_BYTES) return { error: 'File exceeds the 5MB attachment limit' }
   const mimeType = attachmentMimeType(file.name)
-  if (!mimeType) return { error: 'Unsupported file type (pdf, docx, txt, md, csv only)' }
+  if (!mimeType) return { error: `Unsupported file type (${ATTACHMENT_TYPES_LABEL} only)` }
 
   try {
     const parsed = await parseDocument(Buffer.from(await file.arrayBuffer()), mimeType)
@@ -57,18 +57,33 @@ export async function extractChatAttachmentAction(
 // member) as the project page's own note form and Ember's
 // save_working_knowledge tool. Errors come back as a value, same reason as
 // extractChatAttachmentAction above.
+//
+// The picker lists the same rows the transcript would include, by id, so
+// what the user ticks is exactly what gets saved.
+export async function listConversationNoteMessagesAction(
+  conversationId: string
+): Promise<{ id: string; role: 'user' | 'assistant'; preview: string }[]> {
+  const ctx = await requireUser()
+  // RLS scopes chat_messages to the caller's own conversation.
+  const rows = await listMessages(ctx.supabase, conversationId)
+  return rows.filter(isTranscriptRow).map((r) => ({ id: r.id, role: r.role, preview: messagePreview(r.content) }))
+}
+
 export async function saveConversationAsNoteAction(input: {
   conversationId: string
   projectId: string
   title: string
+  messageIds: string[]
 }): Promise<{ itemId: string; error?: never } | { itemId?: never; error: string }> {
   const ctx = await requireUser()
   // RLS only returns the caller's own conversation.
   const { data: conversation } = await ctx.supabase.from('conversations').select('id').eq('id', input.conversationId).maybeSingle()
   if (!conversation) return { error: 'Conversation not found' }
 
-  const content = conversationToTranscript(await listMessages(ctx.supabase, input.conversationId))
-  if (!content) return { error: 'Nothing to save yet -- this conversation has no messages' }
+  const selected = new Set(input.messageIds)
+  const rows = (await listMessages(ctx.supabase, input.conversationId)).filter((r) => selected.has(r.id))
+  const content = conversationToTranscript(rows)
+  if (!content) return { error: 'Pick at least one message to save' }
 
   try {
     const { itemId } = await createWorkingKnowledgeItem(ctx.supabase, { id: ctx.user.id, role: ctx.profile.role }, {

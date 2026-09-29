@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import {
   sendChatMessageAction,
   saveConversationAsNoteAction,
+  listConversationNoteMessagesAction,
   listChatModelsAction,
   getChatActivityAction,
   getConversationPendingStatusAction,
@@ -25,7 +26,7 @@ import type { MemberProjectOption } from '@/lib/projects/queries'
 import type { Conversation, FeedbackType } from '@/types/database'
 import { Markdown } from '@/components/shared/Markdown'
 import { deriveArtifacts, artifactsCount } from '@/lib/chat/artifacts'
-import { formatMessageWithAttachment, ATTACHMENT_ACCEPT, type ChatAttachment } from '@/lib/chat/attachments'
+import { formatMessageWithAttachment, ATTACHMENT_ACCEPT, ATTACHMENT_TYPES_LABEL, type ChatAttachment } from '@/lib/chat/attachments'
 import { defaultNoteTitle } from '@/lib/chat/transcript'
 import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, SuggestedPrompts } from './StructuredResponse'
 import { GatewayInvocationCard } from './GatewayInvocationCard'
@@ -205,6 +206,10 @@ export function ChatSession({
   const [noteError, setNoteError] = useState<string | null>(null)
   const [isSavingNote, setIsSavingNote] = useState(false)
   const [savedNote, setSavedNote] = useState<{ projectId: string; itemId: string } | null>(null)
+  // Which messages go into the note -- all ticked by default. null while
+  // the list is loading.
+  const [noteMessages, setNoteMessages] = useState<{ id: string; role: 'user' | 'assistant'; preview: string }[] | null>(null)
+  const [noteSelectedIds, setNoteSelectedIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
   const [models, setModels] = useState<ChatModelOption[]>([])
@@ -638,16 +643,41 @@ export function ChatSession({
     setNoteProjectId(projectId ?? projects[0]?.id ?? '')
     setNoteError(null)
     setSavedNote(null)
+    setNoteMessages(null)
     setShowSaveNote(true)
+    if (!conversationId) return
+    listConversationNoteMessagesAction(conversationId)
+      .then((rows) => {
+        setNoteMessages(rows)
+        setNoteSelectedIds(new Set(rows.map((r) => r.id)))
+      })
+      .catch(() => {
+        setNoteMessages([])
+        setNoteError('Could not load this conversation’s messages')
+      })
+  }
+
+  function toggleNoteMessage(id: string) {
+    setNoteSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   async function handleSaveNote(e: React.FormEvent) {
     e.preventDefault()
-    if (!conversationId || !noteProjectId || !noteTitle.trim()) return
+    if (!conversationId || !noteProjectId || !noteTitle.trim() || noteSelectedIds.size === 0) return
     setIsSavingNote(true)
     setNoteError(null)
     try {
-      const result = await saveConversationAsNoteAction({ conversationId, projectId: noteProjectId, title: noteTitle })
+      const result = await saveConversationAsNoteAction({
+        conversationId,
+        projectId: noteProjectId,
+        title: noteTitle,
+        messageIds: [...noteSelectedIds],
+      })
       if (result.error !== undefined) {
         setNoteError(result.error)
       } else {
@@ -1080,7 +1110,7 @@ export function ChatSession({
             ) : (
               <>
                 <p className="text-zinc-600">
-                  Saves this whole conversation as a private Working Knowledge note -- only you can see it until you share it from the
+                  Saves the messages you pick as a private Working Knowledge note -- only you can see it until you share it from the
                   project page.
                 </p>
                 <label className="flex flex-col gap-0.5">
@@ -1105,6 +1135,48 @@ export function ChatSession({
                     className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-zinc-800"
                   />
                 </label>
+                <fieldset className="flex flex-col gap-0.5">
+                  <legend className="flex w-full items-center justify-between text-zinc-500">
+                    <span>
+                      Messages
+                      {noteMessages && noteMessages.length > 0 && ` (${noteSelectedIds.size} of ${noteMessages.length})`}
+                    </span>
+                    {noteMessages && noteMessages.length > 0 && (
+                      <span className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setNoteSelectedIds(new Set(noteMessages.map((m) => m.id)))}
+                          className="underline hover:text-zinc-700"
+                        >
+                          All
+                        </button>
+                        <button type="button" onClick={() => setNoteSelectedIds(new Set())} className="underline hover:text-zinc-700">
+                          None
+                        </button>
+                      </span>
+                    )}
+                  </legend>
+                  {!noteMessages && <p className="text-zinc-400">Loading messages…</p>}
+                  {noteMessages && noteMessages.length > 0 && (
+                    <ul className="mt-0.5 flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded border border-zinc-200 bg-white p-1">
+                      {noteMessages.map((m) => (
+                        <li key={m.id}>
+                          <label className="flex cursor-pointer items-start gap-1.5 rounded px-1 py-0.5 hover:bg-zinc-50">
+                            <input
+                              type="checkbox"
+                              checked={noteSelectedIds.has(m.id)}
+                              onChange={() => toggleNoteMessage(m.id)}
+                              className="mt-0.5 shrink-0"
+                            />
+                            <span className="min-w-0 text-zinc-700">
+                              <span className="font-medium">{m.role === 'user' ? 'You' : 'Ember'}:</span> {m.preview}
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </fieldset>
               </>
             )}
             {noteError && <p className="text-red-600">{noteError}</p>}
@@ -1112,7 +1184,7 @@ export function ChatSession({
               {projects.length > 0 && (
                 <button
                   type="submit"
-                  disabled={isSavingNote || !noteTitle.trim() || !noteProjectId}
+                  disabled={isSavingNote || !noteTitle.trim() || !noteProjectId || noteSelectedIds.size === 0}
                   className="rounded bg-zinc-900 px-2 py-0.5 font-medium text-white disabled:opacity-50"
                 >
                   {isSavingNote ? 'Saving…' : 'Save note'}
@@ -1325,7 +1397,7 @@ export function ChatSession({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isPending || isAttaching || showFeedbackChooser}
-              title="Attach a file (pdf, docx, txt, md, csv — max 5MB)"
+              title={`Attach a file (${ATTACHMENT_TYPES_LABEL} — max 5MB)`}
               className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
             >
               {isAttaching ? 'Reading…' : 'Attach'}
