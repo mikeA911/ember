@@ -78,7 +78,7 @@ function slugify(name: string) {
     .replace(/(^-|-$)/g, '')
 }
 
-async function requireCuratorForProject(ctx: WorkbenchCallerContext, projectId: string, actionLabel: string) {
+export async function requireCuratorForProject(ctx: WorkbenchCallerContext, projectId: string, actionLabel: string) {
   const { profile } = ctx
   if (profile.role === 'anonymous') throw new AuthError(`Create an account to ${actionLabel}`)
   if (profile.role !== 'admin') {

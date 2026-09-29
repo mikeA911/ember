@@ -54,3 +54,16 @@ export function formatMessageWithAttachment(message: string, attachment: ChatAtt
   const body = `${header}\n\n${fence}\n${attachment.text}\n${fence}`
   return message ? `${message}\n\n${body}` : body
 }
+
+// The inverse of formatMessageWithAttachment, for tools that need the file
+// itself rather than the model's retelling of it (ontology-file-import-
+// tool.ts): the header line, then a tilde fence longer than any tilde run
+// inside, so the first matching closing fence ends the file.
+export function extractAttachmentsFromMessage(message: string): ChatAttachment[] {
+  const found: ChatAttachment[] = []
+  const pattern = /^Attached file: (.+?)( \(first [\d,]+ characters\))?\n\n(~{3,})\n([\s\S]*?)\n\3$/gm
+  for (const match of message.matchAll(pattern)) {
+    found.push({ name: match[1], truncated: Boolean(match[2]), text: match[4] })
+  }
+  return found
+}
