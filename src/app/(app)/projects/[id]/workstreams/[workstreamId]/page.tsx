@@ -24,6 +24,9 @@ import { listAttachableKnowledgeBasesForWorkstream } from '@/lib/knowledge-bases
 import { GeneratePresentationButton } from '@/components/projects/GeneratePresentationButton'
 import { getPresentation } from '@/lib/workbench/presentations'
 import { Markdown } from '@/components/shared/Markdown'
+import { WorkstreamArtifactList } from '@/components/projects/WorkstreamArtifactList'
+import { artifactCountLabel, artifactPreview, countArtifacts, sortArtifactsForReview } from '@/lib/projects/artifact-summary'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { env } from '@/lib/env'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 
@@ -135,6 +138,27 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   }
 
   const completedCount = workstream.deliverables.filter((d) => d.completed).length
+  const artifactCounts = countArtifacts(artifacts)
+  const artifactLabel = artifactCountLabel(artifactCounts)
+  const sortedArtifacts = sortArtifactsForReview(artifacts)
+
+  // Who added each artifact, for its collapsed row. Emails are display-only
+  // -- RLS already decided which artifacts this viewer sees; profiles RLS
+  // wouldn't let a member resolve a teammate's email, so this narrow
+  // id+email lookup uses the admin client (same pattern as Working
+  // Knowledge's owner labels).
+  const creatorIds = [...new Set(artifacts.filter((a) => a.created_via !== 'assistant' && a.created_by).map((a) => a.created_by!))]
+  const creatorEmailById = new Map<string, string>()
+  if (creatorIds.length > 0) {
+    const { data: creators } = await createAdminClient().from('profiles').select('id, email').in('id', creatorIds)
+    for (const c of creators ?? []) if (c.email) creatorEmailById.set(c.id, c.email)
+  }
+  const artifactAuthor = (a: (typeof artifacts)[number]) =>
+    a.created_via === 'assistant'
+      ? 'Created by Ember'
+      : a.created_by && a.created_by === user?.id
+        ? 'Added by you'
+        : `Added by ${(a.created_by && creatorEmailById.get(a.created_by)) || 'a team member'}`
 
   return (
     <div className="flex flex-col gap-8">
@@ -151,6 +175,14 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
         </div>
         <p className="mt-1 text-xs text-zinc-500">
           {completedCount}/{workstream.deliverables.length} deliverables complete
+          {artifactLabel && (
+            <>
+              {' · '}
+              <a href="#artifacts" className={`underline ${artifactCounts.awaitingReview > 0 ? 'font-medium text-amber-700' : ''}`}>
+                {artifactLabel}
+              </a>
+            </>
+          )}
         </p>
         {clonedFromWorkstreamName && (
           <p className="mt-1 text-xs text-zinc-500">
@@ -163,6 +195,109 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
       </div>
 
       <WorkstreamSummaryForm workstreamId={workstream.id} summary={workstream.summary} canEdit={canEdit} />
+
+      <section id="artifacts" className="flex scroll-mt-4 flex-col gap-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            Artifacts{artifacts.length > 0 && ` (${artifacts.length})`}
+          </h2>
+        </div>
+        <p className="text-xs text-zinc-500">
+          Evidence and outputs for this workstream -- attached by a team member, or created by Ember in chat. Long files
+          usually live elsewhere (a repo, a PR); an artifact holds the summary and the link.
+        </p>
+
+        {sortedArtifacts.length > 0 ? (
+          <WorkstreamArtifactList
+            items={sortedArtifacts.map((a) => ({
+              id: a.id,
+              status: a.status,
+              node: (
+                <details id={a.id} className="group rounded border border-zinc-200 bg-white p-4 scroll-mt-4">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center gap-2">
+                      <svg
+                        viewBox="0 0 20 20"
+                        className="h-3 w-3 shrink-0 text-zinc-400 transition-transform group-open:rotate-90"
+                        fill="currentColor"
+                      >
+                        <path d="M6 4l8 6-8 6V4z" />
+                      </svg>
+                      <h3 className="font-medium">{a.title}</h3>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      <ArtifactStatusBadge status={a.status} />
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                        {ARTIFACT_TYPE_LABELS[a.artifact_type] ?? a.artifact_type}
+                      </span>
+                    </span>
+                  </summary>
+                  {/* Shown collapsed too: who/when, whether it links out, and what it says. */}
+                  <p className="mt-1 pl-5 text-xs text-zinc-500">
+                    {artifactAuthor(a)} · {new Date(a.created_at).toLocaleDateString()}
+                    {a.external_tool && <> · via {a.external_tool}</>}
+                    {a.external_url && <> · has a link</>}
+                  </p>
+                  {artifactPreview(a.content) && (
+                    <p className="mt-0.5 truncate pl-5 text-xs text-zinc-600 group-open:hidden">{artifactPreview(a.content)}</p>
+                  )}
+                  {a.validation_notes && (
+                    <p className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-600">{a.validation_notes}</p>
+                  )}
+                  {a.content && (
+                    <div className="mt-2">
+                      <div className="mb-1 flex justify-end">
+                        <CopyArtifactButton title={a.title} content={a.content} />
+                      </div>
+                      <div className="rounded border border-zinc-100 bg-zinc-50 p-3">
+                        <Markdown text={a.content} />
+                      </div>
+                    </div>
+                  )}
+                  {a.external_url && (
+                    /^https?:\/\//i.test(a.external_url) ? (
+                      <a href={a.external_url} target="_blank" rel="noreferrer" className="mt-2 block text-sm text-blue-700 underline">
+                        {a.external_url}
+                      </a>
+                    ) : (
+                      <p className="mt-2 font-mono text-xs text-zinc-500" title="Not a public URL -- a local filesystem path can't be opened from the browser.">
+                        {a.external_url} <span className="italic text-zinc-400">(local path, not a link)</span>
+                      </p>
+                    )
+                  )}
+                  {a.notes && (
+                    <div className="mt-2 border-t border-zinc-100 pt-2">
+                      <Markdown text={a.notes} />
+                    </div>
+                  )}
+                  <Link
+                    href={`/projects/${id}/notes?contextType=workstream_artifact&contextId=${a.id}`}
+                    className="mt-2 inline-block text-xs text-blue-700 underline"
+                  >
+                    Add a note about this artifact
+                  </Link>
+                  <ArtifactReviewActions artifactId={a.id} projectId={id} workstreamId={workstreamId} status={a.status} canReview={canEdit} />
+                </details>
+              ),
+            }))}
+          />
+        ) : (
+          <p className="text-sm text-zinc-500">No artifacts attached yet.</p>
+        )}
+
+        {canAttach && (
+          <details className="group rounded border border-dashed border-zinc-300 p-3">
+            <summary className="cursor-pointer list-none text-sm font-medium text-zinc-700 hover:text-zinc-900 [&::-webkit-details-marker]:hidden">
+              <span className="group-open:hidden">+ Attach an artifact</span>
+              <span className="hidden group-open:inline">Attach an artifact</span>
+            </summary>
+            <div className="mt-3">
+              <AttachArtifactForm workstreamId={workstream.id} />
+            </div>
+          </details>
+        )}
+      </section>
+
 
       <section className="grid gap-6 sm:grid-cols-2">
         <div className="flex flex-col gap-3">
@@ -228,83 +363,6 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
       </section>
 
       <SystemUnderstandingCard projectId={id} summaries={assessmentSummaries} canCreate={canEdit} />
-
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Artifacts</h2>
-        <p className="text-xs text-zinc-500">
-          Evidence attached by a consultant after working externally (e.g. with Claude Code against a cloned
-          modernization workbench). The real generated files live in that external repo/PR — this is a link plus a
-          summary, not a file store.
-        </p>
-
-        <div className="flex flex-col gap-3">
-          {artifacts.map((a) => (
-            <details key={a.id} id={a.id} className="group rounded border border-zinc-200 bg-white p-4 scroll-mt-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-                <span className="flex items-center gap-2">
-                  <svg
-                    viewBox="0 0 20 20"
-                    className="h-3 w-3 shrink-0 text-zinc-400 transition-transform group-open:rotate-90"
-                    fill="currentColor"
-                  >
-                    <path d="M6 4l8 6-8 6V4z" />
-                  </svg>
-                  <h3 className="font-medium">{a.title}</h3>
-                </span>
-                <span className="flex shrink-0 items-center gap-1.5">
-                  <ArtifactStatusBadge status={a.status} />
-                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">
-                    {ARTIFACT_TYPE_LABELS[a.artifact_type] ?? a.artifact_type}
-                  </span>
-                </span>
-              </summary>
-              <p className="mt-1 text-xs text-zinc-500">
-                {a.external_tool && <>via {a.external_tool} · </>}
-                {new Date(a.created_at).toLocaleString()}
-              </p>
-              {a.validation_notes && (
-                <p className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-2 text-xs text-zinc-600">{a.validation_notes}</p>
-              )}
-              {a.content && (
-                <div className="mt-2">
-                  <div className="mb-1 flex justify-end">
-                    <CopyArtifactButton title={a.title} content={a.content} />
-                  </div>
-                  <div className="rounded border border-zinc-100 bg-zinc-50 p-3">
-                    <Markdown text={a.content} />
-                  </div>
-                </div>
-              )}
-              {a.external_url && (
-                /^https?:\/\//i.test(a.external_url) ? (
-                  <a href={a.external_url} target="_blank" rel="noreferrer" className="mt-2 block text-sm text-blue-700 underline">
-                    {a.external_url}
-                  </a>
-                ) : (
-                  <p className="mt-2 font-mono text-xs text-zinc-500" title="Not a public URL -- a local filesystem path can't be opened from the browser.">
-                    {a.external_url} <span className="italic text-zinc-400">(local path, not a link)</span>
-                  </p>
-                )
-              )}
-              {a.notes && (
-                <div className="mt-2 border-t border-zinc-100 pt-2">
-                  <Markdown text={a.notes} />
-                </div>
-              )}
-              <Link
-                href={`/projects/${id}/notes?contextType=workstream_artifact&contextId=${a.id}`}
-                className="mt-2 inline-block text-xs text-blue-700 underline"
-              >
-                Add a note about this artifact
-              </Link>
-              <ArtifactReviewActions artifactId={a.id} projectId={id} workstreamId={workstreamId} status={a.status} canReview={canEdit} />
-            </details>
-          ))}
-          {artifacts.length === 0 && <p className="text-sm text-zinc-500">No artifacts attached yet.</p>}
-        </div>
-
-        {canAttach && <AttachArtifactForm workstreamId={workstream.id} />}
-      </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Presentation</h2>
