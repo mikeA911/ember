@@ -50,7 +50,7 @@ const CreateInputSchema = z.object({
 export const CREATE_PROJECT_ONTOLOGY_TOOL: ToolSpec = {
   name: CREATE_PROJECT_ONTOLOGY_TOOL_NAME,
   description:
-    'Create the domain objects and workstreams you just suggested via suggest_project_ontology, exactly as the user confirmed -- apply any changes they asked for first, keeping each item\'s tempId and parentTempId links consistent (a parentTempId must match another item\'s own tempId in this same call, or be omitted for a top-level item). Only call this after the user has explicitly confirmed in their own reply -- never call it in the same turn you proposed the suggestion, and never invent objects/workstreams the user has not seen. Requires this project\'s own owner or curator role (or platform admin).',
+    'Create the domain objects and workstreams you just suggested via suggest_project_ontology -- or mapped from an ontology file the user attached or pasted -- exactly as the user confirmed -- apply any changes they asked for first, keeping each item\'s tempId and parentTempId links consistent (a parentTempId must match another item\'s own tempId in this same call, or be omitted for a top-level item). Only call this after the user has explicitly confirmed in their own reply -- never call it in the same turn you proposed the suggestion, and never invent objects/workstreams the user has not seen. Requires this project\'s own owner or curator role (or platform admin).',
   parameters: z.toJSONSchema(CreateInputSchema),
 }
 
