@@ -18,6 +18,7 @@ import type {
   PresentationActionType,
   PresentationStatus,
   SlideCommentClassification,
+  TableUpdate,
 } from '@/types/database'
 import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
 
@@ -543,7 +544,7 @@ export async function updatePresentationAction(
   actionId: string,
   patch: { status?: PresentationActionStatus; evidence?: string | null }
 ): Promise<void> {
-  const update: Record<string, unknown> = {}
+  const update: TableUpdate<'presentation_actions'> = {}
   if (patch.status !== undefined) update.status = patch.status
   if (patch.evidence !== undefined) update.evidence = patch.evidence || null
 

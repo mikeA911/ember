@@ -1,7 +1,7 @@
 import 'server-only'
 import { AuthError } from '@/lib/auth'
 import { ProjectValidationError } from '@/lib/projects/errors'
-import type { Method } from '@/types/database'
+import type { Method, TableUpdate } from '@/types/database'
 import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
 
 // Builder Ontology, Part C (docs/kbs-ontology-dev-req-3.md): a reusable
@@ -92,7 +92,7 @@ export async function updateMethodDraft(
     reviewPoints?: string | null
   }
 ): Promise<{ methodId: string }> {
-  const update: Record<string, unknown> = {}
+  const update: TableUpdate<'methods'> = {}
   if (patch.name !== undefined) update.name = patch.name
   if (patch.description !== undefined) update.description = patch.description || null
   if (patch.requirements !== undefined) update.requirements = patch.requirements || null

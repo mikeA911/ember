@@ -209,7 +209,7 @@ export interface Setting<T = unknown> {
   updated_by: string | null
 }
 
-export type AIOperationName = 'generate_text' | 'generate_structured' | 'embed'
+export type AIOperationName = 'generate_text' | 'generate_structured' | 'generate_chat' | 'embed'
 
 export interface AIOperationLog {
   id: string
@@ -2296,7 +2296,7 @@ export type KnowledgeSourceUpdate = Partial<Omit<KnowledgeSource, 'id' | 'create
 export type ChunkInsert = Omit<DocumentChunk, 'id' | 'created_at'>
 export type ChunkUpdate = Partial<Omit<DocumentChunk, 'id' | 'document_id' | 'chunk_index' | 'created_at'>>
 
-export type KBVectorInsert = Omit<KBVector, 'id' | 'approved_date' | 'last_updated'>
+export type KBVectorInsert = Omit<KBVector, 'id' | 'approved_date' | 'last_updated'> & Partial<Pick<KBVector, 'last_updated'>>
 export type KBVectorUpdate = Partial<Omit<KBVector, 'id' | 'chunk_id' | 'document_id' | 'approved_date'>>
 
 export type WikiArticleInsert = Omit<
@@ -2319,7 +2319,7 @@ export type WorkstreamKnowledgeBaseUpdate = never
 
 export type WikiVersionInsert = Omit<WikiVersion, 'id' | 'created_at' | 'promoted_from_trending_item_id'> &
   Partial<Pick<WikiVersion, 'promoted_from_trending_item_id'>>
-export type WikiVersionUpdate = Partial<Pick<WikiVersion, 'approved_by' | 'approved_at'>>
+export type WikiVersionUpdate = Partial<Pick<WikiVersion, 'approved_by' | 'approved_at' | 'promoted_from_trending_item_id'>>
 
 export type WikiSourceInsert = Omit<WikiSource, 'id' | 'created_at'>
 
@@ -2375,6 +2375,8 @@ export type ProjectInsert = Omit<
       | 'goal'
       | 'starter_prompt'
       | 'portfolio_category'
+      | 'discoverability'
+      | 'is_organization_home'
       | 'public_full_detail'
       | 'information_sensitivity'
       | 'created_via'
@@ -2656,7 +2658,9 @@ export type WorkstreamArtifactInsert = Omit<
   WorkstreamArtifact,
   'id' | 'created_at' | 'created_via' | 'assistant_prompt_version' | 'assistant_conversation_id' | 'status' | 'validation_notes' | 'reviewed_by' | 'reviewed_at'
 > &
-  Partial<Pick<WorkstreamArtifact, 'created_via' | 'assistant_prompt_version' | 'assistant_conversation_id' | 'status' | 'validation_notes'>>
+  Partial<
+    Pick<WorkstreamArtifact, 'created_via' | 'assistant_prompt_version' | 'assistant_conversation_id' | 'status' | 'validation_notes' | 'reviewed_by' | 'reviewed_at'>
+  >
 export type WorkstreamArtifactUpdate = Pick<WorkstreamArtifact, 'status'> &
   Partial<Pick<WorkstreamArtifact, 'validation_notes' | 'reviewed_by' | 'reviewed_at'>>
 
@@ -2729,14 +2733,24 @@ export type BuilderIntegrationInvocationInsert = Omit<
   BuilderIntegrationInvocation,
   'id' | 'created_at' | 'confirmed_at' | 'confirmed_by' | 'executed_at' | 'status' | 'output' | 'error' | 'correlated_amount'
 > &
-  Partial<Pick<BuilderIntegrationInvocation, 'status' | 'output' | 'error' | 'correlated_amount'>>
+  Partial<Pick<BuilderIntegrationInvocation, 'status' | 'output' | 'error' | 'correlated_amount' | 'executed_at'>>
 export type BuilderIntegrationInvocationUpdate = Partial<Omit<BuilderIntegrationInvocation, 'id' | 'created_at'>>
 
 // @supabase/postgrest-js requires every table to carry a `Relationships`
 // array and the schema to declare `Views`, even when empty -- omitting them
 // doesn't error, it silently collapses every Row/Insert/Update type to
 // `never` throughout the app, which is exactly what happened here once.
-export interface Database {
+// Newer postgrest-js (supabase-js >= 2.5x) adds a second way to hit the same
+// silent `never`: each Row/Insert/Update must be assignable to
+// Record<string, unknown>, which a TS `interface` never is (no implicit
+// index signature). The row types above are interfaces, so tables are
+// declared here as written and Database (below) re-maps each one through
+// Plain<>, which turns an interface into an equivalent object type.
+// Insert/Update are also made Partial: 2.45.4 never enforced required
+// insert columns, and many hand-written Insert types below mark columns
+// that have a database default as required. Column names and value types
+// are still checked (including the newer excess-property check).
+interface DatabaseDefinition {
   __InternalSupabase: {
     PostgrestVersion: '12'
   }
@@ -2762,7 +2776,14 @@ export interface Database {
         Update: KnowledgeSourceUpdate
         Relationships: []
       }
-      document_chunks: { Row: DocumentChunk; Insert: ChunkInsert; Update: ChunkUpdate; Relationships: [] }
+      document_chunks: {
+        Row: DocumentChunk
+        Insert: ChunkInsert
+        Update: ChunkUpdate
+        Relationships: [
+          { foreignKeyName: 'document_chunks_document_id_fkey'; columns: ['document_id']; isOneToOne: false; referencedRelation: 'documents'; referencedColumns: ['id'] },
+        ]
+      }
       kb_vectors: { Row: KBVector; Insert: KBVectorInsert; Update: KBVectorUpdate; Relationships: [] }
       settings: { Row: Setting; Insert: Setting; Update: Partial<Setting>; Relationships: [] }
       ai_operation_logs: {
@@ -2797,7 +2818,24 @@ export interface Database {
         Relationships: []
       }
       wiki_versions: { Row: WikiVersion; Insert: WikiVersionInsert; Update: WikiVersionUpdate; Relationships: [] }
-      wiki_sources: { Row: WikiSource; Insert: WikiSourceInsert; Update: Partial<WikiSource>; Relationships: [] }
+      wiki_sources: {
+        Row: WikiSource
+        Insert: WikiSourceInsert
+        Update: Partial<WikiSource>
+        // Declared (not []) because src/lib/wiki/sources.ts embeds all three
+        // -- newer postgrest-js types an undeclared embed as a SelectQueryError.
+        Relationships: [
+          { foreignKeyName: 'wiki_sources_document_id_fkey'; columns: ['document_id']; isOneToOne: false; referencedRelation: 'documents'; referencedColumns: ['id'] },
+          { foreignKeyName: 'wiki_sources_chunk_id_fkey'; columns: ['chunk_id']; isOneToOne: false; referencedRelation: 'document_chunks'; referencedColumns: ['id'] },
+          {
+            foreignKeyName: 'wiki_sources_workstream_artifact_id_fkey'
+            columns: ['workstream_artifact_id']
+            isOneToOne: false
+            referencedRelation: 'workstream_artifacts'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       wiki_relations: {
         Row: WikiRelation
         Insert: WikiRelationInsert
@@ -2988,7 +3026,9 @@ export interface Database {
       }
       graph_steps: { Row: GraphStep; Insert: GraphStepInsert; Update: GraphStepUpdate; Relationships: [] }
       conversations: { Row: Conversation; Insert: ConversationInsert; Update: ConversationUpdate; Relationships: [] }
-      chat_messages: { Row: ChatMessageRow; Insert: ChatMessageInsert; Update: never; Relationships: [] }
+      // Only content is rewritten, and only by the Agent Gateway's admin-client
+      // tool-message sync (src/lib/mcp-gateway/execute.ts); rows are otherwise append-only.
+      chat_messages: { Row: ChatMessageRow; Insert: ChatMessageInsert; Update: Pick<ChatMessageRow, 'content'>; Relationships: [] }
     }
     Views: Record<string, never>
     Functions: {
@@ -2996,6 +3036,7 @@ export interface Database {
       is_curator_or_admin: { Args: { uid: string }; Returns: boolean }
       increment_approved_chunks: { Args: { doc_id: string }; Returns: void }
       increment_rejected_chunks: { Args: { doc_id: string }; Returns: void }
+      decrement_approved_chunks: { Args: { doc_id: string }; Returns: void }
       match_documents: {
         Args: {
           query_embedding: number[]
@@ -3025,3 +3066,24 @@ export interface Database {
     }
   }
 }
+
+type Plain<T> = T extends object ? { [K in keyof T]: T[K] } : T
+
+type PlainTables<T> = {
+  [K in keyof T]: T[K] extends { Row: infer R; Insert: infer I; Update: infer U; Relationships: infer Rel }
+    ? { Row: Plain<R>; Insert: Partial<Plain<I>>; Update: Partial<Plain<U>>; Relationships: Rel }
+    : never
+}
+
+export type Database = {
+  __InternalSupabase: DatabaseDefinition['__InternalSupabase']
+  public: {
+    Tables: PlainTables<DatabaseDefinition['public']['Tables']>
+    Views: DatabaseDefinition['public']['Views']
+    Functions: DatabaseDefinition['public']['Functions']
+  }
+}
+
+// For building an update patch field by field (`const patch: TableUpdate<'methods'> = {}`)
+// -- a Record<string, unknown> patch no longer type-checks against .update().
+export type TableUpdate<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update']

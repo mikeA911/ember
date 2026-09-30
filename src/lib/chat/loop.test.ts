@@ -525,7 +525,7 @@ describe('runAssistantTurn -- structured responses', () => {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { max_sensitivity: 'internal' }, error: null }) }) }) }
       }
       return originalFrom(table)
-    }) as typeof ctx.supabase.from
+    }) as unknown as typeof ctx.supabase.from
 
     const result = await runAssistantTurn(ctx, null, 'What does the restricted article say?')
 
@@ -560,7 +560,7 @@ describe('runAssistantTurn -- structured responses', () => {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { max_sensitivity: 'internal' }, error: null }) }) }) }
       }
       return originalFrom(table)
-    }) as typeof ctx.supabase.from
+    }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
 
     const result = await runAssistantTurn(ctx, null, 'What is this project about?', undefined, 'proj-1')
@@ -625,7 +625,7 @@ describe('runAssistantTurn -- project-bound member tools', () => {
         return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
       }
       return originalFrom(table)
-    }) as typeof ctx.supabase.from
+    }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
 
     await runAssistantTurn(ctx, null, 'hi', undefined, 'proj-1')
@@ -661,7 +661,7 @@ describe('runAssistantTurn -- create_workstream projectId and tool error message
         return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
       }
       return originalFrom(table)
-    }) as typeof ctx.supabase.from
+    }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
     return ctx
   }
@@ -778,7 +778,7 @@ describe('runAssistantTurn -- search_web', () => {
         return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
       }
       return originalFrom(table)
-    }) as typeof ctx.supabase.from
+    }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
     return ctx
   }
@@ -909,7 +909,7 @@ describe('runAssistantTurn -- working knowledge tools', () => {
         return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
       }
       return originalFrom(table)
-    }) as typeof ctx.supabase.from
+    }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
     return ctx
   }
