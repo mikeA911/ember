@@ -14,6 +14,20 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "6mb",
     },
   },
+  async headers() {
+    return [
+      {
+        // The OAuth consent page for AI apps (src/app/(auth)/oauth/consent)
+        // must never render inside another site's frame -- a framed "Allow"
+        // button is a clickjacking target.
+        source: "/oauth/consent",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+        ],
+      },
+    ];
+  },
   images: {
     // Admin-uploaded branding icons live in Supabase Storage (a public
     // bucket) rather than public/ once configured -- see src/lib/branding.ts.

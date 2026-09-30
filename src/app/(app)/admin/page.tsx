@@ -23,6 +23,8 @@ import { listBuilderOperationsRows } from '@/lib/workbench/builder-progress-upda
 import { MethodsReview } from '@/components/admin/MethodsReview'
 import { listPendingMethods } from '@/lib/workbench/methods'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
+import { AgentAccessSettings } from '@/components/admin/AgentAccessSettings'
+import { listMcpAccessUsers, listMcpActivity, listMcpApprovedClients } from '@/lib/mcp/admin'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -74,6 +76,11 @@ export default async function AdminPage() {
   const callerCtx = { user, profile, supabase } as unknown as WorkbenchCallerContext
   const pendingWorkstreamPromotions = await listPendingWorkstreamPromotions(callerCtx)
   const pendingMethods = await listPendingMethods(callerCtx)
+  const [mcpUsers, mcpClients, mcpActivity] = await Promise.all([
+    listMcpAccessUsers(callerCtx),
+    listMcpApprovedClients(callerCtx),
+    listMcpActivity(callerCtx, { ownOnly: false, limit: 50 }),
+  ])
 
   // Builder Operations only makes sense in a builder-mode deployment --
   // there's no "builder_lab" Project category to review in Enterprise mode.
@@ -139,6 +146,19 @@ export default async function AdminPage() {
             content: <WorkstreamPromotionsReview promotions={pendingWorkstreamPromotions} />,
           },
           { id: 'methods', label: 'Methods', content: <MethodsReview methods={pendingMethods} /> },
+          {
+            id: 'ai-app-access',
+            label: 'AI app access',
+            content: (
+              <AgentAccessSettings
+                enabled={env.mcpEnabled()}
+                mcpUrl={`${env.siteUrl()}/api/mcp`}
+                users={mcpUsers}
+                clients={mcpClients}
+                activity={mcpActivity}
+              />
+            ),
+          },
           ...(isBuilderMode
             ? [
                 {

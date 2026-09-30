@@ -1,6 +1,6 @@
 # Development Request — Ember External MCP Server (read-only, guarded)
 
-**Status:** Proposed — design for review (revised: OAuth sign-in for mobile chatbots)  
+**Status:** Phase 1 (read-only) implemented. Setup: [`docs/guides/ember-mcp-oauth-setup.md`](guides/ember-mcp-oauth-setup.md)  
 **Priority:** P2  
 **Public roadmap alignment:** M5 Apply, M7 Govern  
 **Builds on:** `src/lib/mcp/tools.ts` (internal tool contract), `src/lib/workbench/identity.ts` (`resolveCallerIdentityFromToken`), `src/lib/ai/sensitivity.ts`, `docs/dev-request-ai-accessible-application-discovery-and-mcp-method-extension.md` (Stage 4), `docs/workbench-handbook-mcp-architecture.md`
@@ -76,9 +76,9 @@ A Supabase OAuth token is a full user token. If one leaked, it could be sent dir
 - Restricted evidence stays governed by `has_evidence_access` through RLS.
 
 ### 5. Sensitivity: data is leaving Ember for a third-party AI
-Answers flow into Anthropic's or OpenAI's consumer apps, which makes them AI providers under Ember's own policy. The design reuses the existing admin-configured `ai_provider_sensitivity_eligibility` table:
-- Each approved redirect URI maps to a provider id (claude.ai → `anthropic`, chatgpt.com → `openai`).
-- That provider's `max_sensitivity` is the ceiling for the connection (no row → `internal`, the existing safe default). `restricted` is never returned over MCP.
+Answers flow into Anthropic's or OpenAI's consumer apps, which makes them AI providers under Ember's own policy:
+- Each approved app row (`mcp_approved_clients`) carries its own `max_sensitivity` (default `internal`; `restricted` is not allowed). *As built:* a column on the approved-app row, set on Admin → AI app access, rather than a mapping to `ai_provider_sensitivity_eligibility`. The chatbot apps aren't rows in `ai_providers`, and one explicit setting per app is clearer to an admin.
+- Tier lookups (`src/lib/mcp/sensitivity.ts`) read `resource_access_policies` with the service-role client, returning tier values by id only. That table is readable under RLS only by project managers, so the user's own client would see every document as unclassified (→ `internal`).
 - Projects above the ceiling are invisible. Knowledge hits pass through `getEffectiveSensitivity`, and anything above the ceiling is dropped with a note such as "2 results withheld by your organisation's AI policy".
 
 ### 6. Volume
@@ -88,7 +88,7 @@ Answers flow into Anthropic's or OpenAI's consumer apps, which makes them AI pro
 
 ### 7. Tokens and revocation
 - Short-lived access tokens (Supabase default 1 hour), refreshed by the chatbot.
-- **Profile → Connected AI apps** lists the user's connections with last-used time and a Disconnect button, which revokes the Supabase grant. An Ember-side `mcp_revoked_clients` check on every call makes disconnection take effect immediately, not when the access token expires.
+- **Profile → Connected AI apps** lists the user's connections and recent activity, with a Disconnect button that revokes the Supabase grant (deleting that client's sessions and refresh tokens). *As built:* no separate revocation table is needed. `/api/mcp` validates every token with `auth.getUser`, which fails once the token's session is gone, so disconnection takes effect on the next call.
 - Removing someone from `mcp_access_users` cuts them off on the next call.
 - **Kill switch:** `EMBER_MCP_ENABLED` env var (off by default); when off, every call returns 503.
 
@@ -126,9 +126,9 @@ Every result includes an Ember URL, so the builder can tap through to the PWA fo
 | OAuth consent page (allowlist + redirect-URI checks, Allow/Deny) | `src/app/(auth)/oauth/consent/page.tsx` |
 | External tool registry + per-request server | `src/lib/mcp/external-tools.ts`, `src/lib/mcp/server.ts` |
 | Token verification, allowlist, revocation, rate limit, audit | `src/lib/mcp/access.ts` |
-| Project summary loader (shared with the project page) | `src/lib/projects/summary-loader.ts` |
+| Project summary loader (RLS-only; the project page's own loader keeps its service-role fallbacks, which an external app must not get) | `src/lib/mcp/project-summary.ts` |
 | Profile → Connected AI apps; Admin → Agent access | components under `src/components/profile`, `src/components/admin` |
-| Migration: `mcp_access_users`, `mcp_redirect_uris` (+ provider mapping), `mcp_revoked_clients`, `mcp_access_log`, `mcp_rate_counters`, restrictive no-write policies | `supabase/migrations/2026100…_external_mcp.sql` |
+| Migration: `mcp_access_users`, `mcp_approved_clients` (+ per-app sensitivity ceiling), `mcp_access_log`, `mcp_rate_counters`, restrictive no-write policies, `SECURITY DEFINER` guards | `supabase/migrations/20261003100001_external_mcp_access.sql` |
 
 ## Prerequisites / setup
 
@@ -174,3 +174,12 @@ Every result includes an Ember URL, so the builder can tap through to the PWA fo
 5. An OAuth-issued token cannot insert, update or delete any row or storage object, whether through the MCP tools or directly against Supabase.
 6. Disconnecting in Ember, or removal from the allowlist, takes effect on the next call.
 7. Every call, including denied and rate-limited ones, produces an audit row visible to the user and admins.
+
+## Implementation notes (Phase 1)
+
+- **Requires the `client_id` claim.** `/api/mcp` refuses any token without it, including a browser session token, because the database's read-only policies key on that claim. If Supabase ever issued an OAuth token without it, the connector fails closed.
+- **Verified against a real Postgres 16** with every migration replayed. With a `client_id` claim, reads work, while update and delete affect 0 rows, insert raises an RLS violation, the guarded RPCs raise, `storage.objects` writes fail, and `mcp_rate_hit` is not executable. The same user without the claim writes normally.
+- **Consent phishing and clickjacking:** an approved redirect URI doesn't stop someone sending a builder the authorization link from *their own* Claude account. The consent page shows the signed-in email and warns against approving a sign-in you didn't start. `/oauth/consent` is served with `X-Frame-Options: DENY` and `frame-ancestors 'none'`. The allowlist keeps the pool of possible targets small.
+- **Project scope:** project tools require active membership (not just RLS visibility) and apply the sensitivity ceiling. Both failures return the same "not found".
+- **supabase-js** was upgraded from the pinned 2.45.4 to 2.117 for the `auth.oauth` consent APIs; see that commit for the `Database` type changes it required.
+- **Related finding, not changed here:** Ember's in-app Assistant looks up document sensitivity tiers with the user's RLS client (`getEffectiveSensitivity(ctx.supabase, …)` in `src/lib/chat/loop.ts`). For anyone who isn't the project's manager, that sees no `resource_access_policies` rows, so a Confidential or Restricted document is treated as `internal` for provider-eligibility checks. The MCP server avoids this (see §5); the Assistant needs the same fix.

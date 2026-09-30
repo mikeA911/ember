@@ -6,7 +6,9 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/browser'
 import { ensureProfile } from '@/app/actions/auth'
 
-export function LoginForm() {
+// next: a same-site path to return to after sign-in (already validated by
+// the login page with safeNextPath), e.g. the MCP OAuth consent page.
+export function LoginForm({ next }: { next?: string | null }) {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -28,7 +30,7 @@ export function LoginForm() {
     }
 
     await ensureProfile()
-    router.push('/dashboard')
+    router.push(next ?? '/dashboard')
     router.refresh()
   }
 

@@ -2736,6 +2736,43 @@ export type BuilderIntegrationInvocationInsert = Omit<
   Partial<Pick<BuilderIntegrationInvocation, 'status' | 'output' | 'error' | 'correlated_amount' | 'executed_at'>>
 export type BuilderIntegrationInvocationUpdate = Partial<Omit<BuilderIntegrationInvocation, 'id' | 'created_at'>>
 
+// External MCP server (supabase/migrations/20261003100001_external_mcp_access.sql).
+export interface McpAccessUser {
+  user_id: string
+  note: string | null
+  added_by: string | null
+  created_at: string
+}
+
+export type McpClientSensitivity = Exclude<InformationSensitivity, 'restricted'>
+
+export interface McpApprovedClient {
+  redirect_uri: string
+  label: string
+  max_sensitivity: McpClientSensitivity
+  created_by: string | null
+  created_at: string
+}
+
+export type McpAccessStatus = 'ok' | 'denied' | 'rate_limited' | 'error'
+
+export interface McpAccessLogEntry {
+  id: number
+  user_id: string | null
+  client_id: string | null
+  method: string
+  tool: string | null
+  project_id: string | null
+  args_summary: string | null
+  result_count: number | null
+  withheld_count: number | null
+  status: McpAccessStatus
+  error: string | null
+  latency_ms: number | null
+  user_agent: string | null
+  created_at: string
+}
+
 // @supabase/postgrest-js requires every table to carry a `Relationships`
 // array and the schema to declare `Views`, even when empty -- omitting them
 // doesn't error, it silently collapses every Row/Insert/Update type to
@@ -3029,6 +3066,24 @@ interface DatabaseDefinition {
       // Only content is rewritten, and only by the Agent Gateway's admin-client
       // tool-message sync (src/lib/mcp-gateway/execute.ts); rows are otherwise append-only.
       chat_messages: { Row: ChatMessageRow; Insert: ChatMessageInsert; Update: Pick<ChatMessageRow, 'content'>; Relationships: [] }
+      mcp_access_users: {
+        Row: McpAccessUser
+        Insert: Omit<McpAccessUser, 'created_at'>
+        Update: never
+        Relationships: []
+      }
+      mcp_approved_clients: {
+        Row: McpApprovedClient
+        Insert: Omit<McpApprovedClient, 'created_at'>
+        Update: Partial<Pick<McpApprovedClient, 'label' | 'max_sensitivity'>>
+        Relationships: []
+      }
+      mcp_access_log: {
+        Row: McpAccessLogEntry
+        Insert: Omit<McpAccessLogEntry, 'id' | 'created_at'>
+        Update: never
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -3037,6 +3092,7 @@ interface DatabaseDefinition {
       increment_approved_chunks: { Args: { doc_id: string }; Returns: void }
       increment_rejected_chunks: { Args: { doc_id: string }; Returns: void }
       decrement_approved_chunks: { Args: { doc_id: string }; Returns: void }
+      mcp_rate_hit: { Args: { p_user_id: string; p_client_id: string; p_minute_limit: number; p_day_limit: number }; Returns: boolean }
       match_documents: {
         Args: {
           query_embedding: number[]
