@@ -13,7 +13,7 @@ function slugForFilename(name: string) {
   )
 }
 
-// The project page's status summary, opened from the page header next to
+// The project page's summary (newcomer brief + current status), opened from the page header next to
 // the Ontology Map and built the same way: a native <dialog> (showModal),
 // with a download for sharing outside Ember. The Markdown is built when the
 // dialog opens, stamped in the viewer's own timezone, so a downloaded copy
@@ -82,7 +82,7 @@ export function ProjectSummaryButton({ summary }: { summary: ProjectSummaryInput
                 Project summary
               </h2>
               <p className="mt-0.5 text-xs text-zinc-500">
-                Where this project stands right now -- workstreams, deliverables, artifacts, knowledge, governance and open notes.
+                A brief for anyone new to the project -- its goal, requirements, workstreams and where to learn more -- followed by where the work stands right now.
               </p>
             </div>
             <div className="flex items-center gap-2">
