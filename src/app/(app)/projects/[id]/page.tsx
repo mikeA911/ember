@@ -35,6 +35,8 @@ import { WorkingKnowledgePanel } from '@/components/projects/WorkingKnowledgePan
 import { CloneProjectButton } from '@/components/projects/CloneProjectButton'
 import { getOntologyMapData, computeOntologyMapLayout } from '@/lib/projects/ontology-map'
 import { OntologyMapButton } from '@/components/projects/OntologyMapButton'
+import { ProjectSummaryButton } from '@/components/projects/ProjectSummaryButton'
+import type { ProjectSummaryInput } from '@/lib/projects/status-summary'
 
 const TYPE_LABELS: Record<string, string> = {
   learning: 'Learning',
@@ -340,6 +342,45 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     artifactStatusesByWorkstream.set(a.workstream_id, list)
   }
 
+  const projectSummary: ProjectSummaryInput = {
+    name: project.name,
+    typeLabel: TYPE_LABELS[project.project_type] ?? project.project_type,
+    status: showStatusBadge ? project.status : null,
+    objective: project.objective,
+    goal: project.goal,
+    members: directoryMembers.map((m) => ({ email: m.email, role: m.role })),
+    workstreams: workstreams.map((w) => ({
+      name: w.name,
+      status: w.status,
+      lifecycleStage: w.lifecycle_stage,
+      operationalStatus: w.operational_status,
+      goal: w.goal,
+      deliverables: w.deliverables,
+      artifacts: countArtifacts(artifactStatusesByWorkstream.get(w.id) ?? []),
+    })),
+    knowledgeBases: effectiveKnowledgeBases.map((kb) => ({ name: kb.name, status: kb.status })),
+    wikiArticles: effectiveLinkedArticles.flatMap((l) => (l.article ? [l.article.title] : [])),
+    evalDatasets: (evalDatasets ?? []).map((d) => ({ name: d.name, status: d.status })),
+    governance: {
+      approvalTypes: (approvalPolicies ?? []).length,
+      authorityGaps: missingAuthorities.map((p) => p.approval_type),
+    },
+    ontology: {
+      objects: ontologyMapData.objects.length,
+      workstreams: ontologyMapData.workstreams.length,
+      flowEdges: ontologyMapData.flowEdges.length,
+      objectLinks: ontologyMapData.linkEdges.length,
+    },
+    openNotes: openNotes.map((n) => ({ subject: n.subject, authorEmail: n.author?.email ?? null })),
+    pendingReview: canCurateWorkstreams
+      ? {
+          joinRequests: (joinRequests ?? []).filter((r) => r.status === 'pending').length,
+          sourceSubmissions: (sourceSubmissions ?? []).filter((s) => s.status === 'pending').length,
+          workstreamPromotions: pendingWorkstreamPromotions.length,
+        }
+      : undefined,
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -385,6 +426,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
               <OntologyMapButton layout={ontologyMapLayout} projectId={project.id} projectName={project.name} />
             </>
           )}
+          <span className="text-zinc-300">·</span>
+          <ProjectSummaryButton summary={projectSummary} />
         </div>
         {clonedFromProjectName && (
           <p className="mt-1 text-xs text-zinc-500">
