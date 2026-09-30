@@ -20,9 +20,15 @@ vi.mock('@/lib/ai', async () => {
   }
 })
 
+// Document tiers are read with the service-role client; route them to the
+// same fake the test hands to fakeCtx.
+let tierClient: unknown = null
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => tierClient }))
+
 const { maybeRefreshSummary, getConversationSummary } = await import('./summary')
 
 function fakeCtx(supabase: unknown): WorkbenchCallerContext {
+  tierClient = supabase
   return { user: { id: 'user-1' }, profile: { id: 'user-1', role: 'curator' }, supabase } as unknown as WorkbenchCallerContext
 }
 

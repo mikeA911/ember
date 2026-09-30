@@ -1,5 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database, EvidenceResourceType, InformationSensitivity } from '@/types/database'
 import type { AIProvider, EmbedInput, GenerateChatInput, GenerateStructuredInput, GenerateTextInput } from './provider'
 
@@ -47,6 +48,34 @@ const SENSITIVITY_LABEL: Record<InformationSensitivity, string> = {
 // nothing-retrieved-yet -> 'public' floor exactly as before); a project IS
 // bound whenever this is `null` (present, unclassified -> 'internal', same
 // conservative default as any other unclassified resource) or a real tier.
+// Resource id -> tier, for every id asked about (unclassified -> 'internal').
+// Reads resource_access_policies with the service-role client on purpose:
+// that table's only RLS policy is can_manage_project, so through anyone
+// else's own client every document looked unclassified and read as
+// 'internal' -- a Confidential or Restricted document was then sent to a
+// provider approved only for Internal whenever a non-manager asked. The
+// tier decides which PROVIDER may see content, so it must be the same no
+// matter who is asking. Returns tier values only -- never policy details or
+// content -- the same "safe metadata via admin client" shape as
+// getRestrictedResourceIds in src/lib/projects/evidence-access.ts. Shared
+// with the external MCP server (src/lib/mcp/sensitivity.ts).
+export async function readResourceTiers(resourceType: EvidenceResourceType, resourceIds: string[]): Promise<Map<string, InformationSensitivity>> {
+  const tiers = new Map<string, InformationSensitivity>()
+  if (resourceIds.length === 0) return tiers
+  const { data, error } = await createAdminClient()
+    .from('resource_access_policies')
+    .select('resource_id, information_sensitivity')
+    .eq('resource_type', resourceType)
+    .in('resource_id', resourceIds)
+  if (error) throw error
+  const classified = new Map((data ?? []).map((row) => [row.resource_id, row.information_sensitivity as InformationSensitivity | null]))
+  for (const id of resourceIds) tiers.set(id, classified.get(id) ?? 'internal')
+  return tiers
+}
+
+// `supabase` is the caller's own client and is used only to resolve wiki
+// slugs to ids (a user can only have retrieved an article they can see);
+// tiers come from readResourceTiers.
 export async function getEffectiveSensitivity(
   supabase: SupabaseClient<Database>,
   retrieved: { wikiArticleSlugs: string[]; knowledgeSourceIds: string[]; projectSensitivity?: InformationSensitivity | null }
@@ -69,20 +98,10 @@ export async function getEffectiveSensitivity(
     if (SENSITIVITY_RANK[projectTier] > SENSITIVITY_RANK[highest]) highest = projectTier
   }
   for (const [resourceType, resourceIds] of resourceIdsByType) {
-    const { data, error } = await supabase
-      .from('resource_access_policies')
-      .select('resource_id, information_sensitivity')
-      .eq('resource_type', resourceType)
-      .in('resource_id', resourceIds)
-    if (error) throw error
     // Every retrieved resource counts, whether or not it has a policy row --
     // a row with information_sensitivity=null, or no row at all, is
     // unclassified content and defaults to 'internal', not 'public'.
-    const classifiedById = new Map<string, InformationSensitivity | null>(
-      (data ?? []).map((row) => [row.resource_id, row.information_sensitivity])
-    )
-    for (const resourceId of resourceIds) {
-      const tier = classifiedById.get(resourceId) ?? 'internal'
+    for (const tier of (await readResourceTiers(resourceType, resourceIds)).values()) {
       if (SENSITIVITY_RANK[tier] > SENSITIVITY_RANK[highest]) highest = tier
     }
   }

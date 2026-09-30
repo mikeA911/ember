@@ -100,6 +100,12 @@ vi.mock('./created-records', () => ({
   resolveCreatedRecord: (...args: unknown[]) => resolveCreatedRecordMock(...args),
 }))
 
+// Document tiers are read with the service-role client (readResourceTiers);
+// route those reads to the current test's ctx.supabase, whose from() the
+// sensitivity tests below override per table.
+let tierClient: { from: (table: string) => unknown } | null = null
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from: (table: string) => tierClient!.from(table) }) }))
+
 const { runAssistantTurn, MAX_TOOL_ITERATIONS, SEARCH_WIKI_LIMIT } = await import('./loop')
 const { AIProviderError } = await import('@/lib/ai')
 
@@ -116,7 +122,7 @@ const { AIProviderError } = await import('@/lib/ai')
 // no test-visible effect -- see sensitivity.test.ts for the classification
 // logic itself; this file only needs the check to not crash or block.
 function fakeCtx(): WorkbenchCallerContext {
-  return {
+  const ctx = {
     user: { id: 'user-1' },
     profile: { id: 'user-1', role: 'curator' },
     supabase: {
@@ -150,6 +156,8 @@ function fakeCtx(): WorkbenchCallerContext {
       },
     },
   } as unknown as WorkbenchCallerContext
+  tierClient = ctx.supabase as unknown as { from: (table: string) => unknown }
+  return ctx
 }
 
 const CHAT_PROVIDER_INFO = {

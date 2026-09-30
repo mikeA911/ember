@@ -62,8 +62,9 @@ describe('external tool registry', () => {
     }
   })
 
-  it('only uses the service-role client in sensitivity.ts to read tier metadata', () => {
-    const src = fs.readFileSync(path.join(process.cwd(), 'src/lib/mcp/sensitivity.ts'), 'utf-8')
+  it('reads tiers through the shared helper, whose only service-role read is tier metadata', () => {
+    expect(fs.readFileSync(path.join(process.cwd(), 'src/lib/mcp/sensitivity.ts'), 'utf-8')).not.toMatch(/createAdminClient/)
+    const src = fs.readFileSync(path.join(process.cwd(), 'src/lib/ai/sensitivity.ts'), 'utf-8')
     const uses = src.match(/createAdminClient\(\)[\s\S]*?\.select\('([^']+)'\)/g) ?? []
     expect(uses).toHaveLength(1)
     expect(uses[0]).toContain(".from('resource_access_policies')")
