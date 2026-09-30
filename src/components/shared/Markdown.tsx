@@ -27,6 +27,7 @@ export function Markdown({ text }: { text: string }) {
           h1: ({ children }) => <h2 className="mb-2 mt-4 text-base font-semibold text-zinc-900 first:mt-0">{children}</h2>,
           h2: ({ children }) => <h3 className="mb-2 mt-4 text-sm font-semibold text-zinc-900 first:mt-0">{children}</h3>,
           h3: ({ children }) => <h4 className="mb-1 mt-3 text-sm font-semibold text-zinc-900 first:mt-0">{children}</h4>,
+          h4: ({ children }) => <h5 className="mb-1 mt-3 text-sm font-medium text-zinc-800 first:mt-0">{children}</h5>,
           p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
           ul: ({ children }) => <ul className="mb-3 list-disc pl-5 last:mb-0">{children}</ul>,
           ol: ({ children }) => <ol className="mb-3 list-decimal pl-5 last:mb-0">{children}</ol>,

@@ -35,6 +35,8 @@ import { WorkingKnowledgePanel } from '@/components/projects/WorkingKnowledgePan
 import { CloneProjectButton } from '@/components/projects/CloneProjectButton'
 import { getOntologyMapData, computeOntologyMapLayout } from '@/lib/projects/ontology-map'
 import { OntologyMapButton } from '@/components/projects/OntologyMapButton'
+import { ProjectSummaryButton } from '@/components/projects/ProjectSummaryButton'
+import type { ProjectSummaryInput } from '@/lib/projects/status-summary'
 
 const TYPE_LABELS: Record<string, string> = {
   learning: 'Learning',
@@ -340,6 +342,60 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     artifactStatusesByWorkstream.set(a.workstream_id, list)
   }
 
+  // Pipeline order and domain objects per workstream, for the summary's
+  // newcomer brief -- from the Ontology Map's own already-fetched data.
+  const ontologyWorkstreamName = new Map(ontologyMapData.workstreams.map((w) => [w.id, w.name]))
+  const ontologyObjectName = new Map(ontologyMapData.objects.map((o) => [o.id, o.name]))
+  const namesOf = (ids: string[]) => ids.map((i) => ontologyWorkstreamName.get(i)).filter((n): n is string => !!n)
+  const projectSummary: ProjectSummaryInput = {
+    name: project.name,
+    typeLabel: TYPE_LABELS[project.project_type] ?? project.project_type,
+    status: showStatusBadge ? project.status : null,
+    objective: project.objective,
+    goal: project.goal,
+    details: (project.details ?? {}) as Record<string, unknown>,
+    findings: project.notes,
+    starterPrompt: project.starter_prompt,
+    members: directoryMembers.map((m) => ({ email: m.email, role: m.role })),
+    workstreams: workstreams.map((w) => ({
+      name: w.name,
+      status: w.status,
+      lifecycleStage: w.lifecycle_stage,
+      operationalStatus: w.operational_status,
+      goal: w.goal,
+      guardrail: w.guardrail,
+      outcome: w.summary,
+      repositoryScope: w.repository_scope ?? [],
+      deliverables: w.deliverables,
+      artifacts: countArtifacts(artifactStatusesByWorkstream.get(w.id) ?? []),
+      dependsOn: namesOf(ontologyMapData.flowEdges.filter((e) => e.downstreamId === w.id).map((e) => e.upstreamId)),
+      feedsInto: namesOf(ontologyMapData.flowEdges.filter((e) => e.upstreamId === w.id).map((e) => e.downstreamId)),
+      objects: ontologyMapData.linkEdges
+        .filter((l) => l.workstreamId === w.id && ontologyObjectName.has(l.objectId))
+        .map((l) => ({ name: ontologyObjectName.get(l.objectId)!, accessModes: l.accessModes ?? [] })),
+    })),
+    objects: ontologyMapData.objects,
+    knowledgeBases: effectiveKnowledgeBases.map((kb) => ({ name: kb.name, status: kb.status })),
+    wikiArticles: effectiveLinkedArticles.flatMap((l) => (l.article ? [l.article.title] : [])),
+    evalDatasets: (evalDatasets ?? []).map((d) => ({ name: d.name, status: d.status })),
+    governance: {
+      approvalTypes: (approvalPolicies ?? []).length,
+      authorityGaps: missingAuthorities.map((p) => p.approval_type),
+    },
+    ontology: {
+      flowEdges: ontologyMapData.flowEdges.length,
+      objectLinks: ontologyMapData.linkEdges.length,
+    },
+    openNotes: openNotes.map((n) => ({ subject: n.subject, authorEmail: n.author?.email ?? null })),
+    pendingReview: canCurateWorkstreams
+      ? {
+          joinRequests: (joinRequests ?? []).filter((r) => r.status === 'pending').length,
+          sourceSubmissions: (sourceSubmissions ?? []).filter((s) => s.status === 'pending').length,
+          workstreamPromotions: pendingWorkstreamPromotions.length,
+        }
+      : undefined,
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -385,6 +441,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
               <OntologyMapButton layout={ontologyMapLayout} projectId={project.id} projectName={project.name} />
             </>
           )}
+          <span className="text-zinc-300">·</span>
+          <ProjectSummaryButton summary={projectSummary} />
         </div>
         {clonedFromProjectName && (
           <p className="mt-1 text-xs text-zinc-500">
