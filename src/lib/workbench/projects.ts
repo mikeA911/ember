@@ -114,10 +114,11 @@ export async function createProject(
   }
   // KB Sandbox Builder: a builder (consultant role) gets exactly one
   // Project, auto-provisioned at account creation (provisionBuilderProject)
-  // -- new clients are Workstreams on it, not new Projects (see that
-  // function's own comment). Curator/admin (operator staff) are unaffected
-  // -- they aren't builders and may need several Projects for programme
-  // administration. 'member' role is already excluded by the role check
+  // -- each client proposal is a Workstream on it, not a new Project (see
+  // that function's own comment). A client Project only comes from an
+  // accepted proposal, via workstream promotion, never from here.
+  // Curator/admin (operator staff) are unaffected -- they aren't builders
+  // and may need several Projects for programme administration. 'member' role is already excluded by the role check
   // above in both modes, so no separate case is needed there.
   if (env.productMode() === 'builder' && profile.role === 'consultant') {
     const { data: existing } = await supabase.from('projects').select('id').eq('owner_id', user.id).limit(1).maybeSingle()
@@ -557,9 +558,12 @@ export async function enrollInOrganizationHome(admin: ReturnType<typeof createAd
 // KB Sandbox Builder (docs/dev-request-kb-sandbox-builder-product.md): each
 // builder gets exactly one Project, auto-provisioned once at account
 // creation -- not one Project per client/opportunity. A new client is a
-// Workstream on this same Project (already has status/goal/deliverables and
-// its own workstream_artifacts evidence trail -- no new schema needed for
-// that), and the builder's own free-form research/CRM notes are a Working
+// Workstream (the builder's proposal) on this same Project; once the client
+// accepts it, workstream promotion (workstream-promotions.ts) creates the
+// client Project, owned by the builder with the client as viewers. A
+// Workstream already has status/goal/deliverables and its own
+// workstream_artifacts evidence trail -- no new schema needed for that,
+// and the builder's own free-form research/CRM notes are a Working
 // Knowledge item on it. Called from createUserAction (app/actions/admin.ts)
 // only when the deployment is in builder mode and the new account's
 // platform role is 'consultant' -- gating lives at the call site, this

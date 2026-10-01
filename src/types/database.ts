@@ -1404,6 +1404,15 @@ export interface WorkstreamPromotion {
   decided_by: string | null
   decided_at: string | null
   created_project_id: string | null
+  // Client email addresses the builder named when submitting -- added as
+  // viewers on the client Project at approval.
+  // 20261003100002_builder_proposal_promotions.sql.
+  client_emails: string[]
+  // The maintenance fee the builder proposes for this client -- all three
+  // set or all null. 20261003100003_client_project_fees.sql.
+  proposed_fee_amount: number | null
+  proposed_fee_currency: FeeCurrency | null
+  proposed_fee_period: FeeBillingPeriod | null
   created_at: string
 }
 
@@ -1425,6 +1434,32 @@ export interface BuilderProgressUpdate {
   help_requested: string | null
   confidence: BuilderProgressConfidence
   status: BuilderProgressUpdateStatus
+  created_at: string
+  updated_at: string
+}
+
+// Client maintenance fees and the platform's share. See
+// 20261003100003_client_project_fees.sql.
+export type FeeCurrency = 'PHP' | 'USD'
+export type FeeBillingPeriod = 'monthly' | 'annual'
+
+export interface ClientProjectFee {
+  project_id: string
+  amount: number
+  currency: FeeCurrency
+  billing_period: FeeBillingPeriod
+  platform_rate_pct: number
+  set_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Builder agencies: which curator (agency) a consultant (builder) works
+// under. See 20261003100001_agency_builders.sql.
+export interface AgencyBuilder {
+  builder_id: string
+  agency_id: string
+  assigned_by: string | null
   created_at: string
   updated_at: string
 }
@@ -2459,9 +2494,32 @@ export type ProjectStatusHistoryEntryInsert = Omit<ProjectStatusHistoryEntry, 'i
 
 export type WorkstreamPromotionInsert = Omit<
   WorkstreamPromotion,
-  'id' | 'created_at' | 'status' | 'decision_reason' | 'decided_by' | 'decided_at' | 'created_project_id'
+  | 'id'
+  | 'created_at'
+  | 'status'
+  | 'decision_reason'
+  | 'decided_by'
+  | 'decided_at'
+  | 'created_project_id'
+  | 'client_emails'
+  | 'proposed_fee_amount'
+  | 'proposed_fee_currency'
+  | 'proposed_fee_period'
 > &
-  Partial<Pick<WorkstreamPromotion, 'status' | 'decision_reason' | 'decided_by' | 'decided_at' | 'created_project_id'>>
+  Partial<
+    Pick<
+      WorkstreamPromotion,
+      | 'status'
+      | 'decision_reason'
+      | 'decided_by'
+      | 'decided_at'
+      | 'created_project_id'
+      | 'client_emails'
+      | 'proposed_fee_amount'
+      | 'proposed_fee_currency'
+      | 'proposed_fee_period'
+    >
+  >
 export type WorkstreamPromotionUpdate = Partial<Omit<WorkstreamPromotion, 'id' | 'workstream_id' | 'submitted_by' | 'created_at'>>
 
 export type BuilderProgressUpdateInsert = Omit<BuilderProgressUpdate, 'id' | 'created_at' | 'updated_at' | 'status'> &
@@ -2469,6 +2527,12 @@ export type BuilderProgressUpdateInsert = Omit<BuilderProgressUpdate, 'id' | 'cr
 export type BuilderProgressUpdateUpdate = Partial<
   Omit<BuilderProgressUpdate, 'id' | 'workstream_id' | 'submitted_by' | 'created_at'>
 >
+
+export type ClientProjectFeeInsert = Omit<ClientProjectFee, 'created_at' | 'updated_at'>
+export type ClientProjectFeeUpdate = Partial<Omit<ClientProjectFee, 'project_id' | 'created_at'>>
+
+export type AgencyBuilderInsert = Omit<AgencyBuilder, 'created_at' | 'updated_at'>
+export type AgencyBuilderUpdate = Partial<Omit<AgencyBuilder, 'builder_id' | 'created_at'>>
 
 export type BuilderAiAllowanceInsert = Omit<BuilderAiAllowance, 'created_at' | 'updated_at'> &
   Partial<Pick<BuilderAiAllowance, 'monthly_allowance_usd' | 'warning_threshold_pct' | 'stop_at_allowance' | 'current_period_start'>>
@@ -2886,6 +2950,18 @@ export interface Database {
         Row: BuilderProgressUpdate
         Insert: BuilderProgressUpdateInsert
         Update: BuilderProgressUpdateUpdate
+        Relationships: []
+      }
+      client_project_fees: {
+        Row: ClientProjectFee
+        Insert: ClientProjectFeeInsert
+        Update: ClientProjectFeeUpdate
+        Relationships: []
+      }
+      agency_builders: {
+        Row: AgencyBuilder
+        Insert: AgencyBuilderInsert
+        Update: AgencyBuilderUpdate
         Relationships: []
       }
       builder_ai_allowances: {

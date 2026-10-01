@@ -229,4 +229,39 @@ describe('listBuilderOperationsRows', () => {
     ])
     expect(result[0]).not.toHaveProperty('milestoneEvidenceStatus')
   })
+
+  it('rolls every client Project a builder owns into one row', async () => {
+    const supabase = createFakeSupabase({})
+    const admin = createFakeSupabase({
+      projects: [
+        {
+          data: [
+            { id: 'proj-1', owner_id: 'builder-1' },
+            { id: 'proj-2', owner_id: 'builder-1' },
+          ],
+          error: null,
+        },
+      ],
+      profiles: [{ data: [{ id: 'builder-1', email: 'builder1@example.com', is_active: true }], error: null }],
+      project_workstreams: [
+        {
+          data: [
+            { id: 'ws-1', project_id: 'proj-1', name: 'Acme', status: 'active', updated_at: '2026-09-05T00:00:00Z' },
+            { id: 'ws-2', project_id: 'proj-2', name: 'Globex', status: 'active', updated_at: '2026-09-08T00:00:00Z' },
+          ],
+          error: null,
+        },
+      ],
+      builder_progress_updates: [{ data: [], error: null }],
+      builder_ai_allowances: [{ data: null, error: null }],
+      builder_credit_grants: [{ data: [], error: null }],
+      ai_operation_logs: [{ data: [], error: null }],
+    })
+    createAdminClientMock.mockReturnValue(admin)
+
+    const result = await listBuilderOperationsRows(ctxWith(supabase, { role: 'curator' }))
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ builderId: 'builder-1', activeWorkstreamCount: 2, lastActivityAt: '2026-09-08T00:00:00Z' })
+  })
 })
