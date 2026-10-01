@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
 import { enrollInOrganizationHome } from './projects'
+import { getPlatformRatePct, validateFee, type FeeInput } from './client-billing'
 
 // Workstream promotion (business-process handoff): a completed Workstream
 // is submitted for review by any active member of its Project; that
@@ -46,15 +47,18 @@ export function normalizeClientEmails(raw: string[] | undefined): string[] {
   return emails
 }
 
-// clientEmails: for a builder's accepted client proposal, the client people
-// to add as viewers on the new client Project once it's approved.
+// For a builder's accepted client proposal: clientEmails are the client
+// people to add as viewers on the new client Project once it's approved,
+// and fee is the maintenance fee agreed with the client (client-billing.ts).
 export async function submitWorkstreamForPromotion(
   ctx: WorkbenchCallerContext,
   workstreamId: string,
-  clientEmails?: string[]
+  clientEmails?: string[],
+  fee?: FeeInput | null
 ): Promise<{ promotionId: string }> {
   if (ctx.profile.role === 'anonymous') throw new AuthError('Create an account to submit a workstream for promotion')
   const normalizedClientEmails = normalizeClientEmails(clientEmails)
+  const proposedFee = fee ? validateFee(fee) : null
 
   const { data: workstream, error: workstreamError } = await ctx.supabase
     .from('project_workstreams')
@@ -90,7 +94,14 @@ export async function submitWorkstreamForPromotion(
 
   const { data: promotion, error } = await ctx.supabase
     .from('workstream_promotions')
-    .insert({ workstream_id: workstreamId, submitted_by: ctx.user.id, client_emails: normalizedClientEmails })
+    .insert({
+      workstream_id: workstreamId,
+      submitted_by: ctx.user.id,
+      client_emails: normalizedClientEmails,
+      proposed_fee_amount: proposedFee?.amount ?? null,
+      proposed_fee_currency: proposedFee?.currency ?? null,
+      proposed_fee_period: proposedFee?.period ?? null,
+    })
     .select('id')
     .single()
   if (error || !promotion) throw error ?? new ProjectValidationError('Failed to submit workstream for promotion')
@@ -105,11 +116,21 @@ export interface PendingWorkstreamPromotionRow {
   submitterEmail: string | null
   approvedArtifactCount: number
   clientEmails: string[]
+  proposedFee: FeeInput | null
   createdAt: string
 }
 
 export async function shapePendingPromotions(
-  promotions: { id: string; workstream_id: string; submitted_by: string; client_emails: string[] | null; created_at: string }[]
+  promotions: {
+    id: string
+    workstream_id: string
+    submitted_by: string
+    client_emails: string[] | null
+    proposed_fee_amount: number | null
+    proposed_fee_currency: FeeInput['currency'] | null
+    proposed_fee_period: FeeInput['period'] | null
+    created_at: string
+  }[]
 ): Promise<PendingWorkstreamPromotionRow[]> {
   if (promotions.length === 0) return []
 
@@ -141,6 +162,10 @@ export async function shapePendingPromotions(
       submitterEmail: emailById.get(p.submitted_by) ?? null,
       approvedArtifactCount: artifactCountByWorkstreamId.get(p.workstream_id) ?? 0,
       clientEmails: p.client_emails ?? [],
+      proposedFee:
+        p.proposed_fee_amount !== null && p.proposed_fee_currency && p.proposed_fee_period
+          ? { amount: Number(p.proposed_fee_amount), currency: p.proposed_fee_currency, period: p.proposed_fee_period }
+          : null,
       createdAt: p.created_at,
     }
   })
@@ -157,7 +182,7 @@ export async function shapePendingPromotions(
 export async function listPendingWorkstreamPromotions(ctx: WorkbenchCallerContext): Promise<PendingWorkstreamPromotionRow[]> {
   const { data: promotions, error } = await ctx.supabase
     .from('workstream_promotions')
-    .select('id, workstream_id, submitted_by, client_emails, created_at')
+    .select('id, workstream_id, submitted_by, client_emails, proposed_fee_amount, proposed_fee_currency, proposed_fee_period, created_at')
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -177,7 +202,7 @@ export async function listPendingWorkstreamPromotionsForProject(ctx: WorkbenchCa
 
   const { data: promotions, error } = await ctx.supabase
     .from('workstream_promotions')
-    .select('id, workstream_id, submitted_by, client_emails, created_at')
+    .select('id, workstream_id, submitted_by, client_emails, proposed_fee_amount, proposed_fee_currency, proposed_fee_period, created_at')
     .eq('status', 'pending')
     .in('workstream_id', workstreamIds)
     .order('created_at', { ascending: false })
@@ -369,7 +394,21 @@ export async function approveWorkstreamPromotion(
     if (copyError) throw copyError
   }
 
-  // 4. The client, as viewers. Per-email results rather than all-or-nothing:
+  // 4. The agreed maintenance fee, at today's platform rate -- the billing
+  // record for this client (client-billing.ts).
+  if (promotion.proposed_fee_amount !== null && promotion.proposed_fee_currency && promotion.proposed_fee_period) {
+    const { error: feeError } = await admin.from('client_project_fees').insert({
+      project_id: newProject.id,
+      amount: Number(promotion.proposed_fee_amount),
+      currency: promotion.proposed_fee_currency,
+      billing_period: promotion.proposed_fee_period,
+      platform_rate_pct: await getPlatformRatePct(admin),
+      set_by: ctx.user.id,
+    })
+    if (feeError) throw feeError
+  }
+
+  // 5. The client, as viewers. Per-email results rather than all-or-nothing:
   // the Project already exists at this point, and the approver can add a
   // missed client from its Members page.
   const clientViewers = await addClientViewers(admin, newProject.id, promotion.client_emails ?? [])

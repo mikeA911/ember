@@ -9,10 +9,16 @@ import {
   approveWorkstreamPromotion,
   rejectWorkstreamPromotion,
 } from '@/lib/workbench/workstream-promotions'
+import type { FeeInput } from '@/lib/workbench/client-billing'
 
-export async function submitWorkstreamForPromotionAction(projectId: string, workstreamId: string, clientEmails?: string[]) {
+export async function submitWorkstreamForPromotionAction(
+  projectId: string,
+  workstreamId: string,
+  clientEmails?: string[],
+  fee?: FeeInput | null
+) {
   const ctx = await requireUser()
-  const result = await submitWorkstreamForPromotion(ctx, workstreamId, clientEmails)
+  const result = await submitWorkstreamForPromotion(ctx, workstreamId, clientEmails, fee)
   revalidatePath(`/projects/${projectId}/workstreams/${workstreamId}`)
   return result
 }

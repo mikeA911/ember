@@ -13,6 +13,9 @@ import type {
 import type { PresentationStatus, ProjectStatus, WorkstreamPromotionStatus, WorkstreamStatus } from '@/types/database'
 import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamPromotionsReview'
 import { AssignAgencySelect } from './AssignAgencySelect'
+import { ClientFeeEditor } from './ClientFeeEditor'
+import { PlatformRateForm } from './PlatformRateForm'
+import { formatMoney, monthlyTotals } from './money'
 
 // Same display relabeling as ProjectStatusSection.tsx's own pipeline.
 const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
@@ -142,6 +145,9 @@ function ClientProjectRow({ project, linkable }: { project: AgencyClientProjectR
       <td className="py-2 pr-3">
         <Pill className={PROJECT_STATUS_STYLES[project.status]}>{PROJECT_STATUS_LABELS[project.status]}</Pill>
       </td>
+      <td className="py-2 pr-3">
+        <ClientFeeEditor projectId={project.id} fee={project.fee} />
+      </td>
       <td className="py-2 pr-3 text-xs">
         <SharedUpdate update={project.latestUpdate} />
       </td>
@@ -150,7 +156,7 @@ function ClientProjectRow({ project, linkable }: { project: AgencyClientProjectR
   )
 }
 
-function RowTable({ heading, children }: { heading: string; children: React.ReactNode }) {
+function RowTable({ heading, withFee = false, children }: { heading: string; withFee?: boolean; children: React.ReactNode }) {
   return (
     <div className="mt-2 overflow-x-auto">
       <table className="w-full min-w-[640px] text-sm">
@@ -158,6 +164,7 @@ function RowTable({ heading, children }: { heading: string; children: React.Reac
           <tr>
             <th className="w-1/3 pb-1 pr-3 font-medium">{heading}</th>
             <th className="pb-1 pr-3 font-medium">Status</th>
+            {withFee && <th className="pb-1 pr-3 font-medium">Maintenance fee</th>}
             <th className="pb-1 pr-3 font-medium">Latest shared update</th>
             <th className="pb-1 text-right font-medium">Updated</th>
           </tr>
@@ -203,7 +210,7 @@ function BuilderCard({
       )}
 
       {builder.clientProjects.length > 0 && (
-        <RowTable heading="Client project">
+        <RowTable heading="Client project" withFee>
           {builder.clientProjects.map((p) => (
             <ClientProjectRow key={p.id} project={p} linkable={viewerIsAdmin} />
           ))}
@@ -220,6 +227,34 @@ function BuilderCard({
   )
 }
 
+// Monthly client fees and the platform's share, one line per currency --
+// annual fees count as a twelfth per month.
+function FeeTotals({ projects }: { projects: AgencyClientProjectRow[] }) {
+  const totals = monthlyTotals(projects.flatMap((p) => (p.fee ? [p.fee] : [])))
+  const unpriced = projects.filter((p) => !p.fee).length
+  if (totals.length === 0 && unpriced === 0) return null
+  return (
+    <div className="flex flex-col gap-1 rounded border border-zinc-200 bg-white px-3 py-2 text-sm">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Maintenance fees per month</h2>
+      {totals.map(([currency, t]) => (
+        <div key={currency} className="flex flex-wrap gap-x-4">
+          <span>
+            Client fees <span className="font-semibold">{formatMoney(t.clientMonthly, currency)}</span>
+          </span>
+          <span>
+            Platform share <span className="font-semibold">{formatMoney(t.platformMonthly, currency)}</span>
+          </span>
+        </div>
+      ))}
+      {unpriced > 0 && (
+        <p className="text-xs text-zinc-500">
+          {unpriced} client project{unpriced === 1 ? ' has' : 's have'} no fee recorded yet.
+        </p>
+      )}
+    </div>
+  )
+}
+
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded border border-zinc-200 bg-white px-3 py-2">
@@ -231,7 +266,7 @@ function Stat({ label, value }: { label: string; value: number }) {
 
 export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard }) {
   const [attentionOnly, setAttentionOnly] = useState(false)
-  const { viewerIsAdmin, agencies, unassigned } = dashboard
+  const { viewerIsAdmin, agencies, unassigned, platformRatePct } = dashboard
 
   const allBuilders = [...agencies.flatMap((a) => a.builders), ...unassigned]
   const allClientProjects = allBuilders.flatMap((b) => b.clientProjects)
@@ -256,6 +291,9 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
         <Stat label="Client projects in total" value={allClientProjects.length} />
       </div>
 
+      <FeeTotals projects={allClientProjects} />
+      {viewerIsAdmin && <PlatformRateForm current={platformRatePct} />}
+
       <label className="flex w-fit items-center gap-2 text-sm text-zinc-600">
         <input type="checkbox" checked={attentionOnly} onChange={(e) => setAttentionOnly(e.target.checked)} />
         Only builders waiting on a decision, blocked, at risk or asking for help
@@ -273,6 +311,10 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
               <p className="text-xs text-zinc-500">
                 {section.subtitle ? `${section.subtitle} · ` : ''}
                 {created.length} client project{created.length === 1 ? '' : 's'} created, {created.filter((p) => isThisMonth(p.createdAt)).length} this month
+                {monthlyTotals(created.flatMap((p) => (p.fee ? [p.fee] : []))).map(
+                  ([currency, t]) =>
+                    ` · ${formatMoney(t.clientMonthly, currency)}/mo in fees, platform share ${formatMoney(t.platformMonthly, currency)}/mo`
+                )}
               </p>
             </div>
             {builders.length === 0 ? (

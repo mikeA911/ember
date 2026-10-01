@@ -112,6 +112,19 @@ describe('submitWorkstreamForPromotion -- client emails', () => {
     expect(insert?.args).toMatchObject({ client_emails: ['jane@acme.com', 'sam@acme.com'] })
   })
 
+  it('stores the maintenance fee the builder agreed with the client', async () => {
+    const supabase = createFakeSupabase({
+      ...completedWorkstream,
+      workstream_promotions: [
+        { data: null, error: null },
+        { data: { id: 'promo-1' }, error: null },
+      ],
+    })
+    await submitWorkstreamForPromotion(ctxWith(supabase), 'ws-1', [], { amount: 25000.456, currency: 'PHP', period: 'monthly' })
+    const insert = supabase._calls.find((c) => c.table === 'workstream_promotions' && c.method === 'insert')
+    expect(insert?.args).toMatchObject({ proposed_fee_amount: 25000.46, proposed_fee_currency: 'PHP', proposed_fee_period: 'monthly' })
+  })
+
   it('rejects a malformed client email before writing anything', async () => {
     const supabase = createFakeSupabase(completedWorkstream)
     await expect(submitWorkstreamForPromotion(ctxWith(supabase), 'ws-1', ['not-an-email'])).rejects.toThrow('Not a valid email address')
@@ -148,6 +161,7 @@ describe('listPendingWorkstreamPromotions', () => {
         submitterEmail: 'builder1@example.com',
         approvedArtifactCount: 2,
         clientEmails: ['jane@acme.com'],
+        proposedFee: null,
         createdAt: '2026-09-06',
       },
     ])
@@ -184,6 +198,7 @@ describe('listPendingWorkstreamPromotionsForProject', () => {
         submitterEmail: 'member@example.com',
         approvedArtifactCount: 1,
         clientEmails: [],
+        proposedFee: null,
         createdAt: '2026-09-06',
       },
     ])
@@ -259,6 +274,41 @@ describe('approveWorkstreamPromotion', () => {
     expect(artifactInsert?.args).toMatchObject([expect.objectContaining({ workstream_id: 'new-ws-1', title: 'Architecture', status: 'approved' })])
     const decisionUpdate = supabase._calls.find((c) => c.table === 'workstream_promotions' && c.method === 'update')
     expect(decisionUpdate?.args).toMatchObject({ status: 'approved', decided_by: 'operator-1', created_project_id: 'new-proj-1' })
+  })
+
+  it('records the proposed fee on the client Project at today\'s platform rate', async () => {
+    const supabase = createFakeSupabase({
+      workstream_promotions: [
+        {
+          data: {
+            id: 'promo-1',
+            workstream_id: 'ws-1',
+            submitted_by: 'builder-1',
+            status: 'pending',
+            client_emails: [],
+            proposed_fee_amount: 1200,
+            proposed_fee_currency: 'USD',
+            proposed_fee_period: 'annual',
+          },
+          error: null,
+        },
+        { data: [{ id: 'promo-1' }], error: null },
+      ],
+    })
+    const admin = builderProposalAdmin({ settings: [{ data: { value: { platformRatePct: 12.5 } }, error: null }] })
+    createAdminClientMock.mockReturnValue(admin)
+
+    await approveWorkstreamPromotion(ctxWith(supabase, { userId: 'operator-1', role: 'admin' }), 'promo-1')
+
+    const feeInsert = admin._calls.find((c) => c.table === 'client_project_fees' && c.method === 'insert')
+    expect(feeInsert?.args).toEqual({
+      project_id: 'new-proj-1',
+      amount: 1200,
+      currency: 'USD',
+      billing_period: 'annual',
+      platform_rate_pct: 12.5,
+      set_by: 'operator-1',
+    })
   })
 
   it('lets the builder\'s own agency decide, without being a member of the builder\'s workspace', async () => {

@@ -26,6 +26,11 @@ export function WorkstreamPromotionForm({
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [clientEmails, setClientEmails] = useState('')
+  // The maintenance fee agreed with the client -- blank means none yet;
+  // the agency can record it later from the agency dashboard.
+  const [feeAmount, setFeeAmount] = useState('')
+  const [feeCurrency, setFeeCurrency] = useState<'PHP' | 'USD'>('PHP')
+  const [feePeriod, setFeePeriod] = useState<'monthly' | 'annual'>('monthly')
 
   if (submitted) {
     return (
@@ -42,7 +47,9 @@ export function WorkstreamPromotionForm({
     startTransition(async () => {
       try {
         const emails = clientEmails.split(/[\s,;]+/).filter(Boolean)
-        await submitWorkstreamForPromotionAction(projectId, workstreamId, emails)
+        const amount = feeAmount.replace(/,/g, '').trim()
+        const fee = isBuilderProposal && amount ? { amount: Number(amount), currency: feeCurrency, period: feePeriod } : null
+        await submitWorkstreamForPromotionAction(projectId, workstreamId, emails, fee)
         setSubmitted(true)
         router.refresh()
       } catch (err) {
@@ -77,6 +84,39 @@ export function WorkstreamPromotionForm({
           className="rounded border border-zinc-300 px-3 py-2 text-sm"
         />
       </label>
+      {isBuilderProposal && (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="text-xs font-medium text-zinc-600">Maintenance fee charged to the client (optional)</legend>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Currency"
+              value={feeCurrency}
+              onChange={(e) => setFeeCurrency(e.target.value as 'PHP' | 'USD')}
+              className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
+            >
+              <option value="PHP">PHP</option>
+              <option value="USD">USD</option>
+            </select>
+            <input
+              aria-label="Fee amount"
+              inputMode="decimal"
+              value={feeAmount}
+              onChange={(e) => setFeeAmount(e.target.value)}
+              placeholder="e.g. 25,000"
+              className="w-36 rounded border border-zinc-300 px-3 py-1.5 text-sm"
+            />
+            <select
+              aria-label="Billing period"
+              value={feePeriod}
+              onChange={(e) => setFeePeriod(e.target.value as 'monthly' | 'annual')}
+              className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
+            >
+              <option value="monthly">per month</option>
+              <option value="annual">per year</option>
+            </select>
+          </div>
+        </fieldset>
+      )}
       <button
         type="button"
         disabled={isPending}

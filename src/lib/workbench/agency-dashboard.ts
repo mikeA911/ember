@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import type {
   BuilderProgressConfidence,
+  FeeBillingPeriod,
+  FeeCurrency,
   PresentationStatus,
   ProjectStatus,
   WorkstreamPromotionStatus,
@@ -11,6 +13,7 @@ import type {
 } from '@/types/database'
 import type { WorkbenchCallerContext } from './context'
 import { shapePendingPromotions, type PendingWorkstreamPromotionRow } from './workstream-promotions'
+import { getPlatformRatePct, monthlyEquivalent } from './client-billing'
 
 // Builder agency dashboard (/agency, 2026-10-01, Mike): the platform owner
 // is the admin, each builder agency is a curator, each builder is a
@@ -20,7 +23,9 @@ import { shapePendingPromotions, type PendingWorkstreamPromotionRow } from './wo
 // the client Project (workstream-promotions.ts). A curator sees their own
 // builders (agency_builders roster); the admin sees every agency plus any
 // builder not yet assigned to one, and assigns them. Each approved
-// promotion is a "client project created" event -- the billing hook.
+// promotion is a "client project created" event, and each client Project's
+// maintenance fee (client_project_fees) carries the platform's share --
+// the billing view.
 //
 // Same consent-based, metadata-only posture as Builder Operations
 // (builder-progress-updates.ts, docs/dev-request-builder-operations-and-
@@ -53,12 +58,23 @@ export interface AgencyProposalRow {
   latestUpdate: AgencySharedUpdate | null
 }
 
+export interface AgencyClientFee {
+  amount: number
+  currency: FeeCurrency
+  period: FeeBillingPeriod
+  // The rate recorded with this fee, not necessarily today's.
+  platformRatePct: number
+  monthlyAmount: number
+  platformMonthly: number
+}
+
 // A Project created from an approved promotion -- one paying client.
 export interface AgencyClientProjectRow {
   id: string
   name: string
   status: ProjectStatus
   clientViewerCount: number
+  fee: AgencyClientFee | null
   createdAt: string
   workstreamCount: number
   activeWorkstreamCount: number
@@ -88,6 +104,8 @@ export interface AgencyGroup {
 
 export interface AgencyDashboard {
   viewerIsAdmin: boolean
+  // Today's platform rate, applied to fees recorded from now on.
+  platformRatePct: number
   agencies: AgencyGroup[]
   // Admin only -- builders with no agency_builders row yet.
   unassigned: AgencyBuilderRow[]
@@ -123,12 +141,17 @@ export interface AgencyDashboardInput {
     submitted_by: string
     status: WorkstreamPromotionStatus
     client_emails: string[] | null
+    proposed_fee_amount: number | null
+    proposed_fee_currency: FeeCurrency | null
+    proposed_fee_period: FeeBillingPeriod | null
     created_project_id: string | null
     decided_at: string | null
     created_at: string
   }[]
   viewerMembers: { project_id: string }[]
+  fees: { project_id: string; amount: number; currency: FeeCurrency; billing_period: FeeBillingPeriod; platform_rate_pct: number }[]
   pendingPromotionRows: PendingWorkstreamPromotionRow[]
+  platformRatePct: number
 }
 
 function laterOf(a: string | null, b: string | null): string | null {
@@ -182,6 +205,22 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
     if (p.status === 'approved' && p.created_project_id) promotedAtByProject.set(p.created_project_id, p.decided_at ?? p.created_at)
   }
 
+  const feeByProject = new Map<string, AgencyClientFee>()
+  for (const f of input.fees) {
+    // numeric columns can arrive as strings from PostgREST.
+    const amount = Number(f.amount)
+    const platformRatePct = Number(f.platform_rate_pct)
+    const monthlyAmount = monthlyEquivalent(amount, f.billing_period)
+    feeByProject.set(f.project_id, {
+      amount,
+      currency: f.currency,
+      period: f.billing_period,
+      platformRatePct,
+      monthlyAmount,
+      platformMonthly: (monthlyAmount * platformRatePct) / 100,
+    })
+  }
+
   const viewerCountByProject = new Map<string, number>()
   for (const m of input.viewerMembers) viewerCountByProject.set(m.project_id, (viewerCountByProject.get(m.project_id) ?? 0) + 1)
 
@@ -213,6 +252,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
         name: p.name,
         status: p.status,
         clientViewerCount: viewerCountByProject.get(p.id) ?? 0,
+        fee: feeByProject.get(p.id) ?? null,
         createdAt: promotedAt,
         workstreamCount: workstreams.length,
         activeWorkstreamCount: workstreams.filter((w) => w.status === 'active').length,
@@ -279,6 +319,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
 
   return {
     viewerIsAdmin: input.viewerIsAdmin,
+    platformRatePct: input.platformRatePct,
     agencies,
     unassigned: input.viewerIsAdmin ? builderRows.filter((b) => !b.agencyId) : [],
   }
@@ -301,7 +342,8 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
   let builders: ProfileRow[]
   if (viewerIsAdmin) {
     const [{ data: curatorRows, error: curatorError }, { data: builderRows, error: builderError }] = await Promise.all([
-      admin.from('profiles').select(profileColumns).eq('role', 'curator'),
+      // The platform admin can run an agency too (agency_builders).
+      admin.from('profiles').select(profileColumns).in('role', ['curator', 'admin']),
       admin.from('profiles').select(profileColumns).eq('role', 'consultant'),
     ])
     if (curatorError) throw curatorError
@@ -328,7 +370,9 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
       admin.from('projects').select('id, name, status, owner_id, updated_at').in('owner_id', builderIds).neq('status', 'archived'),
       admin
         .from('workstream_promotions')
-        .select('id, workstream_id, submitted_by, status, client_emails, created_project_id, decided_at, created_at')
+        .select(
+          'id, workstream_id, submitted_by, status, client_emails, proposed_fee_amount, proposed_fee_currency, proposed_fee_period, created_project_id, decided_at, created_at'
+        )
         .in('submitted_by', builderIds),
     ])
     if (projectError) throw projectError
@@ -340,15 +384,20 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
   const projectIds = projects.map((p) => p.id)
   let workstreams: AgencyDashboardInput['workstreams'] = []
   let viewerMembers: AgencyDashboardInput['viewerMembers'] = []
+  let fees: AgencyDashboardInput['fees'] = []
   if (projectIds.length > 0) {
-    const [{ data: workstreamRows, error: workstreamError }, { data: memberRows, error: memberError }] = await Promise.all([
-      admin.from('project_workstreams').select('id, project_id, name, status, updated_at').in('project_id', projectIds),
-      admin.from('project_members').select('project_id').in('project_id', projectIds).eq('role', 'viewer').eq('status', 'active'),
-    ])
+    const [{ data: workstreamRows, error: workstreamError }, { data: memberRows, error: memberError }, { data: feeRows, error: feeError }] =
+      await Promise.all([
+        admin.from('project_workstreams').select('id, project_id, name, status, updated_at').in('project_id', projectIds),
+        admin.from('project_members').select('project_id').in('project_id', projectIds).eq('role', 'viewer').eq('status', 'active'),
+        admin.from('client_project_fees').select('project_id, amount, currency, billing_period, platform_rate_pct').in('project_id', projectIds),
+      ])
     if (workstreamError) throw workstreamError
     if (memberError) throw memberError
+    if (feeError) throw feeError
     workstreams = workstreamRows ?? []
     viewerMembers = memberRows ?? []
+    fees = feeRows ?? []
   }
 
   const workstreamIds = workstreams.map((w) => w.id)
@@ -369,7 +418,10 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     presentations = presentationRows ?? []
   }
 
-  const pendingPromotionRows = await shapePendingPromotions(promotions.filter((p) => p.status === 'pending'))
+  const [pendingPromotionRows, platformRatePct] = await Promise.all([
+    shapePendingPromotions(promotions.filter((p) => p.status === 'pending')),
+    getPlatformRatePct(admin),
+  ])
 
   return assembleAgencyDashboard({
     viewerIsAdmin,
@@ -382,7 +434,9 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     presentations,
     promotions,
     viewerMembers,
+    fees,
     pendingPromotionRows,
+    platformRatePct,
   })
 }
 
@@ -400,7 +454,8 @@ export async function assignBuilderToAgency(ctx: WorkbenchCallerContext, builder
   if (peopleError) throw peopleError
   const roleById = new Map((people ?? []).map((p) => [p.id, p.role]))
   if (roleById.get(builderId) !== 'consultant') throw new ProjectValidationError('Only a builder (consultant) account can join an agency')
-  if (roleById.get(agencyId) !== 'curator') throw new ProjectValidationError('An agency must be a curator account')
+  const agencyRole = roleById.get(agencyId)
+  if (agencyRole !== 'curator' && agencyRole !== 'admin') throw new ProjectValidationError('An agency must be a curator or admin account')
 
   const { error } = await ctx.supabase
     .from('agency_builders')

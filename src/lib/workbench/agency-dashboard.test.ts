@@ -36,8 +36,12 @@ const empty = {
   presentations: [],
   promotions: [],
   viewerMembers: [],
+  fees: [],
   pendingPromotionRows: [],
+  platformRatePct: 10,
 }
+
+const noFee = { proposed_fee_amount: null, proposed_fee_currency: null, proposed_fee_period: null }
 
 describe('assembleAgencyDashboard', () => {
   it('splits a builder into workspace proposals and the client projects promoted from them', () => {
@@ -66,12 +70,14 @@ describe('assembleAgencyDashboard', () => {
           submitted_by: 'builder-1',
           status: 'approved',
           client_emails: ['jane@acme.com'],
+          ...noFee,
           created_project_id: 'p-acme',
           decided_at: '2026-09-10T00:00:00Z',
           created_at: '2026-09-06T00:00:00Z',
         },
       ],
       viewerMembers: [{ project_id: 'p-acme' }, { project_id: 'p-acme' }],
+      fees: [{ project_id: 'p-acme', amount: 120000, currency: 'PHP', billing_period: 'annual', platform_rate_pct: 10 }],
     })
 
     const [builder] = result.agencies[0].builders
@@ -86,6 +92,7 @@ describe('assembleAgencyDashboard', () => {
         workstreamCount: 1,
         activeWorkstreamCount: 1,
         lastActivityAt: '2026-09-20T00:00:00Z',
+        fee: { amount: 120000, currency: 'PHP', period: 'annual', platformRatePct: 10, monthlyAmount: 10000, platformMonthly: 1000 },
       }),
     ])
     expect(builder.lastActivityAt).toBe('2026-09-25T00:00:00Z')
@@ -101,6 +108,7 @@ describe('assembleAgencyDashboard', () => {
       submitterEmail: 'b1@example.com',
       approvedArtifactCount: 1,
       clientEmails: ['sam@globex.com'],
+      proposedFee: null,
       createdAt: '2026-09-26T00:00:00Z',
     }
     const result = assembleAgencyDashboard({
@@ -119,6 +127,7 @@ describe('assembleAgencyDashboard', () => {
           submitted_by: 'builder-1',
           status: 'pending',
           client_emails: ['sam@globex.com'],
+          ...noFee,
           created_project_id: null,
           decided_at: null,
           created_at: '2026-09-26T00:00:00Z',
@@ -202,6 +211,7 @@ describe('getAgencyDashboard', () => {
     expect(builder.proposals).toEqual([expect.objectContaining({ name: 'Acme', presentationStatus: 'draft' })])
     expect(builder.proposals[0].latestUpdate?.currentStage).toBe('Specifying')
     expect(builder.clientProjects).toEqual([])
+    expect(result.platformRatePct).toBe(10)
   })
 })
 
@@ -216,12 +226,22 @@ describe('assignBuilderToAgency', () => {
     expect(supabase._calls.some((c) => c.table === 'agency_builders' && c.method === 'delete')).toBe(true)
   })
 
+  it('accepts the platform admin as an agency', async () => {
+    const supabase = createFakeSupabase({
+      profiles: [{ data: [{ id: 'builder-1', role: 'consultant' }, { id: 'admin-1', role: 'admin' }], error: null }],
+      agency_builders: [{ data: null, error: null }],
+    })
+    await assignBuilderToAgency(ctxWith(supabase, { userId: 'admin-1', role: 'admin' }), 'builder-1', 'admin-1')
+    const upsert = supabase._calls.find((c) => c.table === 'agency_builders' && c.method === 'upsert')
+    expect(upsert?.args).toMatchObject({ agency_id: 'admin-1' })
+  })
+
   it('rejects an agency that is not a curator account', async () => {
     const supabase = createFakeSupabase({
       profiles: [{ data: [{ id: 'builder-1', role: 'consultant' }, { id: 'other-1', role: 'consultant' }], error: null }],
     })
     await expect(assignBuilderToAgency(ctxWith(supabase, { userId: 'admin-1', role: 'admin' }), 'builder-1', 'other-1')).rejects.toThrow(
-      'An agency must be a curator account'
+      'An agency must be a curator or admin account'
     )
   })
 

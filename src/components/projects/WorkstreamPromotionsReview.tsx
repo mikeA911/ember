@@ -92,6 +92,12 @@ export function WorkstreamPromotionsReview({ promotions, projectId }: { promotio
                 {p.approvedArtifactCount === 1 ? '' : 's'}
               </div>
               {p.clientEmails.length > 0 && <div className="text-xs text-zinc-500">Client viewers: {p.clientEmails.join(', ')}</div>}
+              {p.proposedFee && (
+                <div className="text-xs text-zinc-500">
+                  Maintenance fee: {p.proposedFee.currency} {p.proposedFee.amount.toLocaleString()} per{' '}
+                  {p.proposedFee.period === 'annual' ? 'year' : 'month'}
+                </div>
+              )}
             </div>
             <div className="flex shrink-0 gap-2">
               <button
