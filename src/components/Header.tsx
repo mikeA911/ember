@@ -41,8 +41,8 @@ export function Header({
   // KB Sandbox Builder (docs/dev-request-kb-sandbox-builder-product.md) --
   // a builder (consultant/member, never curator/admin) gets Wiki/Blog
   // visible by default rather than hidden behind the classic-workspace
-  // toggle, and no Projects/Trending/Explore/toggle at all -- those aren't
-  // meaningful for an individual Builder deployment. Curator/admin (the
+  // toggle, plus Projects (one per client), and no Trending/Explore/toggle
+  // -- those aren't meaningful for an individual Builder deployment. Curator/admin (the
   // operator's own staff, doing programme administration) keep today's
   // full classic nav unchanged in either mode.
   const isBuilderShell = productMode === 'builder' && !hasClassicNav
@@ -78,10 +78,12 @@ export function Header({
               <>
                 <Link href="/dashboard" className="hover:text-zinc-900">Workbench</Link>
                 {classicLinks}
+                <Link href="/agency" className="hover:text-zinc-900">Agency</Link>
               </>
             ) : isBuilderShell ? (
               <>
                 <Link href="/dashboard" className="hover:text-zinc-900">Ember</Link>
+                <Link href="/projects" className="hover:text-zinc-900">Projects</Link>
                 <Link href="/wiki" className="hover:text-zinc-900">Wiki</Link>
                 <Link href="/blog" className="hover:text-zinc-900">Blog</Link>
               </>

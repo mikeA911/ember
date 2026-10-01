@@ -1429,6 +1429,16 @@ export interface BuilderProgressUpdate {
   updated_at: string
 }
 
+// Builder agencies: which curator (agency) a consultant (builder) works
+// under. See 20261003100001_agency_builders.sql.
+export interface AgencyBuilder {
+  builder_id: string
+  agency_id: string
+  assigned_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // Builder AI Usage Metering + BYOLLM. See
 // 20260907100001_builder_ai_metering_schema.sql.
 export interface BuilderAiAllowance {
@@ -2470,6 +2480,9 @@ export type BuilderProgressUpdateUpdate = Partial<
   Omit<BuilderProgressUpdate, 'id' | 'workstream_id' | 'submitted_by' | 'created_at'>
 >
 
+export type AgencyBuilderInsert = Omit<AgencyBuilder, 'created_at' | 'updated_at'>
+export type AgencyBuilderUpdate = Partial<Omit<AgencyBuilder, 'builder_id' | 'created_at'>>
+
 export type BuilderAiAllowanceInsert = Omit<BuilderAiAllowance, 'created_at' | 'updated_at'> &
   Partial<Pick<BuilderAiAllowance, 'monthly_allowance_usd' | 'warning_threshold_pct' | 'stop_at_allowance' | 'current_period_start'>>
 export type BuilderAiAllowanceUpdate = Partial<Omit<BuilderAiAllowance, 'builder_id' | 'created_at'>>
@@ -2886,6 +2899,12 @@ export interface Database {
         Row: BuilderProgressUpdate
         Insert: BuilderProgressUpdateInsert
         Update: BuilderProgressUpdateUpdate
+        Relationships: []
+      }
+      agency_builders: {
+        Row: AgencyBuilder
+        Insert: AgencyBuilderInsert
+        Update: AgencyBuilderUpdate
         Relationships: []
       }
       builder_ai_allowances: {
