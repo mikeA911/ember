@@ -3,6 +3,7 @@ import { AuthError } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
+import { enrollInOrganizationHome } from './projects'
 
 // Workstream promotion (business-process handoff): a completed Workstream
 // is submitted for review by any active member of its Project; that
@@ -34,8 +35,26 @@ function slugify(name: string) {
     .replace(/(^-|-$)/g, '')
 }
 
-export async function submitWorkstreamForPromotion(ctx: WorkbenchCallerContext, workstreamId: string): Promise<{ promotionId: string }> {
+const EMAIL_LIKE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// Trimmed, lowercased, de-duplicated; throws on anything not email-shaped
+// so a typo is caught at submission, not discovered at approval.
+export function normalizeClientEmails(raw: string[] | undefined): string[] {
+  const emails = [...new Set((raw ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean))]
+  const invalid = emails.filter((e) => !EMAIL_LIKE.test(e))
+  if (invalid.length > 0) throw new ProjectValidationError(`Not a valid email address: ${invalid.join(', ')}`)
+  return emails
+}
+
+// clientEmails: for a builder's accepted client proposal, the client people
+// to add as viewers on the new client Project once it's approved.
+export async function submitWorkstreamForPromotion(
+  ctx: WorkbenchCallerContext,
+  workstreamId: string,
+  clientEmails?: string[]
+): Promise<{ promotionId: string }> {
   if (ctx.profile.role === 'anonymous') throw new AuthError('Create an account to submit a workstream for promotion')
+  const normalizedClientEmails = normalizeClientEmails(clientEmails)
 
   const { data: workstream, error: workstreamError } = await ctx.supabase
     .from('project_workstreams')
@@ -71,7 +90,7 @@ export async function submitWorkstreamForPromotion(ctx: WorkbenchCallerContext, 
 
   const { data: promotion, error } = await ctx.supabase
     .from('workstream_promotions')
-    .insert({ workstream_id: workstreamId, submitted_by: ctx.user.id })
+    .insert({ workstream_id: workstreamId, submitted_by: ctx.user.id, client_emails: normalizedClientEmails })
     .select('id')
     .single()
   if (error || !promotion) throw error ?? new ProjectValidationError('Failed to submit workstream for promotion')
@@ -85,11 +104,12 @@ export interface PendingWorkstreamPromotionRow {
   projectName: string
   submitterEmail: string | null
   approvedArtifactCount: number
+  clientEmails: string[]
   createdAt: string
 }
 
-async function shapePendingPromotions(
-  promotions: { id: string; workstream_id: string; submitted_by: string; created_at: string }[]
+export async function shapePendingPromotions(
+  promotions: { id: string; workstream_id: string; submitted_by: string; client_emails: string[] | null; created_at: string }[]
 ): Promise<PendingWorkstreamPromotionRow[]> {
   if (promotions.length === 0) return []
 
@@ -120,6 +140,7 @@ async function shapePendingPromotions(
       projectName: workstream ? (projectNameById.get(workstream.project_id) ?? 'Unknown project') : 'Unknown project',
       submitterEmail: emailById.get(p.submitted_by) ?? null,
       approvedArtifactCount: artifactCountByWorkstreamId.get(p.workstream_id) ?? 0,
+      clientEmails: p.client_emails ?? [],
       createdAt: p.created_at,
     }
   })
@@ -136,7 +157,7 @@ async function shapePendingPromotions(
 export async function listPendingWorkstreamPromotions(ctx: WorkbenchCallerContext): Promise<PendingWorkstreamPromotionRow[]> {
   const { data: promotions, error } = await ctx.supabase
     .from('workstream_promotions')
-    .select('id, workstream_id, submitted_by, created_at')
+    .select('id, workstream_id, submitted_by, client_emails, created_at')
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -156,7 +177,7 @@ export async function listPendingWorkstreamPromotionsForProject(ctx: WorkbenchCa
 
   const { data: promotions, error } = await ctx.supabase
     .from('workstream_promotions')
-    .select('id, workstream_id, submitted_by, created_at')
+    .select('id, workstream_id, submitted_by, client_emails, created_at')
     .eq('status', 'pending')
     .in('workstream_id', workstreamIds)
     .order('created_at', { ascending: false })
@@ -164,23 +185,83 @@ export async function listPendingWorkstreamPromotionsForProject(ctx: WorkbenchCa
   return shapePendingPromotions(promotions ?? [])
 }
 
-// Mirrors requireProjectCuratorOrAdmin (source-submissions.ts) exactly --
-// admin passes outright, otherwise the caller must hold owner/curator on
-// the workstream's OWN Project. This is what makes an ordinary team's own
+// Mirrors requireProjectCuratorOrAdmin (source-submissions.ts) -- admin
+// passes outright, otherwise the caller must hold owner/curator on the
+// workstream's OWN Project. This is what makes an ordinary team's own
 // curator (platform role merely 'consultant') able to decide, which the
 // platform-level hasRequiredRole(role, 'curator') check used before
-// 20260906100002 could never allow.
-async function requireProjectCuratorForWorkstream(ctx: WorkbenchCallerContext, workstreamId: string): Promise<void> {
+// 20260906100002 could never allow. A builder's agency (agency_builders)
+// also passes for that builder's promotions -- it's never a member of the
+// builder's private workspace, so the project-role check alone would
+// leave only the platform admin able to decide them.
+async function requirePromotionDecider(ctx: WorkbenchCallerContext, promotion: { workstream_id: string; submitted_by: string }): Promise<void> {
   if (ctx.profile.role === 'admin') return
-  const { data: workstream, error } = await ctx.supabase.from('project_workstreams').select('project_id').eq('id', workstreamId).single()
+  if (ctx.profile.role === 'curator') {
+    const { data: agencyLink } = await ctx.supabase
+      .from('agency_builders')
+      .select('builder_id')
+      .eq('builder_id', promotion.submitted_by)
+      .eq('agency_id', ctx.user.id)
+      .maybeSingle()
+    if (agencyLink) return
+  }
+  const { data: workstream, error } = await ctx.supabase.from('project_workstreams').select('project_id').eq('id', promotion.workstream_id).single()
   if (error || !workstream) throw error ?? new ProjectValidationError('Workstream not found')
   const role = await getActiveProjectRole(ctx, workstream.project_id)
   if (role !== 'owner' && role !== 'curator') {
-    throw new AuthError('Requires this workstream\'s own Project owner or curator role (or platform admin) to decide a promotion')
+    throw new AuthError('Requires this workstream\'s own Project owner or curator role, the builder\'s agency, or platform admin to decide a promotion')
   }
 }
 
-export async function approveWorkstreamPromotion(ctx: WorkbenchCallerContext, promotionId: string): Promise<{ createdProjectId: string }> {
+export interface ClientViewerResult {
+  email: string
+  status: 'added' | 'created' | 'failed'
+  // Only for a newly created account -- shown once to the approver to
+  // hand to the client, same as bulkAddProjectMembers.
+  password?: string
+  error?: string
+}
+
+// Admin client throughout: the decider is already authorized above, and an
+// agency curator can't read arbitrary profiles by email or add members to
+// a Project it doesn't yet curate. New client accounts get the least-
+// privileged 'member' platform role -- they only ever view their own
+// client Project (plus the Organization Home, like every new account).
+async function addClientViewers(admin: ReturnType<typeof createAdminClient>, projectId: string, emails: string[]): Promise<ClientViewerResult[]> {
+  const results: ClientViewerResult[] = []
+  for (const email of emails) {
+    try {
+      const { data: existing, error: lookupError } = await admin.from('profiles').select('id').ilike('email', email.replace(/[\\%_]/g, '\\$&')).maybeSingle()
+      if (lookupError) throw lookupError
+      let userId = existing?.id
+      let password: string | undefined
+      if (!userId) {
+        password = crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+        const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true })
+        if (createError) throw createError
+        userId = created.user.id
+        const { error: profileError } = await admin
+          .from('profiles')
+          .insert({ id: userId, email, full_name: null, role: 'member', is_active: true, assigned_kbs: [] })
+        if (profileError) throw profileError
+        await enrollInOrganizationHome(admin, userId)
+      }
+      const { error: memberError } = await admin
+        .from('project_members')
+        .upsert({ project_id: projectId, user_id: userId, role: 'viewer', status: 'active' }, { onConflict: 'project_id,user_id', ignoreDuplicates: true })
+      if (memberError) throw memberError
+      results.push(password ? { email, status: 'created', password } : { email, status: 'added' })
+    } catch (err) {
+      results.push({ email, status: 'failed', error: err instanceof Error ? err.message : 'Failed to add client' })
+    }
+  }
+  return results
+}
+
+export async function approveWorkstreamPromotion(
+  ctx: WorkbenchCallerContext,
+  promotionId: string
+): Promise<{ createdProjectId: string; clientViewers: ClientViewerResult[] }> {
   const { data: promotion, error: fetchError } = await ctx.supabase
     .from('workstream_promotions')
     .select('*')
@@ -190,16 +271,26 @@ export async function approveWorkstreamPromotion(ctx: WorkbenchCallerContext, pr
   if (promotion.status !== 'pending') throw new ProjectValidationError('This promotion has already been decided')
   if (promotion.submitted_by === ctx.user.id) throw new AuthError('You cannot decide a promotion you submitted yourself')
 
-  await requireProjectCuratorForWorkstream(ctx, promotion.workstream_id)
+  await requirePromotionDecider(ctx, promotion)
 
   const admin = createAdminClient()
 
   const { data: workstream, error: workstreamError } = await admin
     .from('project_workstreams')
-    .select('id, name')
+    .select('id, name, project_id')
     .eq('id', promotion.workstream_id)
     .single()
   if (workstreamError || !workstream) throw workstreamError ?? new ProjectValidationError('Original workstream is missing')
+
+  const { data: sourceProject, error: sourceProjectError } = await admin
+    .from('projects')
+    .select('owner_id, portfolio_category')
+    .eq('id', workstream.project_id)
+    .single()
+  if (sourceProjectError || !sourceProject) throw sourceProjectError ?? new ProjectValidationError('Original project is missing')
+  // A builder's accepted client proposal: promoted from their own
+  // builder_lab workspace, by them.
+  const isBuilderProposal = sourceProject.portfolio_category === 'builder_lab' && sourceProject.owner_id === promotion.submitted_by
 
   const { data: approvedArtifacts, error: artifactsError } = await admin
     .from('workstream_artifacts')
@@ -208,25 +299,45 @@ export async function approveWorkstreamPromotion(ctx: WorkbenchCallerContext, pr
     .eq('status', 'approved')
   if (artifactsError) throw artifactsError
 
-  // 1. A new Project -- the deciding curator/admin becomes its owner
-  // (matches "the rest of the team is added manually" afterward, in
-  // either the Builder-agency case or an ordinary Enterprise team's);
-  // projects_create_owner_membership adds them automatically. Named after
-  // the workstream alone -- no assumed purpose (Builder customer
-  // engagement, an internal HR self-service FAQ, or anything else).
+  // 1. A new Project, named after the workstream alone.
+  //    - Builder proposal: the builder owns their client Project, tagged
+  //      builder_lab so their metering/BYOLLM covers it too; their agency
+  //      joins as curator to oversee it.
+  //    - Otherwise: the deciding curator/admin becomes its owner (matches
+  //      "the rest of the team is added manually" afterward) and the
+  //      submitter joins as consultant -- direct access to the person who
+  //      did the work, not just the documents.
+  //    projects_create_owner_membership adds the owner automatically.
   const { data: newProject, error: projectError } = await admin
     .from('projects')
-    .insert({ name: workstream.name, project_type: 'consulting', owner_id: ctx.user.id })
+    .insert(
+      isBuilderProposal
+        ? { name: workstream.name, project_type: 'consulting', owner_id: promotion.submitted_by, portfolio_category: 'builder_lab' }
+        : { name: workstream.name, project_type: 'consulting', owner_id: ctx.user.id }
+    )
     .select('id')
     .single()
   if (projectError || !newProject) throw projectError ?? new ProjectValidationError('Failed to create the new project')
 
-  // 2. The original submitter joins as an active member -- direct access
-  // to the person who did the work, not just the documents.
-  const { error: memberError } = await admin
-    .from('project_members')
-    .insert({ project_id: newProject.id, user_id: promotion.submitted_by, role: 'consultant', status: 'active' })
-  if (memberError) throw memberError
+  // 2. The second member: the builder's agency, or the original submitter.
+  let secondMember: { user_id: string; role: 'curator' | 'consultant' } | null = null
+  if (isBuilderProposal) {
+    const { data: agencyLink, error: agencyError } = await admin
+      .from('agency_builders')
+      .select('agency_id')
+      .eq('builder_id', promotion.submitted_by)
+      .maybeSingle()
+    if (agencyError) throw agencyError
+    if (agencyLink) secondMember = { user_id: agencyLink.agency_id, role: 'curator' }
+  } else {
+    secondMember = { user_id: promotion.submitted_by, role: 'consultant' }
+  }
+  if (secondMember) {
+    const { error: memberError } = await admin
+      .from('project_members')
+      .insert({ project_id: newProject.id, user_id: secondMember.user_id, role: secondMember.role, status: 'active' })
+    if (memberError) throw memberError
+  }
 
   // 3. One new Workstream carrying the same name, holding copies of only
   // the already-approved artifacts -- draft/unreviewed content (and, for
@@ -258,6 +369,11 @@ export async function approveWorkstreamPromotion(ctx: WorkbenchCallerContext, pr
     if (copyError) throw copyError
   }
 
+  // 4. The client, as viewers. Per-email results rather than all-or-nothing:
+  // the Project already exists at this point, and the approver can add a
+  // missed client from its Members page.
+  const clientViewers = await addClientViewers(admin, newProject.id, promotion.client_emails ?? [])
+
   // Decision update through the caller's own RLS-scoped client, not the
   // admin client -- if the checks above were ever wrong, RLS
   // (workstream_promotions_decide_curator) is the backstop, same "zero
@@ -270,7 +386,7 @@ export async function approveWorkstreamPromotion(ctx: WorkbenchCallerContext, pr
   if (updateError) throw updateError
   if (!updated || updated.length === 0) throw new ProjectValidationError('You do not have permission to decide this promotion')
 
-  return { createdProjectId: newProject.id }
+  return { createdProjectId: newProject.id, clientViewers }
 }
 
 export async function rejectWorkstreamPromotion(ctx: WorkbenchCallerContext, promotionId: string, reason?: string): Promise<void> {
@@ -282,7 +398,7 @@ export async function rejectWorkstreamPromotion(ctx: WorkbenchCallerContext, pro
   if (fetchError || !promotion) throw fetchError ?? new ProjectValidationError('Promotion not found')
   if (promotion.submitted_by === ctx.user.id) throw new AuthError('You cannot decide a promotion you submitted yourself')
 
-  await requireProjectCuratorForWorkstream(ctx, promotion.workstream_id)
+  await requirePromotionDecider(ctx, promotion)
 
   const { data: updated, error } = await ctx.supabase
     .from('workstream_promotions')

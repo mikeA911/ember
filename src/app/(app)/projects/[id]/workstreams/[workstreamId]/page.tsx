@@ -390,7 +390,9 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
         />
       )}
 
-      {canOfferPromotion && <WorkstreamPromotionForm projectId={id} workstreamId={workstream.id} />}
+      {canOfferPromotion && (
+        <WorkstreamPromotionForm projectId={id} workstreamId={workstream.id} isBuilderProposal={canOfferBuilderUpdate} />
+      )}
 
       {canEdit && <PromoteToMethodForm projectId={id} workstreamId={workstream.id} defaultGuardrail={workstream.guardrail} />}
     </div>

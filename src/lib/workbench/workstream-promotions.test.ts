@@ -92,6 +92,33 @@ describe('submitWorkstreamForPromotion', () => {
   })
 })
 
+describe('submitWorkstreamForPromotion -- client emails', () => {
+  const completedWorkstream = {
+    project_workstreams: [{ data: { id: 'ws-1', project_id: 'proj-1', status: 'completed' }, error: null }],
+    project_members: [{ data: { role: 'owner' }, error: null }],
+    workstream_artifacts: [{ data: [{ id: 'art-1' }], error: null }],
+  }
+
+  it('stores the client emails trimmed, lowercased and de-duplicated', async () => {
+    const supabase = createFakeSupabase({
+      ...completedWorkstream,
+      workstream_promotions: [
+        { data: null, error: null },
+        { data: { id: 'promo-1' }, error: null },
+      ],
+    })
+    await submitWorkstreamForPromotion(ctxWith(supabase), 'ws-1', [' Jane@Acme.com ', 'jane@acme.com', '', 'sam@acme.com'])
+    const insert = supabase._calls.find((c) => c.table === 'workstream_promotions' && c.method === 'insert')
+    expect(insert?.args).toMatchObject({ client_emails: ['jane@acme.com', 'sam@acme.com'] })
+  })
+
+  it('rejects a malformed client email before writing anything', async () => {
+    const supabase = createFakeSupabase(completedWorkstream)
+    await expect(submitWorkstreamForPromotion(ctxWith(supabase), 'ws-1', ['not-an-email'])).rejects.toThrow('Not a valid email address')
+    expect(supabase._calls.some((c) => c.method === 'insert')).toBe(false)
+  })
+})
+
 describe('listPendingWorkstreamPromotions', () => {
   it('returns an empty array when nothing is pending', async () => {
     const supabase = createFakeSupabase({ workstream_promotions: [{ data: [], error: null }] })
@@ -101,7 +128,7 @@ describe('listPendingWorkstreamPromotions', () => {
 
   it('shapes pending promotions with workstream/project/submitter metadata via the admin client', async () => {
     const supabase = createFakeSupabase({
-      workstream_promotions: [{ data: [{ id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'builder-1', created_at: '2026-09-06' }], error: null }],
+      workstream_promotions: [{ data: [{ id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'builder-1', client_emails: ['jane@acme.com'], created_at: '2026-09-06' }], error: null }],
     })
     const admin = createFakeSupabase({
       project_workstreams: [{ data: [{ id: 'ws-1', name: 'Acme Order Automation', project_id: 'proj-1' }], error: null }],
@@ -120,6 +147,7 @@ describe('listPendingWorkstreamPromotions', () => {
         projectName: 'builder1 — Builder Workspace',
         submitterEmail: 'builder1@example.com',
         approvedArtifactCount: 2,
+        clientEmails: ['jane@acme.com'],
         createdAt: '2026-09-06',
       },
     ])
@@ -136,7 +164,7 @@ describe('listPendingWorkstreamPromotionsForProject', () => {
   it('scopes the promotion list to this project\'s own workstreams (RLS narrows the rest)', async () => {
     const supabase = createFakeSupabase({
       project_workstreams: [{ data: [{ id: 'ws-1' }, { id: 'ws-2' }], error: null }],
-      workstream_promotions: [{ data: [{ id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'member-1', created_at: '2026-09-06' }], error: null }],
+      workstream_promotions: [{ data: [{ id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'member-1', client_emails: [], created_at: '2026-09-06' }], error: null }],
     })
     const admin = createFakeSupabase({
       project_workstreams: [{ data: [{ id: 'ws-1', name: 'VL Policy FAQ', project_id: 'proj-1' }], error: null }],
@@ -155,6 +183,7 @@ describe('listPendingWorkstreamPromotionsForProject', () => {
         projectName: 'HR Team Project',
         submitterEmail: 'member@example.com',
         approvedArtifactCount: 1,
+        clientEmails: [],
         createdAt: '2026-09-06',
       },
     ])
@@ -191,37 +220,115 @@ describe('approveWorkstreamPromotion', () => {
     await expect(approveWorkstreamPromotion(ctxWith(supabase, { role: 'admin' }), 'promo-1')).rejects.toThrow('already been decided')
   })
 
-  it('lets a platform admin decide a Builder\'s solo-Project promotion (admin bypass, no extra project-role lookup)', async () => {
-    const supabase = createFakeSupabase({
-      workstream_promotions: [
-        { data: { id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'builder-1', status: 'pending' }, error: null },
-        { data: [{ id: 'promo-1' }], error: null }, // decision update
-      ],
-    })
-    const admin = createFakeSupabase({
+  function builderProposalAdmin(overrides: Record<string, { data: unknown; error: null }[]> = {}) {
+    return createFakeSupabase({
       project_workstreams: [
-        { data: { id: 'ws-1', name: 'Acme Order Automation' }, error: null },
+        { data: { id: 'ws-1', name: 'Acme Order Automation', project_id: 'workspace-1' }, error: null },
         { data: { id: 'new-ws-1' }, error: null }, // new workstream insert
+      ],
+      projects: [
+        { data: { owner_id: 'builder-1', portfolio_category: 'builder_lab' }, error: null }, // source project
+        { data: { id: 'new-proj-1' }, error: null }, // new project insert
       ],
       workstream_artifacts: [
         { data: [{ artifact_type: 'design_note', title: 'Architecture', external_tool: null, content: 'text', external_url: null, notes: null, created_by: 'builder-1' }], error: null },
       ],
-      projects: [{ data: { id: 'new-proj-1' }, error: null }],
-      project_members: [{ data: null, error: null }],
+      agency_builders: [{ data: { agency_id: 'agency-1' }, error: null }],
+      ...overrides,
     })
+  }
+
+  it('turns a builder\'s accepted proposal into a client Project the builder owns, with their agency as curator (admin deciding)', async () => {
+    const supabase = createFakeSupabase({
+      workstream_promotions: [
+        { data: { id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'builder-1', status: 'pending', client_emails: [] }, error: null },
+        { data: [{ id: 'promo-1' }], error: null }, // decision update
+      ],
+    })
+    const admin = builderProposalAdmin()
     createAdminClientMock.mockReturnValue(admin)
 
     const result = await approveWorkstreamPromotion(ctxWith(supabase, { userId: 'operator-1', role: 'admin' }), 'promo-1')
 
-    expect(result).toEqual({ createdProjectId: 'new-proj-1' })
+    expect(result).toEqual({ createdProjectId: 'new-proj-1', clientViewers: [] })
     const projectInsert = admin._calls.find((c) => c.table === 'projects' && c.method === 'insert')
-    expect(projectInsert?.args).toMatchObject({ name: 'Acme Order Automation', project_type: 'consulting', owner_id: 'operator-1' })
+    expect(projectInsert?.args).toMatchObject({ name: 'Acme Order Automation', owner_id: 'builder-1', portfolio_category: 'builder_lab' })
     const memberInsert = admin._calls.find((c) => c.table === 'project_members' && c.method === 'insert')
-    expect(memberInsert?.args).toMatchObject({ project_id: 'new-proj-1', user_id: 'builder-1', role: 'consultant', status: 'active' })
+    expect(memberInsert?.args).toMatchObject({ project_id: 'new-proj-1', user_id: 'agency-1', role: 'curator', status: 'active' })
     const artifactInsert = admin._calls.find((c) => c.table === 'workstream_artifacts' && c.method === 'insert')
     expect(artifactInsert?.args).toMatchObject([expect.objectContaining({ workstream_id: 'new-ws-1', title: 'Architecture', status: 'approved' })])
     const decisionUpdate = supabase._calls.find((c) => c.table === 'workstream_promotions' && c.method === 'update')
     expect(decisionUpdate?.args).toMatchObject({ status: 'approved', decided_by: 'operator-1', created_project_id: 'new-proj-1' })
+  })
+
+  it('lets the builder\'s own agency decide, without being a member of the builder\'s workspace', async () => {
+    const supabase = createFakeSupabase({
+      workstream_promotions: [
+        { data: { id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'builder-1', status: 'pending', client_emails: [] }, error: null },
+        { data: [{ id: 'promo-1' }], error: null },
+      ],
+      agency_builders: [{ data: { builder_id: 'builder-1' }, error: null }],
+    })
+    createAdminClientMock.mockReturnValue(builderProposalAdmin())
+
+    const result = await approveWorkstreamPromotion(ctxWith(supabase, { userId: 'agency-1', role: 'curator' }), 'promo-1')
+
+    expect(result.createdProjectId).toBe('new-proj-1')
+    expect(supabase._calls.some((c) => c.table === 'project_members')).toBe(false)
+  })
+
+  it('rejects a curator who is not this builder\'s agency', async () => {
+    const supabase = createFakeSupabase({
+      workstream_promotions: [{ data: { id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'builder-1', status: 'pending' }, error: null }],
+      agency_builders: [{ data: null, error: null }],
+      project_workstreams: [{ data: { project_id: 'workspace-1' }, error: null }],
+      project_members: [{ data: null, error: null }],
+    })
+    await expect(approveWorkstreamPromotion(ctxWith(supabase, { userId: 'agency-2', role: 'curator' }), 'promo-1')).rejects.toThrow(
+      "the builder's agency"
+    )
+  })
+
+  it('adds the client as viewers -- an existing account directly, a new one with a temporary password', async () => {
+    const supabase = createFakeSupabase({
+      workstream_promotions: [
+        {
+          data: { id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'builder-1', status: 'pending', client_emails: ['jane@acme.com', 'sam@acme.com'] },
+          error: null,
+        },
+        { data: [{ id: 'promo-1' }], error: null },
+      ],
+    })
+    const fake = builderProposalAdmin({
+      projects: [
+        { data: { owner_id: 'builder-1', portfolio_category: 'builder_lab' }, error: null },
+        { data: { id: 'new-proj-1' }, error: null },
+        { data: null, error: null }, // enrollInOrganizationHome: no org home
+      ],
+      profiles: [
+        { data: { id: 'jane-1' }, error: null }, // jane exists
+        { data: null, error: null }, // sam doesn't
+        { data: null, error: null }, // sam's profile insert
+      ],
+    })
+    const createUser = vi.fn().mockResolvedValue({ data: { user: { id: 'sam-1' } }, error: null })
+    const admin = Object.assign(fake, { auth: { admin: { createUser } } })
+    createAdminClientMock.mockReturnValue(admin)
+
+    const result = await approveWorkstreamPromotion(ctxWith(supabase, { userId: 'operator-1', role: 'admin' }), 'promo-1')
+
+    expect(result.clientViewers).toEqual([
+      { email: 'jane@acme.com', status: 'added' },
+      { email: 'sam@acme.com', status: 'created', password: expect.any(String) },
+    ])
+    expect(createUser).toHaveBeenCalledWith(expect.objectContaining({ email: 'sam@acme.com', email_confirm: true }))
+    const profileInsert = admin._calls.find((c) => c.table === 'profiles' && c.method === 'insert')
+    expect(profileInsert?.args).toMatchObject({ id: 'sam-1', role: 'member' })
+    const viewerUpserts = admin._calls.filter((c) => c.table === 'project_members' && c.method === 'upsert').map((c) => c.args)
+    expect(viewerUpserts).toEqual([
+      { project_id: 'new-proj-1', user_id: 'jane-1', role: 'viewer', status: 'active' },
+      { project_id: 'new-proj-1', user_id: 'sam-1', role: 'viewer', status: 'active' },
+    ])
   })
 
   it('lets an ordinary team\'s own curator decide -- platform role merely consultant, project role curator (HR Manager case)', async () => {
@@ -230,24 +337,29 @@ describe('approveWorkstreamPromotion', () => {
         { data: { id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'member-1', status: 'pending' }, error: null },
         { data: [{ id: 'promo-1' }], error: null }, // decision update
       ],
-      project_workstreams: [{ data: { project_id: 'proj-1' }, error: null }], // requireProjectCuratorForWorkstream's own lookup
+      project_workstreams: [{ data: { project_id: 'proj-1' }, error: null }], // requirePromotionDecider's own lookup
       project_members: [{ data: { role: 'curator' }, error: null }], // getActiveProjectRole
     })
     const admin = createFakeSupabase({
       project_workstreams: [
-        { data: { id: 'ws-1', name: 'VL Policy FAQ' }, error: null },
+        { data: { id: 'ws-1', name: 'VL Policy FAQ', project_id: 'proj-1' }, error: null },
         { data: { id: 'new-ws-1' }, error: null },
       ],
+      projects: [
+        { data: { owner_id: 'hr-manager-1', portfolio_category: 'other' }, error: null },
+        { data: { id: 'new-proj-1' }, error: null },
+      ],
       workstream_artifacts: [{ data: [], error: null }],
-      projects: [{ data: { id: 'new-proj-1' }, error: null }],
     })
     createAdminClientMock.mockReturnValue(admin)
 
     const result = await approveWorkstreamPromotion(ctxWith(supabase, { userId: 'hr-manager-1', role: 'consultant' }), 'promo-1')
 
-    expect(result).toEqual({ createdProjectId: 'new-proj-1' })
+    expect(result).toEqual({ createdProjectId: 'new-proj-1', clientViewers: [] })
     const projectInsert = admin._calls.find((c) => c.table === 'projects' && c.method === 'insert')
-    expect(projectInsert?.args).toMatchObject({ name: 'VL Policy FAQ', owner_id: 'hr-manager-1' })
+    expect(projectInsert?.args).toEqual({ name: 'VL Policy FAQ', project_type: 'consulting', owner_id: 'hr-manager-1' })
+    const memberInsert = admin._calls.find((c) => c.table === 'project_members' && c.method === 'insert')
+    expect(memberInsert?.args).toMatchObject({ project_id: 'new-proj-1', user_id: 'member-1', role: 'consultant', status: 'active' })
   })
 })
 

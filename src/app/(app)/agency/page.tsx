@@ -18,7 +18,8 @@ export default async function AgencyPage() {
       <div>
         <h1 className="text-xl font-semibold">{dashboard.viewerIsAdmin ? 'Builder Agencies' : 'My Builders'}</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Each builder&apos;s client projects and where they stand. Status, dates and the progress updates builders choose to
+          Each builder&apos;s client proposals, the client projects created from accepted ones, and requests waiting on you.
+          Status, dates and the progress updates builders choose to
           share -- their notebooks, conversations and drafts stay private to them.
         </p>
       </div>

@@ -32,49 +32,114 @@ const update = (workstreamId: string, overrides: Record<string, unknown> = {}) =
   ...overrides,
 })
 
+const empty = {
+  presentations: [],
+  promotions: [],
+  viewerMembers: [],
+  pendingPromotionRows: [],
+}
+
 describe('assembleAgencyDashboard', () => {
-  it("groups builders under their agency with one row per client project, newest activity first", () => {
+  it('splits a builder into workspace proposals and the client projects promoted from them', () => {
     const result = assembleAgencyDashboard({
+      ...empty,
       viewerIsAdmin: true,
       agencies: [person('agency-1', 'a@example.com')],
       builders: [person('builder-1', 'b1@example.com'), person('builder-2', 'b2@example.com')],
       roster: [{ builder_id: 'builder-1', agency_id: 'agency-1' }],
       projects: [
-        { id: 'p-acme', name: 'Acme', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z' },
-        { id: 'p-globex', name: 'Globex', status: 'review', owner_id: 'builder-1', updated_at: '2026-09-10T00:00:00Z' },
+        { id: 'p-workspace', name: 'B1 Workspace', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z' },
+        { id: 'p-acme', name: 'Acme', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-10T00:00:00Z' },
       ],
       workstreams: [
-        { id: 'ws-1', project_id: 'p-acme', name: 'Discovery', status: 'active', updated_at: '2026-09-25T00:00:00Z' },
-        { id: 'ws-2', project_id: 'p-acme', name: 'Old', status: 'completed', updated_at: '2026-08-01T00:00:00Z' },
+        { id: 'ws-acme', project_id: 'p-workspace', name: 'Acme', status: 'completed', updated_at: '2026-09-05T00:00:00Z' },
+        { id: 'ws-globex', project_id: 'p-workspace', name: 'Globex', status: 'active', updated_at: '2026-09-25T00:00:00Z' },
+        { id: 'ws-old', project_id: 'p-workspace', name: 'Old', status: 'archived', updated_at: '2026-08-01T00:00:00Z' },
+        { id: 'ws-delivery', project_id: 'p-acme', name: 'Delivery', status: 'active', updated_at: '2026-09-20T00:00:00Z' },
       ],
-      updates: [update('ws-1', { confidence: 'at_risk' })],
+      updates: [update('ws-globex', { confidence: 'at_risk' })],
+      presentations: [{ workstream_id: 'ws-globex', status: 'review_open' }],
+      promotions: [
+        {
+          id: 'promo-1',
+          workstream_id: 'ws-acme',
+          submitted_by: 'builder-1',
+          status: 'approved',
+          client_emails: ['jane@acme.com'],
+          created_project_id: 'p-acme',
+          decided_at: '2026-09-10T00:00:00Z',
+          created_at: '2026-09-06T00:00:00Z',
+        },
+      ],
+      viewerMembers: [{ project_id: 'p-acme' }, { project_id: 'p-acme' }],
     })
 
-    expect(result.agencies).toHaveLength(1)
     const [builder] = result.agencies[0].builders
-    expect(builder.builderId).toBe('builder-1')
-    expect(builder.projects.map((p) => p.name)).toEqual(['Acme', 'Globex'])
-    expect(builder.projects[0]).toMatchObject({ workstreamCount: 2, activeWorkstreamCount: 1, lastActivityAt: '2026-09-25T00:00:00Z' })
-    expect(builder.projects[0].latestUpdate).toMatchObject({ workstreamName: 'Discovery', confidence: 'at_risk' })
-    expect(builder.projects[1].latestUpdate).toBeNull()
+    expect(builder.proposals.map((p) => p.name)).toEqual(['Globex', 'Acme'])
+    expect(builder.proposals[0]).toMatchObject({ presentationStatus: 'review_open', promotionStatus: null })
+    expect(builder.proposals[1]).toMatchObject({ promotionStatus: 'approved' })
+    expect(builder.clientProjects).toEqual([
+      expect.objectContaining({
+        id: 'p-acme',
+        clientViewerCount: 2,
+        createdAt: '2026-09-10T00:00:00Z',
+        workstreamCount: 1,
+        activeWorkstreamCount: 1,
+        lastActivityAt: '2026-09-20T00:00:00Z',
+      }),
+    ])
     expect(builder.lastActivityAt).toBe('2026-09-25T00:00:00Z')
     expect(builder.attention).toBe('at_risk')
     expect(result.unassigned.map((b) => b.builderId)).toEqual(['builder-2'])
   })
 
-  it('ranks blocked above a help request above at risk', () => {
-    const base = {
+  it("attaches a pending client-project request to the builder who submitted it", () => {
+    const pendingRow = {
+      id: 'promo-2',
+      workstreamName: 'Globex',
+      projectName: 'B1 Workspace',
+      submitterEmail: 'b1@example.com',
+      approvedArtifactCount: 1,
+      clientEmails: ['sam@globex.com'],
+      createdAt: '2026-09-26T00:00:00Z',
+    }
+    const result = assembleAgencyDashboard({
+      ...empty,
       viewerIsAdmin: false,
       agencies: [person('agency-1', 'a@example.com')],
       builders: [person('builder-1', 'b1@example.com')],
       roster: [{ builder_id: 'builder-1', agency_id: 'agency-1' }],
-      projects: [
-        { id: 'p1', name: 'One', status: 'active' as const, owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z' },
-        { id: 'p2', name: 'Two', status: 'active' as const, owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z' },
+      projects: [],
+      workstreams: [],
+      updates: [],
+      promotions: [
+        {
+          id: 'promo-2',
+          workstream_id: 'ws-globex',
+          submitted_by: 'builder-1',
+          status: 'pending',
+          client_emails: ['sam@globex.com'],
+          created_project_id: null,
+          decided_at: null,
+          created_at: '2026-09-26T00:00:00Z',
+        },
       ],
+      pendingPromotionRows: [pendingRow],
+    })
+    expect(result.agencies[0].builders[0].pendingPromotions).toEqual([pendingRow])
+  })
+
+  it('ranks blocked above a help request above at risk', () => {
+    const base = {
+      ...empty,
+      viewerIsAdmin: false,
+      agencies: [person('agency-1', 'a@example.com')],
+      builders: [person('builder-1', 'b1@example.com')],
+      roster: [{ builder_id: 'builder-1', agency_id: 'agency-1' }],
+      projects: [{ id: 'p1', name: 'Workspace', status: 'active' as const, owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z' }],
       workstreams: [
-        { id: 'ws-1', project_id: 'p1', name: 'A', status: 'active', updated_at: '2026-09-01T00:00:00Z' },
-        { id: 'ws-2', project_id: 'p2', name: 'B', status: 'active', updated_at: '2026-09-01T00:00:00Z' },
+        { id: 'ws-1', project_id: 'p1', name: 'A', status: 'active' as const, updated_at: '2026-09-01T00:00:00Z' },
+        { id: 'ws-2', project_id: 'p1', name: 'B', status: 'active' as const, updated_at: '2026-09-01T00:00:00Z' },
       ],
     }
     const help = assembleAgencyDashboard({ ...base, updates: [update('ws-1', { confidence: 'at_risk' }), update('ws-2', { help_requested: 'Need a mentor' })] })
@@ -86,6 +151,7 @@ describe('assembleAgencyDashboard', () => {
 
   it('never lists unassigned builders for a curator', () => {
     const result = assembleAgencyDashboard({
+      ...empty,
       viewerIsAdmin: false,
       agencies: [person('agency-1', 'a@example.com')],
       builders: [person('builder-9', 'b9@example.com')],
@@ -115,13 +181,16 @@ describe('getAgencyDashboard', () => {
     expect(result.agencies).toEqual([{ agencyId: 'agency-1', email: 'agency1@example.com', fullName: 'Agency One', builders: [] }])
   })
 
-  it("loads a curator's builders, their non-archived projects and shared updates", async () => {
+  it("loads a curator's builders, their projects, proposals and shared updates", async () => {
     const admin = createFakeSupabase({
       agency_builders: [{ data: [{ builder_id: 'builder-1', agency_id: 'agency-1' }], error: null }],
       profiles: [{ data: [person('builder-1', 'b1@example.com')], error: null }],
-      projects: [{ data: [{ id: 'p1', name: 'Acme', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z' }], error: null }],
-      project_workstreams: [{ data: [{ id: 'ws-1', project_id: 'p1', name: 'Discovery', status: 'active', updated_at: '2026-09-02T00:00:00Z' }], error: null }],
+      projects: [{ data: [{ id: 'p1', name: 'Workspace', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z' }], error: null }],
+      workstream_promotions: [{ data: [], error: null }],
+      project_workstreams: [{ data: [{ id: 'ws-1', project_id: 'p1', name: 'Acme', status: 'active', updated_at: '2026-09-02T00:00:00Z' }], error: null }],
+      project_members: [{ data: [], error: null }],
       builder_progress_updates: [{ data: [update('ws-1')], error: null }],
+      presentations: [{ data: [{ workstream_id: 'ws-1', status: 'draft' }], error: null }],
     })
     createAdminClientMock.mockReturnValue(admin)
 
@@ -130,8 +199,9 @@ describe('getAgencyDashboard', () => {
     expect(admin._calls).toContainEqual({ table: 'profiles', method: 'eq', args: { column: 'role', value: 'consultant' } })
     expect(admin._calls).toContainEqual({ table: 'builder_progress_updates', method: 'eq', args: { column: 'status', value: 'active' } })
     const [builder] = result.agencies[0].builders
-    expect(builder.projects).toHaveLength(1)
-    expect(builder.projects[0].latestUpdate?.currentStage).toBe('Specifying')
+    expect(builder.proposals).toEqual([expect.objectContaining({ name: 'Acme', presentationStatus: 'draft' })])
+    expect(builder.proposals[0].latestUpdate?.currentStage).toBe('Specifying')
+    expect(builder.clientProjects).toEqual([])
   })
 })
 

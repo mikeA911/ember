@@ -2,24 +2,59 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import type { AgencyAttention, AgencyBuilderRow, AgencyDashboard, AgencyProjectRow } from '@/lib/workbench/agency-dashboard'
-import type { ProjectStatus } from '@/types/database'
+import type {
+  AgencyAttention,
+  AgencyBuilderRow,
+  AgencyClientProjectRow,
+  AgencyDashboard,
+  AgencyProposalRow,
+  AgencySharedUpdate,
+} from '@/lib/workbench/agency-dashboard'
+import type { PresentationStatus, ProjectStatus, WorkstreamPromotionStatus, WorkstreamStatus } from '@/types/database'
+import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamPromotionsReview'
 import { AssignAgencySelect } from './AssignAgencySelect'
 
 // Same display relabeling as ProjectStatusSection.tsx's own pipeline.
-const STATUS_LABELS: Record<ProjectStatus, string> = {
+const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   draft: 'Initial Draft',
   active: 'Working on it',
   review: 'For Approval',
   completed: 'Approved',
   archived: 'Archived',
 }
-const STATUS_STYLES: Record<ProjectStatus, string> = {
+const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
   draft: 'bg-zinc-100 text-zinc-700',
   active: 'bg-amber-100 text-amber-800',
   review: 'bg-blue-100 text-blue-800',
   completed: 'bg-green-100 text-green-800',
   archived: 'bg-zinc-200 text-zinc-500',
+}
+
+const WORKSTREAM_STATUS_LABELS: Record<WorkstreamStatus, string> = {
+  draft: 'Draft',
+  active: 'In progress',
+  completed: 'Completed',
+  archived: 'Archived',
+}
+
+const PRESENTATION_LABELS: Record<PresentationStatus, string> = {
+  draft: 'Proposal drafted',
+  review_open: 'Proposal in review',
+  review_closed: 'Review closed',
+  builder_revision: 'Revising proposal',
+  curator_review: 'Proposal with curator',
+  approved: 'Proposal approved',
+}
+
+const PROMOTION_LABELS: Record<WorkstreamPromotionStatus, string> = {
+  pending: 'Client project requested',
+  approved: 'Client project created',
+  rejected: 'Request declined',
+}
+const PROMOTION_STYLES: Record<WorkstreamPromotionStatus, string> = {
+  pending: 'bg-blue-100 text-blue-800',
+  approved: 'bg-green-100 text-green-800',
+  rejected: 'bg-zinc-200 text-zinc-600',
 }
 
 const CONFIDENCE_LABELS: Record<string, string> = { on_track: 'On track', at_risk: 'At risk', blocked: 'Blocked' }
@@ -40,8 +75,55 @@ function formatDate(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString() : '—'
 }
 
-function ProjectRow({ project, linkable }: { project: AgencyProjectRow; linkable: boolean }) {
-  const u = project.latestUpdate
+function isThisMonth(iso: string) {
+  const d = new Date(iso)
+  const now = new Date()
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+}
+
+function Pill({ className, children }: { className: string; children: React.ReactNode }) {
+  return <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>{children}</span>
+}
+
+function SharedUpdate({ update }: { update: AgencySharedUpdate | null }) {
+  if (!update) return <span className="text-zinc-400">No update shared</span>
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="font-medium text-zinc-700">{update.currentStage}</span>
+        <span className={`rounded-full px-2 py-0.5 ${CONFIDENCE_STYLES[update.confidence]}`}>{CONFIDENCE_LABELS[update.confidence]}</span>
+      </div>
+      <span className="text-zinc-600">{update.progress}</span>
+      <span className="text-zinc-500">Next: {update.nextStep}</span>
+      {update.helpRequested && <span className="text-red-700">Help: {update.helpRequested}</span>}
+    </div>
+  )
+}
+
+function ProposalRow({ proposal }: { proposal: AgencyProposalRow }) {
+  return (
+    <tr className="border-t border-zinc-100 align-top">
+      <td className="py-2 pr-3 font-medium">{proposal.name}</td>
+      <td className="py-2 pr-3">
+        <div className="flex flex-col items-start gap-1">
+          {proposal.promotionStatus ? (
+            <Pill className={PROMOTION_STYLES[proposal.promotionStatus]}>{PROMOTION_LABELS[proposal.promotionStatus]}</Pill>
+          ) : proposal.presentationStatus ? (
+            <Pill className="bg-zinc-100 text-zinc-700">{PRESENTATION_LABELS[proposal.presentationStatus]}</Pill>
+          ) : (
+            <Pill className="bg-zinc-100 text-zinc-700">{WORKSTREAM_STATUS_LABELS[proposal.status]}</Pill>
+          )}
+        </div>
+      </td>
+      <td className="py-2 pr-3 text-xs">
+        <SharedUpdate update={proposal.latestUpdate} />
+      </td>
+      <td className="whitespace-nowrap py-2 text-right text-xs text-zinc-500">{formatDate(proposal.lastActivityAt)}</td>
+    </tr>
+  )
+}
+
+function ClientProjectRow({ project, linkable }: { project: AgencyClientProjectRow; linkable: boolean }) {
   return (
     <tr className="border-t border-zinc-100 align-top">
       <td className="py-2 pr-3">
@@ -53,31 +135,36 @@ function ProjectRow({ project, linkable }: { project: AgencyProjectRow; linkable
           <span className="font-medium">{project.name}</span>
         )}
         <div className="mt-0.5 text-xs text-zinc-500">
-          {project.activeWorkstreamCount} active of {project.workstreamCount} workstream{project.workstreamCount === 1 ? '' : 's'}
+          Created {formatDate(project.createdAt)} · {project.clientViewerCount} client viewer{project.clientViewerCount === 1 ? '' : 's'} ·{' '}
+          {project.activeWorkstreamCount} of {project.workstreamCount} workstream{project.workstreamCount === 1 ? '' : 's'} active
         </div>
       </td>
       <td className="py-2 pr-3">
-        <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[project.status]}`}>
-          {STATUS_LABELS[project.status]}
-        </span>
+        <Pill className={PROJECT_STATUS_STYLES[project.status]}>{PROJECT_STATUS_LABELS[project.status]}</Pill>
       </td>
       <td className="py-2 pr-3 text-xs">
-        {u ? (
-          <div className="flex flex-col gap-0.5">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-medium text-zinc-700">{u.currentStage}</span>
-              <span className={`rounded-full px-2 py-0.5 ${CONFIDENCE_STYLES[u.confidence]}`}>{CONFIDENCE_LABELS[u.confidence]}</span>
-            </div>
-            <span className="text-zinc-600">{u.progress}</span>
-            <span className="text-zinc-500">Next: {u.nextStep}</span>
-            {u.helpRequested && <span className="text-red-700">Help: {u.helpRequested}</span>}
-          </div>
-        ) : (
-          <span className="text-zinc-400">No update shared</span>
-        )}
+        <SharedUpdate update={project.latestUpdate} />
       </td>
       <td className="whitespace-nowrap py-2 text-right text-xs text-zinc-500">{formatDate(project.lastActivityAt)}</td>
     </tr>
+  )
+}
+
+function RowTable({ heading, children }: { heading: string; children: React.ReactNode }) {
+  return (
+    <div className="mt-2 overflow-x-auto">
+      <table className="w-full min-w-[640px] text-sm">
+        <thead className="text-left text-xs text-zinc-500">
+          <tr>
+            <th className="w-1/3 pb-1 pr-3 font-medium">{heading}</th>
+            <th className="pb-1 pr-3 font-medium">Status</th>
+            <th className="pb-1 pr-3 font-medium">Latest shared update</th>
+            <th className="pb-1 text-right font-medium">Updated</th>
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
   )
 }
 
@@ -98,38 +185,36 @@ function BuilderCard({
           {builder.fullName && builder.email && <div className="truncate text-xs text-zinc-500">{builder.email}</div>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {builder.attention && (
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ATTENTION_STYLES[builder.attention]}`}>
-              {ATTENTION_LABELS[builder.attention]}
-            </span>
-          )}
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${builder.isActive ? 'bg-green-100 text-green-800' : 'bg-zinc-200 text-zinc-600'}`}>
-            {builder.isActive ? 'Active' : 'Inactive'}
-          </span>
+          {builder.attention && <Pill className={ATTENTION_STYLES[builder.attention]}>{ATTENTION_LABELS[builder.attention]}</Pill>}
+          <Pill className={builder.isActive ? 'bg-green-100 text-green-800' : 'bg-zinc-200 text-zinc-600'}>{builder.isActive ? 'Active' : 'Inactive'}</Pill>
           {viewerIsAdmin && <AssignAgencySelect builderId={builder.builderId} agencyId={builder.agencyId} options={agencyOptions} />}
         </div>
       </div>
       <p className="mt-1 text-xs text-zinc-500">
-        {builder.projects.length} client project{builder.projects.length === 1 ? '' : 's'} · last activity {formatDate(builder.lastActivityAt)}
+        {builder.proposals.length} proposal{builder.proposals.length === 1 ? '' : 's'} · {builder.clientProjects.length} client project
+        {builder.clientProjects.length === 1 ? '' : 's'} · last activity {formatDate(builder.lastActivityAt)}
       </p>
-      {builder.projects.length > 0 && (
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="text-left text-xs text-zinc-500">
-              <tr>
-                <th className="pb-1 pr-3 font-medium">Client project</th>
-                <th className="pb-1 pr-3 font-medium">Status</th>
-                <th className="pb-1 pr-3 font-medium">Latest shared update</th>
-                <th className="pb-1 text-right font-medium">Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {builder.projects.map((p) => (
-                <ProjectRow key={p.id} project={p} linkable={viewerIsAdmin} />
-              ))}
-            </tbody>
-          </table>
+
+      {builder.pendingPromotions.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-blue-700">Waiting for a client project</h4>
+          <WorkstreamPromotionsReview promotions={builder.pendingPromotions} />
         </div>
+      )}
+
+      {builder.clientProjects.length > 0 && (
+        <RowTable heading="Client project">
+          {builder.clientProjects.map((p) => (
+            <ClientProjectRow key={p.id} project={p} linkable={viewerIsAdmin} />
+          ))}
+        </RowTable>
+      )}
+      {builder.proposals.length > 0 && (
+        <RowTable heading="Proposal (workspace)">
+          {builder.proposals.map((p) => (
+            <ProposalRow key={p.workstreamId} proposal={p} />
+          ))}
+        </RowTable>
       )}
     </li>
   )
@@ -149,9 +234,10 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
   const { viewerIsAdmin, agencies, unassigned } = dashboard
 
   const allBuilders = [...agencies.flatMap((a) => a.builders), ...unassigned]
-  const allProjects = allBuilders.flatMap((b) => b.projects)
+  const allClientProjects = allBuilders.flatMap((b) => b.clientProjects)
   const agencyOptions = agencies.map((a) => ({ id: a.agencyId, label: a.fullName || a.email || a.agencyId }))
-  const visible = (builders: AgencyBuilderRow[]) => (attentionOnly ? builders.filter((b) => b.attention) : builders)
+  const needsAction = (b: AgencyBuilderRow) => !!b.attention || b.pendingPromotions.length > 0
+  const visible = (builders: AgencyBuilderRow[]) => (attentionOnly ? builders.filter(needsAction) : builders)
 
   const sections = [
     ...agencies.map((a) => ({ key: a.agencyId, title: a.fullName || a.email || 'Agency', subtitle: a.fullName ? a.email : null, builders: a.builders })),
@@ -164,26 +250,30 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <Stat label="Builders" value={allBuilders.length} />
-        <Stat label="Client projects" value={allProjects.length} />
-        <Stat label="Working on it" value={allProjects.filter((p) => p.status === 'active').length} />
-        <Stat label="For approval" value={allProjects.filter((p) => p.status === 'review').length} />
-        <Stat label="Builders needing attention" value={allBuilders.filter((b) => b.attention).length} />
+        <Stat label="Open proposals" value={allBuilders.flatMap((b) => b.proposals).filter((p) => p.promotionStatus !== 'approved').length} />
+        <Stat label="Client project requests" value={allBuilders.reduce((n, b) => n + b.pendingPromotions.length, 0)} />
+        <Stat label="Client projects created this month" value={allClientProjects.filter((p) => isThisMonth(p.createdAt)).length} />
+        <Stat label="Client projects in total" value={allClientProjects.length} />
       </div>
 
       <label className="flex w-fit items-center gap-2 text-sm text-zinc-600">
         <input type="checkbox" checked={attentionOnly} onChange={(e) => setAttentionOnly(e.target.checked)} />
-        Only builders who are blocked, at risk or asking for help
+        Only builders waiting on a decision, blocked, at risk or asking for help
       </label>
 
       {sections.length === 0 && <p className="text-sm text-zinc-500">No agencies yet. Create a curator account for each builder agency.</p>}
 
       {sections.map((section) => {
         const builders = visible(section.builders)
+        const created = section.builders.flatMap((b) => b.clientProjects)
         return (
           <section key={section.key} className="flex flex-col gap-2">
             <div>
               <h2 className="text-base font-semibold">{section.title}</h2>
-              {section.subtitle && <p className="text-xs text-zinc-500">{section.subtitle}</p>}
+              <p className="text-xs text-zinc-500">
+                {section.subtitle ? `${section.subtitle} · ` : ''}
+                {created.length} client project{created.length === 1 ? '' : 's'} created, {created.filter((p) => isThisMonth(p.createdAt)).length} this month
+              </p>
             </div>
             {builders.length === 0 ? (
               <p className="text-sm text-zinc-500">

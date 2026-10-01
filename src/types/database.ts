@@ -1404,6 +1404,10 @@ export interface WorkstreamPromotion {
   decided_by: string | null
   decided_at: string | null
   created_project_id: string | null
+  // Client email addresses the builder named when submitting -- added as
+  // viewers on the client Project at approval.
+  // 20261003100002_builder_proposal_promotions.sql.
+  client_emails: string[]
   created_at: string
 }
 
@@ -2469,9 +2473,9 @@ export type ProjectStatusHistoryEntryInsert = Omit<ProjectStatusHistoryEntry, 'i
 
 export type WorkstreamPromotionInsert = Omit<
   WorkstreamPromotion,
-  'id' | 'created_at' | 'status' | 'decision_reason' | 'decided_by' | 'decided_at' | 'created_project_id'
+  'id' | 'created_at' | 'status' | 'decision_reason' | 'decided_by' | 'decided_at' | 'created_project_id' | 'client_emails'
 > &
-  Partial<Pick<WorkstreamPromotion, 'status' | 'decision_reason' | 'decided_by' | 'decided_at' | 'created_project_id'>>
+  Partial<Pick<WorkstreamPromotion, 'status' | 'decision_reason' | 'decided_by' | 'decided_at' | 'created_project_id' | 'client_emails'>>
 export type WorkstreamPromotionUpdate = Partial<Omit<WorkstreamPromotion, 'id' | 'workstream_id' | 'submitted_by' | 'created_at'>>
 
 export type BuilderProgressUpdateInsert = Omit<BuilderProgressUpdate, 'id' | 'created_at' | 'updated_at' | 'status'> &

@@ -41,10 +41,11 @@ export function Header({
   // KB Sandbox Builder (docs/dev-request-kb-sandbox-builder-product.md) --
   // a builder (consultant/member, never curator/admin) gets Wiki/Blog
   // visible by default rather than hidden behind the classic-workspace
-  // toggle, plus Projects (one per client), and no Trending/Explore/toggle
-  // -- those aren't meaningful for an individual Builder deployment. Curator/admin (the
-  // operator's own staff, doing programme administration) keep today's
-  // full classic nav unchanged in either mode.
+  // toggle, plus Projects (their workspace and client Projects), and no
+  // Trending/Explore/toggle -- those aren't meaningful for an individual
+  // Builder deployment. Curator/admin (the operator's own staff, doing
+  // programme administration) keep today's full classic nav unchanged in
+  // either mode.
   const isBuilderShell = productMode === 'builder' && !hasClassicNav
 
   async function handleSignOut() {

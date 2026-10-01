@@ -108,16 +108,16 @@ describe('createProject -- Governance & Approvals staging (Stage 1)', () => {
   })
 })
 
-// KB Sandbox Builder: a builder (consultant role) starts one Project per
-// client, each tagged builder_lab so metering and Builder Operations cover
-// it the same as their auto-provisioned workspace.
-describe('createProject -- KB Sandbox Builder project per client', () => {
+// KB Sandbox Builder: a builder (consultant role) gets exactly one
+// Project (see provisionBuilderProject in this same file) -- new clients
+// are Workstreams on it, not new Projects.
+describe('createProject -- KB Sandbox Builder one-project limit', () => {
   beforeEach(() => {
     productModeMock.mockReturnValue('enterprise')
   })
 
   const input = {
-    name: 'Acme Client',
+    name: 'Another Project',
     projectType: 'consulting' as const,
     objective: '',
     details: {},
@@ -126,31 +126,36 @@ describe('createProject -- KB Sandbox Builder project per client', () => {
     members: [],
   }
 
-  function projectInsert(supabase: ReturnType<typeof createFakeSupabase>) {
-    return supabase._calls.find((c) => c.table === 'projects' && c.method === 'insert')?.args as Record<string, unknown>
-  }
-
-  it('lets a builder start another Project, tagged builder_lab, in builder mode', async () => {
+  it('rejects a second Project for a consultant (builder) who already owns one, in builder mode', async () => {
     productModeMock.mockReturnValue('builder')
-    const supabase = createFakeSupabase({ projects: [{ data: { id: 'new-project-1' }, error: null }] })
+    const supabase = createFakeSupabase({ projects: [{ data: { id: 'existing-project-1' }, error: null }] })
 
-    await expect(createProject(ctxWith(supabase), input)).resolves.toBeDefined()
-    expect(projectInsert(supabase).portfolio_category).toBe('builder_lab')
+    await expect(createProject(ctxWith(supabase), input)).rejects.toThrow('Builders work from one Project')
   })
 
-  it('leaves the default category outside builder mode', async () => {
-    const supabase = createFakeSupabase({ projects: [{ data: { id: 'new-project-1' }, error: null }] })
+  it('allows a consultant\'s first Project in builder mode', async () => {
+    productModeMock.mockReturnValue('builder')
+    const supabase = createFakeSupabase({
+      projects: [
+        { data: null, error: null }, // no existing owned project
+        { data: { id: 'new-project-1' }, error: null }, // the actual insert
+      ],
+    })
+
     await expect(createProject(ctxWith(supabase), input)).resolves.toBeDefined()
-    expect(projectInsert(supabase).portfolio_category).toBeUndefined()
   })
 
-  it('never tags a curator/admin Project builder_lab, even in builder mode', async () => {
+  it('never applies the one-project limit outside builder mode, even with an existing Project', async () => {
+    const supabase = createFakeSupabase({ projects: [{ data: { id: 'new-project-1' }, error: null }] })
+    await expect(createProject(ctxWith(supabase), input)).resolves.toBeDefined()
+  })
+
+  it('never applies the one-project limit to curator/admin, even in builder mode', async () => {
     productModeMock.mockReturnValue('builder')
     const supabase = createFakeSupabase({ projects: [{ data: { id: 'new-project-1' }, error: null }] })
     const curatorCtx = { user: { id: 'user-1', email: 'owner@example.com' }, profile: { role: 'curator' }, supabase } as never
 
     await expect(createProject(curatorCtx, input)).resolves.toBeDefined()
-    expect(projectInsert(supabase).portfolio_category).toBeUndefined()
   })
 })
 
