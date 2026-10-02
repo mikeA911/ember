@@ -24,6 +24,7 @@ import { listPendingWorkstreamPromotionsForProject } from '@/lib/workbench/works
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 import type { WorkstreamArtifactStatus } from '@/types/database'
 import { countArtifacts } from '@/lib/projects/artifact-summary'
+import { ProjectArchiveDeleteActions } from '@/components/projects/ProjectArchiveDeleteActions'
 import { ProjectCategorySelector } from '@/components/projects/ProjectCategorySelector'
 import { ProjectDiscoverabilitySelector } from '@/components/projects/ProjectDiscoverabilitySelector'
 import { RequestToJoinButton } from '@/components/projects/RequestToJoinButton'
@@ -762,6 +763,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           <p className="text-sm text-zinc-500">No open notes.</p>
         )}
       </section>
+
+      <ProjectArchiveDeleteActions
+        projectId={project.id}
+        projectName={project.name}
+        category={project.portfolio_category}
+        canArchive={canCurateWorkstreams}
+        canDelete={viewerProfile?.role === 'admin' && !project.is_organization_home}
+      />
     </div>
   )
 }

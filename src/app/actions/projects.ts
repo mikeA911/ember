@@ -174,6 +174,12 @@ export async function updateProjectPortfolioCategoryAction(projectId: string, ca
   revalidatePath('/projects')
 }
 
+export async function deleteProjectAction(projectId: string, confirmName: string) {
+  const ctx = await requireUser()
+  await workbench.deleteProject(ctx, projectId, confirmName)
+  revalidatePath('/projects')
+}
+
 export async function updateProjectDiscoverabilityAction(projectId: string, discoverability: ProjectDiscoverability) {
   const ctx = await requireUser()
   await workbench.updateProjectDiscoverability(ctx, projectId, discoverability)

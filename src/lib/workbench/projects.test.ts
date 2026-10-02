@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 
 vi.mock('@/lib/knowledge-bases', () => ({ requireActiveKnowledgeBase: vi.fn() }))
@@ -8,6 +8,8 @@ const createUserMock = vi.fn().mockResolvedValue({ data: { user: { id: 'new-user
 const adminInsertMock = vi.fn().mockResolvedValue({ data: null, error: null })
 const adminUpdateMock = vi.fn()
 const adminUpdateEqMock = vi.fn().mockResolvedValue({ error: null })
+const adminMaybeSingleMock = vi.fn().mockResolvedValue({ data: null, error: null })
+const adminDeleteEqMock = vi.fn().mockResolvedValue({ error: null })
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     auth: { admin: { createUser: (...args: unknown[]) => createUserMock(...args) } },
@@ -18,7 +20,7 @@ vi.mock('@/lib/supabase/admin', () => ({
         // home project seeded in these tests, so it's always a safe no-op
         // (matches "no project currently flagged as the org home" in its
         // own doc comment).
-        eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
+        eq: () => ({ maybeSingle: () => adminMaybeSingleMock() }),
       }),
       // createProject's best-effort project_status_history log (see
       // logStatusChange in ./projects) also goes through this admin
@@ -29,11 +31,12 @@ vi.mock('@/lib/supabase/admin', () => ({
         adminUpdateMock(...args)
         return { eq: (...eqArgs: unknown[]) => adminUpdateEqMock(...eqArgs) }
       },
+      delete: () => ({ eq: (...eqArgs: unknown[]) => adminDeleteEqMock(...eqArgs) }),
     }),
   }),
 }))
 
-const { createProject, detachKnowledgeBase, searchProjects, createAndAddProjectMember, updateProjectStarterPrompt, updateProjectObjective } = await import('./projects')
+const { createProject, detachKnowledgeBase, searchProjects, createAndAddProjectMember, updateProjectStarterPrompt, updateProjectObjective, deleteProject } = await import('./projects')
 
 function ctxWith(supabase: unknown) {
   return { user: { id: 'user-1', email: 'owner@example.com' }, profile: { role: 'consultant' }, supabase } as never
@@ -473,5 +476,43 @@ describe('updateProjectObjective', () => {
     const supabase = createFakeSupabase({ project_members: [{ data: { role: 'owner' }, error: null }] })
     await updateProjectObjective(ctxWith(supabase), 'project-1', '   ')
     expect(adminUpdateMock).toHaveBeenCalledWith({ objective: null })
+  })
+})
+
+// Permanent delete is platform-admin only, refuses the Organization Home,
+// and requires the exact current name -- owners/curators archive instead.
+describe('deleteProject', () => {
+  beforeEach(() => {
+    adminMaybeSingleMock.mockReset().mockResolvedValue({ data: { name: 'CareLink Pilot', is_organization_home: false }, error: null })
+    adminDeleteEqMock.mockClear().mockResolvedValue({ error: null })
+  })
+  afterAll(() => {
+    adminMaybeSingleMock.mockReset().mockResolvedValue({ data: null, error: null })
+  })
+
+  function adminCtx() {
+    return { user: { id: 'admin-1' }, profile: { role: 'admin' }, supabase: createFakeSupabase({}) } as never
+  }
+
+  it('rejects a project owner who is not a platform admin', async () => {
+    const ownerCtx = { user: { id: 'user-1' }, profile: { role: 'consultant' }, supabase: createFakeSupabase({}) } as never
+    await expect(deleteProject(ownerCtx, 'project-1', 'CareLink Pilot')).rejects.toThrow('Only a platform admin')
+    expect(adminDeleteEqMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a confirmation name that does not match', async () => {
+    await expect(deleteProject(adminCtx(), 'project-1', 'CareLink')).rejects.toThrow('does not match')
+    expect(adminDeleteEqMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses to delete the Organization Home project', async () => {
+    adminMaybeSingleMock.mockResolvedValue({ data: { name: 'Home', is_organization_home: true }, error: null })
+    await expect(deleteProject(adminCtx(), 'project-1', 'Home')).rejects.toThrow('Organization Home')
+    expect(adminDeleteEqMock).not.toHaveBeenCalled()
+  })
+
+  it('deletes when an admin types the exact name', async () => {
+    await deleteProject(adminCtx(), 'project-1', '  CareLink Pilot ')
+    expect(adminDeleteEqMock).toHaveBeenCalledWith('id', 'project-1')
   })
 })

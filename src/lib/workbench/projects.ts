@@ -550,6 +550,39 @@ export async function updateProjectDiscoverability(
   if (error) throw error
 }
 
+// Permanent removal -- platform admins only. Owners/curators "archive"
+// instead (portfolio_category = 'archived', via
+// updateProjectPortfolioCategory), which is reversible. projects has no
+// delete RLS policy at all, so this goes through the admin client after an
+// explicit check, same pattern as updateProjectStarterPrompt. Every FK to
+// projects is ON DELETE CASCADE (members, workstreams, notes, assessments,
+// governance, ...) or SET NULL (conversations, knowledge_bases, clones'
+// cloned_from_project_id, ...), so one delete removes the project's own
+// data and unlinks everything else. confirmName must match the current
+// name exactly -- a server-side guard against deleting the wrong one of two
+// similarly named projects, not just a UI nicety.
+export async function deleteProject(ctx: WorkbenchCallerContext, projectId: string, confirmName: string): Promise<void> {
+  if (ctx.profile.role !== 'admin') {
+    throw new AuthError('Only a platform admin can permanently delete a project -- archive it instead')
+  }
+  const admin = createAdminClient()
+  const { data: project, error: readError } = await admin
+    .from('projects')
+    .select('name, is_organization_home')
+    .eq('id', projectId)
+    .maybeSingle()
+  if (readError) throw readError
+  if (!project) throw new ProjectValidationError('Project not found')
+  if (project.is_organization_home) {
+    throw new ProjectValidationError('The Organization Home project cannot be deleted')
+  }
+  if (confirmName.trim() !== project.name) {
+    throw new ProjectValidationError('The name you typed does not match this project\'s name')
+  }
+  const { error } = await admin.from('projects').delete().eq('id', projectId)
+  if (error) throw error
+}
+
 // Every newly created account is auto-enrolled in the Organization Home
 // project (OR-036, Mike) -- makes it genuinely function as "everyone's home
 // base" without relying on discovery + a manual join request for the one

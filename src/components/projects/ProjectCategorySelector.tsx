@@ -13,13 +13,14 @@ export const CATEGORY_LABELS: Record<PortfolioCategory, string> = {
   templates: 'Templates',
   legacy_test: 'Legacy/Test',
   archived: 'Archived',
-  other: 'Other',
+  other: 'Uncategorized',
 }
 
 // Inline editor for the "My Projects" list-grouping tag (2026-09-04) --
 // deliberately a plain select-and-save, not ProjectStarterPromptForm's
-// edit-in-place shape, since there's no free text to compose, just three
-// fixed options. canEdit is owner/curator/admin, same bar as
+// edit-in-place shape, since there's no free text to compose, just a fixed
+// option list. 'other' is the column default, shown as "Uncategorized" and
+// highlighted so owners notice it still needs picking. canEdit is owner/curator/admin, same bar as
 // updateProjectPortfolioCategory itself.
 export function ProjectCategorySelector({
   projectId,
@@ -35,7 +36,7 @@ export function ProjectCategorySelector({
   const [error, setError] = useState<string | null>(null)
 
   if (!canEdit) {
-    return <span className="text-xs text-zinc-500">{CATEGORY_LABELS[category]}</span>
+    return <span className="text-xs text-zinc-500">Category: {CATEGORY_LABELS[category]}</span>
   }
 
   function handleChange(value: PortfolioCategory) {
@@ -51,12 +52,15 @@ export function ProjectCategorySelector({
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <label className="flex items-center gap-2 text-xs text-zinc-500">
+      Category:
       <select
         value={category}
         disabled={isPending}
         onChange={(e) => handleChange(e.target.value as PortfolioCategory)}
-        className="rounded border border-zinc-300 px-2 py-1 text-xs disabled:opacity-50"
+        className={`rounded border px-2 py-1 text-xs text-zinc-900 disabled:opacity-50 ${
+          category === 'other' ? 'border-amber-400 bg-amber-50' : 'border-zinc-300'
+        }`}
       >
         {(Object.entries(CATEGORY_LABELS) as [PortfolioCategory, string][]).map(([value, label]) => (
           <option key={value} value={value}>
@@ -64,7 +68,8 @@ export function ProjectCategorySelector({
           </option>
         ))}
       </select>
+      {category === 'other' && !isPending && <span className="text-amber-700">Set one</span>}
       {error && <span className="text-xs text-red-600">{error}</span>}
-    </div>
+    </label>
   )
 }
