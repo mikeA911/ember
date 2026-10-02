@@ -493,6 +493,23 @@ export async function updateProjectStarterPrompt(ctx: WorkbenchCallerContext, pr
   if (error) throw error
 }
 
+// The one-line description under the project title (the `objective`
+// column, set by ProjectWizard at creation). Same owner/curator/admin bar
+// and admin-client-after-explicit-check pattern as
+// updateProjectStarterPrompt above -- a curator should be able to fix their
+// own team's Project description, not just its owner.
+export async function updateProjectObjective(ctx: WorkbenchCallerContext, projectId: string, objective: string): Promise<void> {
+  if (ctx.profile.role !== 'admin') {
+    const role = await getActiveProjectRole(ctx, projectId)
+    if (role !== 'owner' && role !== 'curator') {
+      throw new AuthError('Requires this project\'s owner or curator role (or platform admin) to edit its description')
+    }
+  }
+  const admin = createAdminClient()
+  const { error } = await admin.from('projects').update({ objective: objective.trim() || null }).eq('id', projectId)
+  if (error) throw error
+}
+
 // "My Projects" list grouping (2026-09-04) -- same owner/curator/admin bar
 // and same admin-client-after-explicit-check pattern as
 // updateProjectStarterPrompt above, for the same reason: a project curator
@@ -530,6 +547,39 @@ export async function updateProjectDiscoverability(
   }
   const admin = createAdminClient()
   const { error } = await admin.from('projects').update({ discoverability }).eq('id', projectId)
+  if (error) throw error
+}
+
+// Permanent removal -- platform admins only. Owners/curators "archive"
+// instead (portfolio_category = 'archived', via
+// updateProjectPortfolioCategory), which is reversible. projects has no
+// delete RLS policy at all, so this goes through the admin client after an
+// explicit check, same pattern as updateProjectStarterPrompt. Every FK to
+// projects is ON DELETE CASCADE (members, workstreams, notes, assessments,
+// governance, ...) or SET NULL (conversations, knowledge_bases, clones'
+// cloned_from_project_id, ...), so one delete removes the project's own
+// data and unlinks everything else. confirmName must match the current
+// name exactly -- a server-side guard against deleting the wrong one of two
+// similarly named projects, not just a UI nicety.
+export async function deleteProject(ctx: WorkbenchCallerContext, projectId: string, confirmName: string): Promise<void> {
+  if (ctx.profile.role !== 'admin') {
+    throw new AuthError('Only a platform admin can permanently delete a project -- archive it instead')
+  }
+  const admin = createAdminClient()
+  const { data: project, error: readError } = await admin
+    .from('projects')
+    .select('name, is_organization_home')
+    .eq('id', projectId)
+    .maybeSingle()
+  if (readError) throw readError
+  if (!project) throw new ProjectValidationError('Project not found')
+  if (project.is_organization_home) {
+    throw new ProjectValidationError('The Organization Home project cannot be deleted')
+  }
+  if (confirmName.trim() !== project.name) {
+    throw new ProjectValidationError('The name you typed does not match this project\'s name')
+  }
+  const { error } = await admin.from('projects').delete().eq('id', projectId)
   if (error) throw error
 }
 

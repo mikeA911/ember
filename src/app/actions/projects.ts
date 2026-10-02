@@ -154,6 +154,13 @@ export async function updateProjectGoalAction(projectId: string, goal: string) {
   revalidatePath(`/projects/${projectId}`)
 }
 
+export async function updateProjectObjectiveAction(projectId: string, objective: string) {
+  const ctx = await requireUser()
+  await workbench.updateProjectObjective(ctx, projectId, objective)
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath('/projects')
+}
+
 export async function updateProjectStarterPromptAction(projectId: string, starterPrompt: string) {
   const ctx = await requireUser()
   await workbench.updateProjectStarterPrompt(ctx, projectId, starterPrompt)
@@ -164,6 +171,12 @@ export async function updateProjectPortfolioCategoryAction(projectId: string, ca
   const ctx = await requireUser()
   await workbench.updateProjectPortfolioCategory(ctx, projectId, category)
   revalidatePath(`/projects/${projectId}`)
+  revalidatePath('/projects')
+}
+
+export async function deleteProjectAction(projectId: string, confirmName: string) {
+  const ctx = await requireUser()
+  await workbench.deleteProject(ctx, projectId, confirmName)
   revalidatePath('/projects')
 }
 

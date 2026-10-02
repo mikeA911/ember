@@ -42,6 +42,7 @@ import {
 import { SUBMIT_FEEDBACK_REPORT_TOOL, SUBMIT_FEEDBACK_REPORT_TOOL_NAME, runSubmitFeedbackReport } from './feedback-tool'
 import { LIST_PROJECT_MEMBERS_TOOL, LIST_PROJECT_MEMBERS_TOOL_NAME, runListProjectMembers } from './project-members-tool'
 import { SEND_PROJECT_NOTE_TOOL, SEND_PROJECT_NOTE_TOOL_NAME, runSendProjectNote } from './project-note-tool'
+import { UPDATE_PROJECT_DESCRIPTION_TOOL, UPDATE_PROJECT_DESCRIPTION_TOOL_NAME, runUpdateProjectDescription } from './project-description-tool'
 import { SEARCH_WEB_TOOL, SEARCH_WEB_TOOL_NAME, runSearchWeb } from './web-search-tool'
 import { LIST_WORKSTREAMS_TOOL, LIST_WORKSTREAMS_TOOL_NAME, runListWorkstreams } from './workstream-list-tool'
 import {
@@ -127,7 +128,7 @@ export function getSystemPromptText(): string {
 // (search_project_knowledge's own code-enforced project-first ordering is
 // the real guarantee; this just tells the model to actually call it) and
 // the "don't silently merge conflicting evidence" requirement.
-function buildProjectPromptAddendum(context: { name: string; goal: string | null }, knowledgeScope: string, webSearchAvailable: boolean): string {
+function buildProjectPromptAddendum(context: { name: string; goal: string | null; objective: string | null }, knowledgeScope: string, webSearchAvailable: boolean): string {
   const base = `\n\nThis conversation is bound to the Ember project "${context.name}"${context.goal ? ` (goal: ${context.goal})` : ''}. Its own knowledge scope: ${knowledgeScope}.
 
 You have an additional tool, search_project_knowledge, that searches this project's own attached knowledge first. Call it before search_wiki when you need evidence -- its results are tagged layer:'project' (this project's own approved evidence -- prefer this, it wins over general platform guidance when the two conflict) or layer:'platform' (general shared knowledge, used only to fill a genuine gap). If project evidence and platform guidance materially conflict, say so explicitly rather than silently merging them. If the project has no relevant attached knowledge for this question, say that plainly instead of presenting platform guidance as if it were project-specific evidence.
@@ -137,6 +138,8 @@ Some evidence in this project may be access-restricted to specific people (e.g. 
 You also have list_project_members (no Project ID needed) for questions like who's working on this project, who owns it, or who handles a specific approval responsibility. Always call it fresh -- never guess from earlier in this conversation, and never copy its results into a saved summary. Project role, business function, and approval responsibility are three separate things: don't conflate them, and knowing someone is a member never tells you what evidence they're personally authorized to see.
 
 If the user asks you to send someone a Project Note (e.g. "send Maria a note about X"), first call list_project_members to find the exact person. Then state the exact recipient, subject and body you're about to send in your reply and wait for the user's explicit confirmation in their next message -- only call send_project_note once they've clearly agreed to that exact content, never in the same turn you proposed it.
+
+This project's current description (the short line under its title, separate from its goal) is: ${context.objective ? `"${context.objective}"` : '(none yet)'}. If the user asks you to write, rewrite or change it, show them the exact new description in your reply and wait for their explicit confirmation in their next message -- only then call update_project_description with that exact text, never in the same turn you proposed it. Only the project's owner or curator (or a platform admin) can change it; if the tool refuses, say so plainly.
 
 You also have list_workstreams (no Project ID needed) for this project's existing workstreams with their real ids. Call it before attach_workstream_artifact whenever you need to reference an existing workstream -- a workstream's display name (e.g. "Phase 1 -- Showcase") is never a valid workstreamId, and guessing one will fail.
 
@@ -481,6 +484,7 @@ export async function runAssistantTurn(
           SEARCH_PROJECT_KNOWLEDGE_TOOL,
           LIST_PROJECT_MEMBERS_TOOL,
           SEND_PROJECT_NOTE_TOOL,
+          UPDATE_PROJECT_DESCRIPTION_TOOL,
           LIST_WORKSTREAMS_TOOL,
           SUGGEST_PROJECT_ONTOLOGY_TOOL,
           CREATE_PROJECT_ONTOLOGY_TOOL,
@@ -915,6 +919,17 @@ export async function runAssistantTurn(
             // below -- the Artifacts panel's "Created records" group is how
             // the structured link back to the note actually surfaces.
             createdRecordRefs.push({ kind: 'project_note', id: output.noteId })
+          } catch (err) {
+            toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
+          }
+        }
+      } else if (toolCall.name === UPDATE_PROJECT_DESCRIPTION_TOOL_NAME) {
+        if (!resolvedProjectId) {
+          toolResultText = JSON.stringify({ error: 'update_project_description is only available in a project-bound conversation.' })
+        } else {
+          try {
+            const output = await runUpdateProjectDescription(ctx, resolvedProjectId, toolCall.arguments)
+            toolResultText = JSON.stringify(output)
           } catch (err) {
             toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
           }
