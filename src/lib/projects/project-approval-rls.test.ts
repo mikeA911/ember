@@ -10,7 +10,7 @@ const sql = fs
 
 describe('project creation approval migration', () => {
   it('backfills existing projects as approved', () => {
-    expect(sql).toMatch(/add column approval_status text not null default 'approved'/)
+    expect(sql).toMatch(/add column if not exists approval_status text not null default 'approved'/)
     expect(sql).toMatch(/check \(approval_status in \('pending', 'approved', 'rejected'\)\)/)
   })
 

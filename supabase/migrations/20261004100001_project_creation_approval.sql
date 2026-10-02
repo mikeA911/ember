@@ -12,14 +12,14 @@
 -- Separate axis from projects.status (draft/active/review/completed) --
 -- that's the team's own working lifecycle, which the creator keeps driving
 -- while this is pending.
-alter table projects add column approval_status text not null default 'approved'
+alter table projects add column if not exists approval_status text not null default 'approved'
   check (approval_status in ('pending', 'approved', 'rejected'));
-alter table projects add column approval_decided_by uuid references profiles(id) on delete set null;
-alter table projects add column approval_decided_at timestamptz;
-alter table projects add column approval_decision_reason text;
+alter table projects add column if not exists approval_decided_by uuid references profiles(id) on delete set null;
+alter table projects add column if not exists approval_decided_at timestamptz;
+alter table projects add column if not exists approval_decision_reason text;
 -- Team members picked in the new-project wizard ({user_id, role}[]) --
 -- held here, not in project_members, until approval adds them.
-alter table projects add column pending_members jsonb not null default '[]'::jsonb;
+alter table projects add column if not exists pending_members jsonb not null default '[]'::jsonb;
 
 create index if not exists projects_approval_status_pending_idx on projects(owner_id) where approval_status = 'pending';
 
