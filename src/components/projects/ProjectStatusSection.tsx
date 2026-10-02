@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import type { ProjectStatus } from '@/types/database'
 import {
   startWorkingOnProjectAction,
@@ -30,12 +31,14 @@ export function ProjectStatusSection({
   projectId,
   status,
   canApprove,
+  canAddWorkstream,
   showStatus,
   history,
 }: {
   projectId: string
   status: ProjectStatus
   canApprove: boolean
+  canAddWorkstream: boolean
   showStatus: boolean
   history: StatusHistoryEntry[]
 }) {
@@ -100,11 +103,11 @@ export function ProjectStatusSection({
             {isPending ? 'Updating…' : 'Client approved — go Live'}
           </button>
         )}
-        {canApprove && (status === 'completed' || status === 'live') && (
+        {canApprove && status === 'completed' && (
           <button
             disabled={isPending}
             onClick={() => {
-              if (!confirm('Reopen this project? It moves back to Working on it.')) return
+              if (!confirm('Reopen this project for changes before it goes Live? It moves back to Working on it.')) return
               run(() => reopenProjectAction(projectId))
             }}
             className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 disabled:opacity-50"
@@ -123,6 +126,16 @@ export function ProjectStatusSection({
           >
             {isPending ? 'Approving…' : 'Approve'}
           </button>
+        )}
+        {/* Live projects stay Live -- bug fixes and new features are new
+            workstreams inside them (defaulting to Management & Maintenance). */}
+        {canAddWorkstream && status === 'live' && (
+          <Link
+            href={`/projects/${projectId}/workstreams/new`}
+            className="rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-xs font-medium text-zinc-700 hover:border-zinc-500"
+          >
+            + Bug fix or new feature
+          </Link>
         )}
         {error && <span className="text-xs text-red-600">{error}</span>}
       </div>

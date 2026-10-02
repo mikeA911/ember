@@ -3,6 +3,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createWorkstreamAction } from '@/app/actions/workstreams'
+import type { WorkstreamLifecycleStage } from '@/types/database'
+
+const LIFECYCLE_STAGES: { value: WorkstreamLifecycleStage; label: string }[] = [
+  { value: 'presales', label: 'Presales' },
+  { value: 'deployment', label: 'Deployment' },
+  { value: 'management_maintenance', label: 'Management & Maintenance' },
+]
 
 function slugify(name: string) {
   return name
@@ -12,9 +19,16 @@ function slugify(name: string) {
     .replace(/(^-|-$)/g, '')
 }
 
-export function CreateWorkstreamForm({ projectId }: { projectId: string }) {
+export function CreateWorkstreamForm({
+  projectId,
+  defaultLifecycleStage = '',
+}: {
+  projectId: string
+  defaultLifecycleStage?: WorkstreamLifecycleStage | ''
+}) {
   const router = useRouter()
   const [name, setName] = useState('')
+  const [lifecycleStage, setLifecycleStage] = useState<WorkstreamLifecycleStage | ''>(defaultLifecycleStage)
   const [repositoryScope, setRepositoryScope] = useState('')
   const [guardrail, setGuardrail] = useState('')
   const [deliverables, setDeliverables] = useState<string[]>([])
@@ -44,6 +58,7 @@ export function CreateWorkstreamForm({ projectId }: { projectId: string }) {
         repositoryScope: repositoryScope.split('\n'),
         guardrail: guardrail || undefined,
         deliverables,
+        lifecycleStage: lifecycleStage || null,
       })
       router.push(`/projects/${projectId}/workstreams/${result.workstreamId}`)
     } catch (err) {
@@ -57,6 +72,22 @@ export function CreateWorkstreamForm({ projectId }: { projectId: string }) {
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">Name</span>
         <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Onboarding Modernization" className="rounded border border-zinc-300 px-3 py-2 text-sm" />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-sm font-medium">Lifecycle stage</span>
+        <select
+          value={lifecycleStage}
+          onChange={(e) => setLifecycleStage(e.target.value as WorkstreamLifecycleStage | '')}
+          className="rounded border border-zinc-300 px-3 py-2 text-sm"
+        >
+          <option value="">Not set</option>
+          {LIFECYCLE_STAGES.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
       </label>
 
       <label className="flex flex-col gap-1">

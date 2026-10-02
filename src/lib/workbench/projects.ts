@@ -467,15 +467,12 @@ export async function markProjectLive(ctx: WorkbenchCallerContext, projectId: st
   await transitionProjectStatus(projectId, 'completed', 'live', ctx.user.id)
 }
 
-// Approved or Live -> Working on it, e.g. a change request or new phase.
+// Approved -> Working on it, when the client asks for changes before
+// go-live. A Live project is never reopened: bug fixes and new features
+// are new workstreams inside it, and it stays Live meanwhile.
 export async function reopenProject(ctx: WorkbenchCallerContext, projectId: string) {
   await requireCanApprove(ctx, projectId)
-  const { data: current, error } = await createAdminClient().from('projects').select('status').eq('id', projectId).single()
-  if (error || !current) throw error ?? new ProjectValidationError('Project not found')
-  if (current.status !== 'completed' && current.status !== 'live') {
-    throw new ProjectValidationError('Only an Approved or Live project can be reopened')
-  }
-  await transitionProjectStatus(projectId, current.status, 'active', ctx.user.id)
+  await transitionProjectStatus(projectId, 'completed', 'active', ctx.user.id)
 }
 
 export async function listProjectStatusHistory(ctx: WorkbenchCallerContext, projectId: string) {

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/lib/auth'
 import * as workbench from '@/lib/workbench/workstreams'
 import { cloneWorkstream } from '@/lib/workbench/project-cloning'
-import type { ArtifactType } from '@/types/database'
+import type { ArtifactType, WorkstreamLifecycleStage } from '@/types/database'
 
 export async function createWorkstreamAction(input: {
   projectId: string
@@ -14,6 +14,7 @@ export async function createWorkstreamAction(input: {
   goal?: string
   guardrail?: string
   deliverables: string[]
+  lifecycleStage?: WorkstreamLifecycleStage | null
 }) {
   const ctx = await requireUser()
   const result = await workbench.createWorkstream(ctx, input)
