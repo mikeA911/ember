@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createUploadedDocument, submitDocument, DocumentValidationError } from './documents'
+import { createUploadedDocument, submitDocument, DocumentValidationError, resolveUploadMimeType } from './documents'
 import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 
 function makeFile(name: string, type: string, size: number): File {
@@ -102,5 +102,22 @@ describe('submitDocument', () => {
     }) as never
 
     await expect(submitDocument(supabase, 'doc-1')).resolves.toBeUndefined()
+  })
+})
+
+describe('resolveUploadMimeType', () => {
+  it('trusts a specific browser-reported type', () => {
+    expect(resolveUploadMimeType({ name: 'notes.pdf', type: 'text/plain' })).toBe('text/plain')
+  })
+
+  it('falls back to the extension when a mobile picker leaves the type empty or generic', () => {
+    expect(resolveUploadMimeType({ name: 'Sandz_Infographic_v4.PDF', type: '' })).toBe('application/pdf')
+    expect(resolveUploadMimeType({ name: 'brief.docx', type: 'application/octet-stream' })).toBe(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )
+  })
+
+  it('leaves an unknown extension unresolved so validation still rejects it', () => {
+    expect(resolveUploadMimeType({ name: 'photo.png', type: '' })).toBe('')
   })
 })
