@@ -12,6 +12,7 @@ import {
   transferOwnershipAction,
 } from '@/app/actions/projects'
 import { BulkAddMembersForm } from './BulkAddMembersForm'
+import { UserPicker, type UserOption } from './UserPicker'
 
 const ROLES: ProjectRole[] = ['owner', 'curator', 'consultant', 'viewer']
 // A non-admin (project owner/curator) creating a brand-new account can only
@@ -42,6 +43,7 @@ export function MembersManager({
   currentUserId,
   viewerIsAdmin,
   canTransferOwnership,
+  selectableUsers,
 }: {
   projectId: string
   projectName: string
@@ -49,6 +51,7 @@ export function MembersManager({
   currentUserId: string
   viewerIsAdmin: boolean
   canTransferOwnership: boolean
+  selectableUsers: UserOption[]
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -209,11 +212,12 @@ export function MembersManager({
       <form onSubmit={handleAdd} className="flex flex-col gap-3 rounded border border-zinc-200 bg-white p-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Add member</h2>
         <div className="flex gap-2">
-          <input
+          <UserPicker
+            users={selectableUsers}
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Person's email"
-            className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+            onChange={setEmail}
+            excludeEmails={members.map((m) => m.email)}
+            className="flex-1"
           />
           <select value={role} onChange={(e) => setRole(e.target.value as ProjectRole)} className="rounded border border-zinc-300 px-3 py-2 text-sm">
             {ROLES.filter((r) => r !== 'owner').map((r) => (
