@@ -8,29 +8,16 @@ import {
   submitProjectForApprovalAction,
   sendProjectBackToWorkingAction,
   approveProjectAction,
+  markProjectLiveAction,
+  reopenProjectAction,
 } from '@/app/actions/projects'
+import { PROJECT_STATUS_LABELS, PROJECT_STATUS_STYLES } from '@/lib/projects/status-labels'
 
-// Initial Draft -> Working on it -> For Approval -> Approved, per Mike,
-// 2026-08-28 -- a real status pipeline, not the free-text field this
-// section used to hold (moved to the Notes section instead). draft/active/
-// review/completed are the underlying stored values (see
-// supabase/migrations/20260828100001_project_status_pipeline.sql);
-// everything below is display-only relabeling.
-const STATUS_LABELS: Record<ProjectStatus, string> = {
-  draft: 'Initial Draft',
-  active: 'Working on it',
-  review: 'For Approval',
-  completed: 'Approved',
-  archived: 'Archived',
-}
-
-const STATUS_STYLES: Record<ProjectStatus, string> = {
-  draft: 'bg-zinc-100 text-zinc-700',
-  active: 'bg-amber-100 text-amber-800',
-  review: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  archived: 'bg-zinc-200 text-zinc-500',
-}
+// Initial Draft -> Working on it -> For Approval -> Approved (awaiting the
+// client) -> Live, per Mike (2026-08-28, Live added 2026-10-02). Labels are
+// shared with every other status display (lib/projects/status-labels.ts).
+const STATUS_LABELS = PROJECT_STATUS_LABELS
+const STATUS_STYLES = PROJECT_STATUS_STYLES
 
 interface StatusHistoryEntry {
   fromStatus: ProjectStatus | null
@@ -101,7 +88,31 @@ export function ProjectStatusSection({
             {isPending ? 'Updating…' : 'Send back to working'}
           </button>
         )}
-        {canApprove && status !== 'completed' && status !== 'archived' && (
+        {canApprove && status === 'completed' && (
+          <button
+            disabled={isPending}
+            onClick={() => {
+              if (!confirm('Has the client approved this project? It will go Live and into maintenance.')) return
+              run(() => markProjectLiveAction(projectId))
+            }}
+            className="rounded-full border border-emerald-600 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 disabled:opacity-50"
+          >
+            {isPending ? 'Updating…' : 'Client approved — go Live'}
+          </button>
+        )}
+        {canApprove && (status === 'completed' || status === 'live') && (
+          <button
+            disabled={isPending}
+            onClick={() => {
+              if (!confirm('Reopen this project? It moves back to Working on it.')) return
+              run(() => reopenProjectAction(projectId))
+            }}
+            className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 disabled:opacity-50"
+          >
+            {isPending ? 'Updating…' : 'Reopen'}
+          </button>
+        )}
+        {canApprove && status !== 'completed' && status !== 'live' && status !== 'archived' && (
           <button
             disabled={isPending}
             onClick={() => {

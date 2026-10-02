@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { PortfolioProjectRow } from '@/lib/projects/portfolio'
 import { RequestMembershipButton } from './RequestMembershipButton'
+import { projectStatusLabel, projectStatusStyle } from '@/lib/projects/status-labels'
 
 const TYPE_LABELS: Record<string, string> = {
   learning: 'Learning',
@@ -10,13 +11,6 @@ const TYPE_LABELS: Record<string, string> = {
   knowledge: 'Knowledge',
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  draft: 'bg-zinc-100 text-zinc-700',
-  active: 'bg-green-100 text-green-800',
-  review: 'bg-amber-100 text-amber-800',
-  completed: 'bg-blue-100 text-blue-700',
-  archived: 'bg-zinc-200 text-zinc-500',
-}
 
 // Every field here is safe organization metadata -- names, counts, dates.
 // No source titles, snippets, artifacts or conversations. A non-member row
@@ -53,7 +47,7 @@ export function OrganizationPortfolio({ rows, viewerIsAdmin }: { rows: Portfolio
                 <div className="font-medium">{p.name}</div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
                   <span>{TYPE_LABELS[p.projectType] ?? p.projectType}</span>
-                  <span className={`rounded-full px-2 py-0.5 font-medium ${STATUS_STYLES[p.status] ?? 'bg-zinc-100 text-zinc-700'}`}>{p.status}</span>
+                  <span className={`rounded-full px-2 py-0.5 font-medium ${projectStatusStyle(p.status)}`}>{projectStatusLabel(p.status)}</span>
                 </div>
                 {p.objective && <p className="mt-1 text-xs text-zinc-600">{p.objective}</p>}
               </td>

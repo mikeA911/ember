@@ -398,6 +398,7 @@ export async function approveProject(ctx: WorkbenchCallerContext, projectId: str
   // history entry's from_status is accurate rather than assumed.
   const { data: before, error: readError } = await admin.from('projects').select('status').eq('id', projectId).single()
   if (readError || !before) throw readError ?? new Error('Project not found')
+  if (before.status === 'completed' || before.status === 'live') throw new ProjectValidationError('This project is already approved')
   const { error } = await admin.from('projects').update({ status: 'completed' }).eq('id', projectId)
   if (error) throw error
   await logStatusChange(projectId, before.status, 'completed', ctx.user.id)
@@ -457,6 +458,24 @@ export async function submitProjectForApproval(ctx: WorkbenchCallerContext, proj
 export async function sendProjectBackToWorking(ctx: WorkbenchCallerContext, projectId: string) {
   await requireCanApprove(ctx, projectId)
   await transitionProjectStatus(projectId, 'review', 'active', ctx.user.id)
+}
+
+// Approved -> Live: the client has approved the project (normally through
+// its workstream presentation), so it's in production and in maintenance.
+export async function markProjectLive(ctx: WorkbenchCallerContext, projectId: string) {
+  await requireCanApprove(ctx, projectId)
+  await transitionProjectStatus(projectId, 'completed', 'live', ctx.user.id)
+}
+
+// Approved or Live -> Working on it, e.g. a change request or new phase.
+export async function reopenProject(ctx: WorkbenchCallerContext, projectId: string) {
+  await requireCanApprove(ctx, projectId)
+  const { data: current, error } = await createAdminClient().from('projects').select('status').eq('id', projectId).single()
+  if (error || !current) throw error ?? new ProjectValidationError('Project not found')
+  if (current.status !== 'completed' && current.status !== 'live') {
+    throw new ProjectValidationError('Only an Approved or Live project can be reopened')
+  }
+  await transitionProjectStatus(projectId, current.status, 'active', ctx.user.id)
 }
 
 export async function listProjectStatusHistory(ctx: WorkbenchCallerContext, projectId: string) {

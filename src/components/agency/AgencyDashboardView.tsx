@@ -10,28 +10,14 @@ import type {
   AgencyProposalRow,
   AgencySharedUpdate,
 } from '@/lib/workbench/agency-dashboard'
-import type { PresentationStatus, ProjectStatus, WorkstreamPromotionStatus, WorkstreamStatus } from '@/types/database'
+import type { PresentationStatus, WorkstreamPromotionStatus, WorkstreamStatus } from '@/types/database'
 import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamPromotionsReview'
 import { AssignAgencySelect } from './AssignAgencySelect'
+import { PROJECT_STATUS_LABELS, PROJECT_STATUS_STYLES } from '@/lib/projects/status-labels'
 import { ClientFeeEditor } from './ClientFeeEditor'
 import { PlatformRateForm } from './PlatformRateForm'
 import { formatMoney, monthlyTotals } from './money'
 
-// Same display relabeling as ProjectStatusSection.tsx's own pipeline.
-const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  draft: 'Initial Draft',
-  active: 'Working on it',
-  review: 'For Approval',
-  completed: 'Approved',
-  archived: 'Archived',
-}
-const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
-  draft: 'bg-zinc-100 text-zinc-700',
-  active: 'bg-amber-100 text-amber-800',
-  review: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  archived: 'bg-zinc-200 text-zinc-500',
-}
 
 const WORKSTREAM_STATUS_LABELS: Record<WorkstreamStatus, string> = {
   draft: 'Draft',
