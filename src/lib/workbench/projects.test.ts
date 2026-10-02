@@ -33,7 +33,7 @@ vi.mock('@/lib/supabase/admin', () => ({
   }),
 }))
 
-const { createProject, detachKnowledgeBase, searchProjects, createAndAddProjectMember, updateProjectStarterPrompt } = await import('./projects')
+const { createProject, detachKnowledgeBase, searchProjects, createAndAddProjectMember, updateProjectStarterPrompt, updateProjectObjective } = await import('./projects')
 
 function ctxWith(supabase: unknown) {
   return { user: { id: 'user-1', email: 'owner@example.com' }, profile: { role: 'consultant' }, supabase } as never
@@ -444,5 +444,34 @@ describe('updateProjectStarterPrompt', () => {
     const supabase = createFakeSupabase({ project_members: [{ data: { role: 'owner' }, error: null }] })
     await updateProjectStarterPrompt(ctxWith(supabase), 'project-1', '   ')
     expect(adminUpdateMock).toHaveBeenCalledWith({ starter_prompt: null })
+  })
+})
+
+// The short description under the project title -- same owner/curator/admin
+// bar as updateProjectStarterPrompt, and shared by the inline edit form and
+// Ember's update_project_description tool.
+describe('updateProjectObjective', () => {
+  beforeEach(() => {
+    adminUpdateMock.mockClear()
+    adminUpdateEqMock.mockClear().mockResolvedValue({ error: null })
+  })
+
+  it('rejects a non-admin caller whose project role is consultant', async () => {
+    const supabase = createFakeSupabase({ project_members: [{ data: { role: 'consultant' }, error: null }] })
+    await expect(updateProjectObjective(ctxWith(supabase), 'project-1', 'New description')).rejects.toThrow('owner or curator role')
+    expect(adminUpdateMock).not.toHaveBeenCalled()
+  })
+
+  it('allows an active project curator to set it, trimmed', async () => {
+    const supabase = createFakeSupabase({ project_members: [{ data: { role: 'curator' }, error: null }] })
+    await updateProjectObjective(ctxWith(supabase), 'project-1', '  New description  ')
+    expect(adminUpdateMock).toHaveBeenCalledWith({ objective: 'New description' })
+    expect(adminUpdateEqMock).toHaveBeenCalledWith('id', 'project-1')
+  })
+
+  it('stores null for a blank value, clearing the description', async () => {
+    const supabase = createFakeSupabase({ project_members: [{ data: { role: 'owner' }, error: null }] })
+    await updateProjectObjective(ctxWith(supabase), 'project-1', '   ')
+    expect(adminUpdateMock).toHaveBeenCalledWith({ objective: null })
   })
 })
