@@ -12,6 +12,7 @@ import {
   transferOwnershipAction,
 } from '@/app/actions/projects'
 import { BulkAddMembersForm } from './BulkAddMembersForm'
+import { UserPicker, type UserOption } from './UserPicker'
 
 const ROLES: ProjectRole[] = ['owner', 'curator', 'consultant', 'viewer']
 // A non-admin (project owner/curator) creating a brand-new account can only
@@ -42,6 +43,8 @@ export function MembersManager({
   currentUserId,
   viewerIsAdmin,
   canTransferOwnership,
+  selectableUsers,
+  awaitingApproval,
 }: {
   projectId: string
   projectName: string
@@ -49,6 +52,8 @@ export function MembersManager({
   currentUserId: string
   viewerIsAdmin: boolean
   canTransferOwnership: boolean
+  selectableUsers: UserOption[]
+  awaitingApproval: boolean
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -206,30 +211,40 @@ export function MembersManager({
         </table>
       </div>
 
-      <form onSubmit={handleAdd} className="flex flex-col gap-3 rounded border border-zinc-200 bg-white p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Add member</h2>
-        <div className="flex gap-2">
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Person's email"
-            className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
-          />
-          <select value={role} onChange={(e) => setRole(e.target.value as ProjectRole)} className="rounded border border-zinc-300 px-3 py-2 text-sm">
-            {ROLES.filter((r) => r !== 'owner').map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-          <button disabled={isPending} className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-            Add
-          </button>
-        </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-      </form>
+      {awaitingApproval ? (
+        <p className="rounded border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          This project is awaiting approval. Members can be added once a curator or admin approves it -- anyone you picked when creating it
+          is added automatically then.
+        </p>
+      ) : (
+        <>
+          <form onSubmit={handleAdd} className="flex flex-col gap-3 rounded border border-zinc-200 bg-white p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Add member</h2>
+            <div className="flex gap-2">
+              <UserPicker
+                users={selectableUsers}
+                value={email}
+                onChange={setEmail}
+                excludeEmails={members.map((m) => m.email)}
+                className="flex-1"
+              />
+              <select value={role} onChange={(e) => setRole(e.target.value as ProjectRole)} className="rounded border border-zinc-300 px-3 py-2 text-sm">
+                {ROLES.filter((r) => r !== 'owner').map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              <button disabled={isPending} className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                Add
+              </button>
+            </div>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+          </form>
 
-      <BulkAddMembersForm projectId={projectId} viewerIsAdmin={viewerIsAdmin} />
+          <BulkAddMembersForm projectId={projectId} viewerIsAdmin={viewerIsAdmin} />
+        </>
+      )}
 
       {noAccountEmail && (
         <form onSubmit={handleCreateAndAdd} className="flex flex-col gap-3 rounded border border-amber-300 bg-amber-50 p-4">

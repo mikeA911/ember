@@ -803,6 +803,21 @@ export interface Project {
   // side-by-side comparison of two options under otherwise-identical
   // conditions. null for every ordinarily-created Project.
   cloned_from_project_id: string | null
+  // Project creation approval (20261004100001_project_creation_approval.sql):
+  // 'pending' for a project a consultant/builder created, until their
+  // agency curator or a platform admin decides (project-approval.ts).
+  approval_status: ProjectApprovalStatus
+  approval_decided_by: string | null
+  approval_decided_at: string | null
+  approval_decision_reason: string | null
+  // Wizard-picked team members held until approval adds them.
+  pending_members: PendingProjectMember[]
+}
+
+export type ProjectApprovalStatus = 'pending' | 'approved' | 'rejected'
+export interface PendingProjectMember {
+  user_id: string
+  role: ProjectRole
 }
 
 // Project role (owner/curator/consultant/viewer) is deliberately a separate
@@ -2398,6 +2413,11 @@ export type ProjectInsert = Omit<
   | 'assistant_prompt_version'
   | 'assistant_conversation_id'
   | 'cloned_from_project_id'
+  | 'approval_status'
+  | 'approval_decided_by'
+  | 'approval_decided_at'
+  | 'approval_decision_reason'
+  | 'pending_members'
 > &
   Partial<
     Pick<
@@ -2416,6 +2436,8 @@ export type ProjectInsert = Omit<
       | 'assistant_prompt_version'
       | 'assistant_conversation_id'
       | 'cloned_from_project_id'
+      | 'approval_status'
+      | 'pending_members'
     >
   >
 export type ProjectUpdate = Partial<Omit<Project, 'id' | 'created_at'>>
