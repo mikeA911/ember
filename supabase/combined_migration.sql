@@ -8987,8 +8987,9 @@ create policy "client_project_fees_write_agency_or_admin" on client_project_fees
 -- Project creation approval (2026-10-02, Mike). A Project created by a
 -- consultant/builder (anyone below platform curator) starts as
 -- approval_status 'pending': the creator can work on it fully, but nobody
--- else is let in until the creator's agency curator (agency_builders) or a
--- platform admin approves it (src/lib/workbench/project-approval.ts).
+-- else is let in until a platform admin or a curator approves it -- any
+-- curator in Enterprise mode, only the creator's own agency curator
+-- (agency_builders) in Builder mode (src/lib/workbench/project-approval.ts).
 -- Projects created by a curator/admin, or by the service role
 -- (provisionBuilderProject, workstream promotions, seeds), are 'approved'
 -- straight away, and every existing Project is backfilled 'approved' by the
@@ -9035,7 +9036,7 @@ begin
     or new.approval_decision_reason is distinct from old.approval_decision_reason
     or new.pending_members is distinct from old.pending_members
   ) then
-    raise exception 'Only the creator''s agency curator or a platform admin can approve this project';
+    raise exception 'Only a curator or platform admin can approve this project';
   end if;
 
   if new.approval_status <> 'approved' and (new.visibility <> 'private' or new.discoverability <> 'members_only') then

@@ -9,8 +9,8 @@ const TYPE_LABELS: Record<string, string> = {
   knowledge: 'Knowledge',
 }
 
-// Dashboard queue for an agency curator (their builders' projects) or a
-// platform admin (everyone's). Deciders aren't members of a pending
+// Dashboard queue for a platform admin or curator -- in Builder mode a
+// curator only gets their own builders' projects (listProjectsAwaitingApproval). Deciders aren't members of a pending
 // project, so everything they need to decide is shown here.
 export function ProjectsAwaitingApprovalWidget({ projects }: { projects: ProjectAwaitingApprovalRow[] }) {
   if (projects.length === 0) return null

@@ -2,12 +2,18 @@ import 'server-only'
 import { AuthError } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ProjectValidationError } from '@/lib/projects/errors'
+import { env } from '@/lib/env'
 import type { PendingProjectMember, ProjectApprovalStatus, ProjectType } from '@/types/database'
 import type { WorkbenchCallerContext } from './context'
 
 // Project creation approval (20261004100001_project_creation_approval.sql).
-// A project created by a consultant/builder is 'pending' until the
-// creator's agency curator (agency_builders) or a platform admin decides.
+// A project created by a consultant/builder is 'pending' until it's
+// decided by a platform admin, or by a curator:
+//   * Enterprise mode -- one organization per deployment, the admin runs
+//     it and its curators are its staff, so any curator decides.
+//   * Builder mode -- each agency is a curator account, so only the
+//     creator's own agency curator (agency_builders) decides.
+// Curators' and admins' own projects never need approval.
 // The creator keeps working on it meanwhile; it just stays theirs alone --
 // the DB triggers keep it private and refuse other active members.
 //
@@ -28,7 +34,8 @@ export interface ProjectAwaitingApprovalRow {
   createdAt: string
 }
 
-// Agency curator: only their own builders' projects. Admin: every one.
+// Admin, or any curator in Enterprise mode: every pending project.
+// Builder-mode curator: only their own builders' projects.
 export async function listProjectsAwaitingApproval(ctx: WorkbenchCallerContext): Promise<ProjectAwaitingApprovalRow[]> {
   const { profile, user } = ctx
   if (profile.role !== 'admin' && profile.role !== 'curator') return []
@@ -39,7 +46,7 @@ export async function listProjectsAwaitingApproval(ctx: WorkbenchCallerContext):
     .select('id, name, project_type, objective, owner_id, pending_members, created_at')
     .eq('approval_status', 'pending')
     .order('created_at', { ascending: true })
-  if (profile.role === 'curator') {
+  if (profile.role === 'curator' && env.productMode() === 'builder') {
     const { data: links, error: linksError } = await admin.from('agency_builders').select('builder_id').eq('agency_id', user.id)
     if (linksError) throw linksError
     const builderIds = (links ?? []).map((l) => l.builder_id)
@@ -79,6 +86,7 @@ async function loadProject(admin: Admin, projectId: string) {
 async function requireApprovalDecider(ctx: WorkbenchCallerContext, admin: Admin, ownerId: string | null): Promise<void> {
   if (ownerId === ctx.user.id) throw new AuthError('You cannot approve a project you created yourself')
   if (ctx.profile.role === 'admin') return
+  if (ctx.profile.role === 'curator' && env.productMode() === 'enterprise') return
   if (ctx.profile.role === 'curator' && ownerId) {
     const { data: link, error } = await admin
       .from('agency_builders')
@@ -89,7 +97,11 @@ async function requireApprovalDecider(ctx: WorkbenchCallerContext, admin: Admin,
     if (error) throw error
     if (link) return
   }
-  throw new AuthError('Only the creator\'s agency curator or a platform admin can decide this project')
+  throw new AuthError(
+    env.productMode() === 'builder'
+      ? 'Only the creator\'s agency curator or a platform admin can decide this project'
+      : 'Only a curator or platform admin can decide this project'
+  )
 }
 
 // Best-effort, like presentation-notifications.ts: the decision already
@@ -213,8 +225,9 @@ export async function resubmitProjectForApproval(ctx: WorkbenchCallerContext, pr
 export interface ProjectApprovalState {
   status: ProjectApprovalStatus
   reason: string | null
-  // Who can approve it: the creator's agency curator, if they have one.
-  agencyEmail: string | null
+  // Who can approve it besides a platform admin: any curator (Enterprise),
+  // or the creator's agency curator if they have one (Builder).
+  approverLabel: string
   pendingMemberEmails: string[]
 }
 
@@ -228,8 +241,9 @@ export async function getProjectApprovalState(project: {
 }): Promise<ProjectApprovalState> {
   const admin = createAdminClient()
   const held = project.pending_members ?? []
+  const builderMode = env.productMode() === 'builder'
   const [{ data: link }, { data: heldProfiles }] = await Promise.all([
-    project.owner_id
+    builderMode && project.owner_id
       ? admin.from('agency_builders').select('agency_id').eq('builder_id', project.owner_id).maybeSingle()
       : Promise.resolve({ data: null }),
     held.length > 0 ? admin.from('profiles').select('email').in('id', held.map((m) => m.user_id)) : Promise.resolve({ data: [] }),
@@ -238,7 +252,11 @@ export async function getProjectApprovalState(project: {
   return {
     status: project.approval_status,
     reason: project.approval_decision_reason,
-    agencyEmail: agency?.email ?? null,
+    approverLabel: !builderMode
+      ? 'a curator or platform admin'
+      : agency?.email
+        ? `your agency (${agency.email}) or a platform admin`
+        : 'a platform admin',
     pendingMemberEmails: (heldProfiles ?? []).map((p) => p.email).filter((e): e is string => !!e),
   }
 }

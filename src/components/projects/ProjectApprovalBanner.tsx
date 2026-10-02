@@ -22,7 +22,6 @@ export function ProjectApprovalBanner({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
-  const approver = state.agencyEmail ? `your agency (${state.agencyEmail}) or a platform admin` : 'a platform admin'
   const rejected = state.status === 'rejected'
 
   return (
@@ -34,7 +33,7 @@ export function ProjectApprovalBanner({
         </p>
       ) : viewerIsCreator ? (
         <p>
-          Waiting for {approver} to approve this project. You can keep working on it meanwhile -- until it&apos;s approved, only you can see
+          Waiting for {state.approverLabel} to approve this project. You can keep working on it meanwhile -- until it&apos;s approved, only you can see
           it, and members can&apos;t be added or the project shared.
         </p>
       ) : (
