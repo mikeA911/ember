@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ProjectFindings } from '@/components/projects/ProjectFindings'
 import { MemberDirectory } from '@/components/projects/MemberDirectory'
 import { ProjectGoalForm } from '@/components/projects/ProjectGoalForm'
+import { ProjectObjectiveForm } from '@/components/projects/ProjectObjectiveForm'
 import { ProjectStarterPromptForm } from '@/components/projects/ProjectStarterPromptForm'
 import { ProjectStatusSection } from '@/components/projects/ProjectStatusSection'
 import { listWorkstreams } from '@/lib/projects/workstreams'
@@ -452,7 +453,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             </Link>
           </p>
         )}
-        {project.objective && <p className="mt-2 text-sm text-zinc-600">{project.objective}</p>}
+        <ProjectObjectiveForm projectId={project.id} objective={project.objective} canEdit={canCurateWorkstreams} />
         {Object.keys(project.details ?? {}).length > 0 && (
           <dl className="mt-3 flex flex-col gap-1 text-sm">
             {/* details has no schema ("no template engine," per the Project

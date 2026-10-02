@@ -154,6 +154,13 @@ export async function updateProjectGoalAction(projectId: string, goal: string) {
   revalidatePath(`/projects/${projectId}`)
 }
 
+export async function updateProjectObjectiveAction(projectId: string, objective: string) {
+  const ctx = await requireUser()
+  await workbench.updateProjectObjective(ctx, projectId, objective)
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath('/projects')
+}
+
 export async function updateProjectStarterPromptAction(projectId: string, starterPrompt: string) {
   const ctx = await requireUser()
   await workbench.updateProjectStarterPrompt(ctx, projectId, starterPrompt)

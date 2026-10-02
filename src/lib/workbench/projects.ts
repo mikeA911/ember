@@ -493,6 +493,23 @@ export async function updateProjectStarterPrompt(ctx: WorkbenchCallerContext, pr
   if (error) throw error
 }
 
+// The one-line description under the project title (the `objective`
+// column, set by ProjectWizard at creation). Same owner/curator/admin bar
+// and admin-client-after-explicit-check pattern as
+// updateProjectStarterPrompt above -- a curator should be able to fix their
+// own team's Project description, not just its owner.
+export async function updateProjectObjective(ctx: WorkbenchCallerContext, projectId: string, objective: string): Promise<void> {
+  if (ctx.profile.role !== 'admin') {
+    const role = await getActiveProjectRole(ctx, projectId)
+    if (role !== 'owner' && role !== 'curator') {
+      throw new AuthError('Requires this project\'s owner or curator role (or platform admin) to edit its description')
+    }
+  }
+  const admin = createAdminClient()
+  const { error } = await admin.from('projects').update({ objective: objective.trim() || null }).eq('id', projectId)
+  if (error) throw error
+}
+
 // "My Projects" list grouping (2026-09-04) -- same owner/curator/admin bar
 // and same admin-client-after-explicit-check pattern as
 // updateProjectStarterPrompt above, for the same reason: a project curator
