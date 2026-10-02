@@ -19,6 +19,9 @@ import { listMemberProjectOptions, listActiveProjectsForDashboard } from '@/lib/
 import { listRecentConversations } from '@/lib/chat/conversations'
 import { EmberHome } from '@/components/dashboard/EmberHome'
 import { MyProjectsWidget } from '@/components/dashboard/MyProjectsWidget'
+import { ProjectsAwaitingApprovalWidget } from '@/components/projects/ProjectsAwaitingApprovalWidget'
+import { listProjectsAwaitingApproval } from '@/lib/workbench/project-approval'
+import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const { view } = await searchParams
@@ -30,6 +33,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const { data: profile } = user
     ? await supabase.from('profiles').select('role').eq('id', user.id).single()
     : { data: null }
+  // Agency curators (their builders' new projects) and platform admins.
+  const projectsAwaitingApproval =
+    user && profile && (profile.role === 'admin' || profile.role === 'curator')
+      ? await listProjectsAwaitingApproval({ user, profile, supabase } as unknown as WorkbenchCallerContext)
+      : []
   const canSeeWikiQueue = profile ? hasRequiredRole(profile.role, 'curator') : false
   const canSeeNotes = !!user && profile?.role !== 'anonymous'
   // Every active signed-in user, not just curators -- unlike the widgets
@@ -131,6 +139,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   return (
     <div className="flex flex-col gap-8">
       <SectionHero image="/images/sections/kb-sandbox.png" height="compact" priority />
+
+      <ProjectsAwaitingApprovalWidget projects={projectsAwaitingApproval} />
 
       {isEmberFirst ? (
         <EmberHome projects={emberProjects} productMode={env.productMode()} />

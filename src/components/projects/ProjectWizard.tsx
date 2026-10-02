@@ -99,10 +99,12 @@ export function ProjectWizard({
   knowledgeBases,
   evalDatasets,
   selectableUsers,
+  needsApproval,
 }: {
   knowledgeBases: Option[]
   evalDatasets: Option[]
   selectableUsers: UserOption[]
+  needsApproval: boolean
 }) {
   const router = useRouter()
   const [step, setStep] = useState(1)
@@ -552,6 +554,12 @@ export function ProjectWizard({
       {step === 6 && (
         <div className="flex flex-col gap-4">
           <p className="text-sm text-zinc-600">You become the project Owner automatically. Add anyone else who needs access.</p>
+          {needsApproval && (
+            <p className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              New projects need approval from your agency or a platform admin. You can work on it straight away; the people you add here get
+              access once it&apos;s approved.
+            </p>
+          )}
           <div className="flex gap-2">
             <UserPicker
               users={selectableUsers}

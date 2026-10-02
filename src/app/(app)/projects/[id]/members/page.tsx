@@ -13,7 +13,7 @@ export default async function ProjectMembersPage({ params }: { params: Promise<{
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: project } = await supabase.from('projects').select('id, name, owner_id').eq('id', id).single()
+  const { data: project } = await supabase.from('projects').select('id, name, owner_id, approval_status').eq('id', id).single()
   if (!project) notFound()
 
   // RLS (is_project_member) already gated the project select above; members
@@ -67,6 +67,7 @@ export default async function ProjectMembersPage({ params }: { params: Promise<{
       viewerIsAdmin={viewerIsAdmin}
       canTransferOwnership={canTransferOwnership}
       selectableUsers={selectableUsers}
+      awaitingApproval={project.approval_status !== 'approved'}
     />
   )
 }

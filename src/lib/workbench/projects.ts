@@ -130,6 +130,25 @@ export async function createProject(
   }
   if (input.knowledgeBaseId) await requireActiveKnowledgeBase(supabase, input.knowledgeBaseId)
 
+  // Project creation approval (project-approval.ts): below curator, the
+  // project starts 'pending' -- enforce_project_approval forces that in the
+  // DB regardless, this just decides where wizard-picked members go. They
+  // can't join until approval, so they're held on the project row instead.
+  const needsApproval = !hasRequiredRole(profile.role, 'curator')
+  const staged = input.members.filter((m) => m.email && m.email !== user.email)
+  const approvals = input.approvals ?? []
+  // One lookup covers both staged members and approval assignees (an
+  // assignee is always either '__self__' or an email already staged as a
+  // member -- the wizard's own UI only offers those two options).
+  const emailsToResolve = [...new Set(staged.map((m) => m.email))]
+  const idByEmail = emailsToResolve.length > 0 ? await resolveUserIdsByEmail(emailsToResolve) : new Map<string, string>()
+  const memberRows = staged
+    .map((m) => {
+      const userId = idByEmail.get(m.email)
+      return userId ? { user_id: userId, role: m.role } : null
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+
   const { data: project, error } = await supabase
     .from('projects')
     .insert({
@@ -140,6 +159,8 @@ export async function createProject(
       notes: null,
       details: input.details,
       owner_id: user.id,
+      approval_status: needsApproval ? 'pending' : 'approved',
+      pending_members: needsApproval ? memberRows : [],
     })
     .select()
     .single()
@@ -186,24 +207,8 @@ export async function createProject(
     await supabase.from('eval_datasets').update({ project_id: project.id }).eq('id', input.evalDatasetId)
   }
 
-  const staged = input.members.filter((m) => m.email && m.email !== user.email)
-  const approvals = input.approvals ?? []
-  // One lookup covers both staged members and approval assignees (an
-  // assignee is always either '__self__' or an email already staged as a
-  // member -- the wizard's own UI only offers those two options).
-  const emailsToResolve = [...new Set(staged.map((m) => m.email))]
-  const idByEmail = emailsToResolve.length > 0 ? await resolveUserIdsByEmail(emailsToResolve) : new Map<string, string>()
-
-  if (staged.length > 0) {
-    const rows = staged
-      .map((m) => {
-        const userId = idByEmail.get(m.email)
-        return userId ? { project_id: project.id, user_id: userId, role: m.role, status: 'active' as ProjectMemberStatus } : null
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null)
-    if (rows.length > 0) {
-      await supabase.from('project_members').insert(rows)
-    }
+  if (!needsApproval && memberRows.length > 0) {
+    await supabase.from('project_members').insert(memberRows.map((m) => ({ ...m, project_id: project.id, status: 'active' as ProjectMemberStatus })))
   }
 
   if (approvals.length > 0) {
@@ -254,7 +259,7 @@ export async function createProject(
     }
   }
 
-  return { projectId: project.id }
+  return { projectId: project.id, approvalStatus: project.approval_status }
 }
 
 // project_knowledge_bases is many-to-many, so attaching an already-active KB

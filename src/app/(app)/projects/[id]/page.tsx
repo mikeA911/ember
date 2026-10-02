@@ -39,6 +39,8 @@ import { getOntologyMapData, computeOntologyMapLayout } from '@/lib/projects/ont
 import { OntologyMapButton } from '@/components/projects/OntologyMapButton'
 import { ProjectSummaryButton } from '@/components/projects/ProjectSummaryButton'
 import type { ProjectSummaryInput } from '@/lib/projects/status-summary'
+import { getProjectApprovalState } from '@/lib/workbench/project-approval'
+import { ProjectApprovalBanner } from '@/components/projects/ProjectApprovalBanner'
 
 const TYPE_LABELS: Record<string, string> = {
   learning: 'Learning',
@@ -398,8 +400,21 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       : undefined,
   }
 
+  // Project creation approval -- only the creator (and admins) can see a
+  // project that isn't approved yet, so this banner only ever reaches them.
+  const approvalState = project.approval_status !== 'approved' ? await getProjectApprovalState(project) : null
+
   return (
     <div className="flex flex-col gap-8">
+      {approvalState && (
+        <ProjectApprovalBanner
+          projectId={project.id}
+          projectName={project.name}
+          state={approvalState}
+          viewerIsCreator={!!user && project.owner_id === user.id}
+          viewerCanDecide={viewerProfile?.role === 'admin' && project.owner_id !== user?.id}
+        />
+      )}
       <div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
