@@ -24,12 +24,16 @@ export function NewArticleForms({
   categories,
   approvedChunks,
   artifacts,
+  initialArtifactId,
 }: {
   categories: WikiCategory[]
   approvedChunks: ApprovedChunk[]
   artifacts: SourceArtifact[]
+  // From a workstream artifact's "Draft a Wiki article" link.
+  initialArtifactId?: string
 }) {
-  const [mode, setMode] = useState<'manual' | 'ai'>('manual')
+  const preselected = artifacts.find((a) => a.id === initialArtifactId)
+  const [mode, setMode] = useState<'manual' | 'ai'>(preselected ? 'ai' : 'manual')
 
   return (
     <div className="flex flex-col gap-4">
@@ -51,7 +55,7 @@ export function NewArticleForms({
       {mode === 'manual' ? (
         <ManualForm categories={categories} />
       ) : (
-        <AIAssistedForm categories={categories} approvedChunks={approvedChunks} artifacts={artifacts} />
+        <AIAssistedForm categories={categories} approvedChunks={approvedChunks} artifacts={artifacts} initialArtifact={preselected} />
       )}
     </div>
   )
@@ -187,17 +191,19 @@ function AIAssistedForm({
   categories,
   approvedChunks,
   artifacts,
+  initialArtifact,
 }: {
   categories: WikiCategory[]
   approvedChunks: ApprovedChunk[]
   artifacts: SourceArtifact[]
+  initialArtifact?: SourceArtifact
 }) {
   const router = useRouter()
-  const [topic, setTopic] = useState('')
+  const [topic, setTopic] = useState(initialArtifact?.title ?? '')
   const [category, setCategory] = useState<WikiCategoryId>(categories[0]?.id ?? 'foundations')
-  const [sourceMode, setSourceMode] = useState<'chunks' | 'artifact'>('chunks')
+  const [sourceMode, setSourceMode] = useState<'chunks' | 'artifact'>(initialArtifact ? 'artifact' : 'chunks')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [artifactId, setArtifactId] = useState<string>('')
+  const [artifactId, setArtifactId] = useState<string>(initialArtifact?.id ?? '')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 

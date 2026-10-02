@@ -69,6 +69,7 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   let canAttach = false // consultant+ -- attach evidence
   let isActiveMember = false // Workstream Promotion: any active member of this workstream's Project may submit it for promotion
   let isProjectOwner = false // Builder Operations: Share Builder Update is owner-only (can_manage_project), no curator branch
+  let canDraftWiki = false // platform curator/admin -- createAIAssistedDraftAction's own bar
   let presentation = null as Awaited<ReturnType<typeof getPresentation>>
   let viewerName: string | null = null // Proposal summary's "prepared by"
   if (user) {
@@ -77,6 +78,7 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
       supabase.from('project_members').select('role').eq('project_id', id).eq('user_id', user.id).maybeSingle(),
     ])
     const isAdmin = viewerProfile?.role === 'admin'
+    canDraftWiki = isAdmin || viewerProfile?.role === 'curator'
     viewerName = viewerProfile?.full_name && viewerProfile.email ? `${viewerProfile.full_name} (${viewerProfile.email})` : (viewerProfile?.email ?? null)
     isActiveMember = isAdmin || !!viewerMembership
     isProjectOwner = isAdmin || viewerMembership?.role === 'owner'
@@ -298,6 +300,26 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
                   >
                     Add a note about this artifact
                   </Link>
+                  {/* Promotion: an approved artifact with content can become a knowledge
+                      base source (Submit a source, project curator reviews) or the basis
+                      of a Wiki draft (platform curators). */}
+                  {isActiveMember && a.content && (
+                    <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
+                      <span>Promote:</span>
+                      {a.status === 'approved' ? (
+                        <Link href={`/projects/${id}?submitArtifact=${a.id}#submit-source`} className="text-blue-700 underline">
+                          Submit to a knowledge base
+                        </Link>
+                      ) : (
+                        <span title="Only approved artifacts can be submitted to a knowledge base">Submit to a knowledge base (approve it first)</span>
+                      )}
+                      {canDraftWiki && (
+                        <Link href={`/wiki/new?artifact=${a.id}`} className="text-blue-700 underline">
+                          Draft a Wiki article from this
+                        </Link>
+                      )}
+                    </p>
+                  )}
                   <ArtifactReviewActions artifactId={a.id} projectId={id} workstreamId={workstreamId} status={a.status} canReview={canEdit} />
                 </details>
               ),

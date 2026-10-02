@@ -46,8 +46,17 @@ const TYPE_LABELS: Record<string, string> = {
   knowledge: 'Knowledge',
 }
 
-export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProjectPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  // ?submitArtifact=<id> -- the workstream page's "Submit to a knowledge
+  // base" link, preselecting that artifact in the Submit a source form.
+  searchParams: Promise<{ submitArtifact?: string }>
+}) {
   const { id } = await params
+  const { submitArtifact } = await searchParams
   const supabase = await createClient()
 
   const {
@@ -591,11 +600,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           />
         )}
         {user && viewerMembership && (
-          <SubmitSourceForm
-            projectId={project.id}
-            knowledgeBases={knowledgeBases}
-            artifacts={(submittableArtifacts ?? []).map((a) => ({ id: a.id, title: a.title }))}
-          />
+          <div id="submit-source" className="scroll-mt-4">
+            <SubmitSourceForm
+              projectId={project.id}
+              knowledgeBases={knowledgeBases}
+              artifacts={(submittableArtifacts ?? []).map((a) => ({ id: a.id, title: a.title }))}
+              initialArtifactId={submitArtifact}
+            />
+          </div>
         )}
       </section>
 

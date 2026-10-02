@@ -2,29 +2,73 @@ import { describe, expect, it } from 'vitest'
 import {
   formatMessageWithAttachments,
   isZipFileName,
-  attachmentMimeType,
+  documentMimeType,
+  findingsContentForAttachment,
+  findingsNotesForAttachment,
+  isProbablyText,
+  redactSecrets,
+  REDACTED,
   extractAttachmentsFromMessage,
   formatMessageWithAttachment,
   truncateAttachmentText,
   MAX_ATTACHMENT_CHARS,
 } from './attachments'
 
-describe('attachmentMimeType', () => {
-  it('maps supported extensions case-insensitively', () => {
-    expect(attachmentMimeType('Report.PDF')).toBe('application/pdf')
-    expect(attachmentMimeType('notes.md')).toBe('text/plain')
-    expect(attachmentMimeType('a.b.docx')).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+describe('documentMimeType', () => {
+  it('only names the formats that need an extractor', () => {
+    expect(documentMimeType('Report.PDF')).toBe('application/pdf')
+    expect(documentMimeType('a.b.docx')).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    expect(documentMimeType('notes.md')).toBeNull()
+    expect(documentMimeType('README')).toBeNull()
+  })
+})
+
+describe('isProbablyText', () => {
+  const enc = (t: string) => new TextEncoder().encode(t)
+
+  it('accepts Markdown, code, .env and extensionless text', () => {
+    expect(isProbablyText(enc('# Title\n\n- item\n'))).toBe(true)
+    expect(isProbablyText(enc('export const x = 1\r\n\tif (x) {}\n'))).toBe(true)
+    expect(isProbablyText(enc('API_KEY=abc\nPORT=3000\n'))).toBe(true)
+    expect(isProbablyText(enc('Comunidad — Kuryente ✓'))).toBe(true)
   })
 
-  it('reads ontology serializations as plain text', () => {
-    for (const name of ['onto.ttl', 'onto.owl', 'onto.rdf', 'onto.jsonld', 'onto.json', 'onto.yaml', 'onto.yml', 'onto.xml']) {
-      expect(attachmentMimeType(name)).toBe('text/plain')
-    }
+  it('rejects binary content, invalid UTF-8 and empty files', () => {
+    expect(isProbablyText(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]))).toBe(false) // PNG
+    expect(isProbablyText(new Uint8Array([0xff, 0xfe, 0x41, 0x00]))).toBe(false) // UTF-16
+    expect(isProbablyText(new Uint8Array([0x61, 0xc3, 0x28]))).toBe(false)
+    expect(isProbablyText(new Uint8Array([]))).toBe(false)
+  })
+})
+
+describe('redactSecrets', () => {
+  it('hides secret-looking values in .env files and keeps the names', () => {
+    const env = ['# Supabase', 'SUPABASE_SERVICE_ROLE_KEY=abc123', 'export OPENAI_API_KEY="sk-xyz"', 'DB_PASSWORD=hunter2', 'PORT=3000', 'NEXT_PUBLIC_SITE_URL=https://example.com', 'EMPTY_TOKEN='].join('\n')
+    const { text, hidden } = redactSecrets('.env.local', env)
+    expect(text).toBe(
+      ['# Supabase', `SUPABASE_SERVICE_ROLE_KEY=${REDACTED}`, `export OPENAI_API_KEY=${REDACTED}`, `DB_PASSWORD=${REDACTED}`, 'PORT=3000', 'NEXT_PUBLIC_SITE_URL=https://example.com', 'EMPTY_TOKEN='].join('\n')
+    )
+    expect(hidden).toBe(3)
   })
 
-  it('rejects unsupported or missing extensions', () => {
-    expect(attachmentMimeType('image.png')).toBeNull()
-    expect(attachmentMimeType('README')).toBeNull()
+  it('hides private keys, known token formats and URL passwords in any file', () => {
+    const code = [
+      'const key = "sk-proj-abcdefghijklmnopqrstuvwxyz123456"',
+      'DATABASE_URL=postgres://app:s3cret@db.example.com:5432/app',
+      '-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----',
+      'const apiKey = process.env.API_KEY',
+    ].join('\n')
+    const { text, hidden } = redactSecrets('config.ts', code)
+    expect(text).not.toContain('abcdefghijklmnop')
+    expect(text).not.toContain('s3cret')
+    expect(text).toContain(`postgres://app:${REDACTED}@db.example.com`)
+    expect(text).not.toContain('MIIEow')
+    expect(text).toContain('const apiKey = process.env.API_KEY')
+    expect(hidden).toBe(3)
+  })
+
+  it('leaves ordinary text alone', () => {
+    expect(redactSecrets('notes.md', '# Notes\nThe key insight is pricing.')).toEqual({ text: '# Notes\nThe key insight is pricing.', hidden: 0 })
   })
 })
 
@@ -86,5 +130,24 @@ describe('formatMessageWithAttachments', () => {
   it('recognises zip names', () => {
     expect(isZipFileName('Files.ZIP')).toBe(true)
     expect(isZipFileName('onto.ttl')).toBe(false)
+  })
+})
+
+describe('findingsContentForAttachment', () => {
+  it('keeps prose as-is and fences code and config with a language', () => {
+    expect(findingsContentForAttachment({ name: 'notes.md', text: '# Hi', truncated: false })).toBe('# Hi')
+    expect(findingsContentForAttachment({ name: 'src/app.ts', text: 'const a = 1', truncated: false })).toBe('```typescript\nconst a = 1\n```')
+    expect(findingsContentForAttachment({ name: '.env.local', text: 'A=1', truncated: false })).toBe('```bash\nA=1\n```')
+    expect(findingsContentForAttachment({ name: 'Makefile', text: 'all:', truncated: false })).toBe('```\nall:\n```')
+  })
+
+  it('uses a fence longer than any backtick run inside', () => {
+    expect(findingsContentForAttachment({ name: 'doc.ttl', text: 'x ``` y', truncated: false })).toBe('````turtle\nx ``` y\n````')
+  })
+
+  it('notes truncation and hidden secrets', () => {
+    expect(findingsNotesForAttachment({ name: 'a', text: 'x', truncated: true, hiddenSecrets: 2 })).toBe(
+      'Uploaded in Ember chat. Only the first 50,000 characters were kept. 2 secret value(s) were hidden before saving.'
+    )
   })
 })

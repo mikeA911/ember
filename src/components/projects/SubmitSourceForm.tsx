@@ -19,18 +19,22 @@ export function SubmitSourceForm({
   projectId,
   knowledgeBases,
   artifacts,
+  initialArtifactId,
 }: {
   projectId: string
   knowledgeBases: { id: string; name: string }[]
   artifacts: SubmittableArtifact[]
+  // From a workstream artifact's "Submit to a knowledge base" link.
+  initialArtifactId?: string
 }) {
+  const preselected = artifacts.some((a) => a.id === initialArtifactId) ? initialArtifactId : undefined
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
-  const [kind, setKind] = useState<'file' | 'artifact'>('file')
+  const [kind, setKind] = useState<'file' | 'artifact'>(preselected ? 'artifact' : 'file')
   const [knowledgeBaseId, setKnowledgeBaseId] = useState(knowledgeBases[0]?.id ?? '')
-  const [artifactId, setArtifactId] = useState(artifacts[0]?.id ?? '')
+  const [artifactId, setArtifactId] = useState(preselected ?? artifacts[0]?.id ?? '')
 
   if (knowledgeBases.length === 0) {
     return <p className="text-sm text-zinc-500">Attach a project knowledge base above before submitting a source.</p>
