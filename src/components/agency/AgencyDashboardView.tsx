@@ -6,66 +6,26 @@ import type {
   AgencyAttention,
   AgencyBuilderRow,
   AgencyClientProjectRow,
+  AgencyCompletion,
   AgencyDashboard,
   AgencyProposalRow,
   AgencySharedUpdate,
 } from '@/lib/workbench/agency-dashboard'
-import type { PresentationStatus, ProjectStatus, WorkstreamPromotionStatus, WorkstreamStatus } from '@/types/database'
 import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamPromotionsReview'
 import { AssignAgencySelect } from './AssignAgencySelect'
 import { ClientFeeEditor } from './ClientFeeEditor'
 import { PlatformRateForm } from './PlatformRateForm'
 import { formatMoney, monthlyTotals } from './money'
-
-// Same display relabeling as ProjectStatusSection.tsx's own pipeline.
-const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  draft: 'Initial Draft',
-  active: 'Working on it',
-  review: 'For Approval',
-  completed: 'Approved',
-  archived: 'Archived',
-}
-const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
-  draft: 'bg-zinc-100 text-zinc-700',
-  active: 'bg-amber-100 text-amber-800',
-  review: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  archived: 'bg-zinc-200 text-zinc-500',
-}
-
-const WORKSTREAM_STATUS_LABELS: Record<WorkstreamStatus, string> = {
-  draft: 'Draft',
-  active: 'In progress',
-  completed: 'Completed',
-  archived: 'Archived',
-}
-
-const PRESENTATION_LABELS: Record<PresentationStatus, string> = {
-  draft: 'Proposal drafted',
-  review_open: 'Proposal in review',
-  review_closed: 'Review closed',
-  builder_revision: 'Revising proposal',
-  curator_review: 'Proposal with curator',
-  approved: 'Proposal approved',
-}
-
-const PROMOTION_LABELS: Record<WorkstreamPromotionStatus, string> = {
-  pending: 'Client project requested',
-  approved: 'Client project created',
-  rejected: 'Request declined',
-}
-const PROMOTION_STYLES: Record<WorkstreamPromotionStatus, string> = {
-  pending: 'bg-blue-100 text-blue-800',
-  approved: 'bg-green-100 text-green-800',
-  rejected: 'bg-zinc-200 text-zinc-600',
-}
-
-const CONFIDENCE_LABELS: Record<string, string> = { on_track: 'On track', at_risk: 'At risk', blocked: 'Blocked' }
-const CONFIDENCE_STYLES: Record<string, string> = {
-  on_track: 'bg-green-100 text-green-800',
-  at_risk: 'bg-amber-100 text-amber-800',
-  blocked: 'bg-red-100 text-red-800',
-}
+import {
+  CONFIDENCE_LABELS,
+  CONFIDENCE_STYLES,
+  PRESENTATION_LABELS,
+  PROJECT_STATUS_LABELS,
+  PROJECT_STATUS_STYLES,
+  PROMOTION_LABELS,
+  PROMOTION_STYLES,
+  WORKSTREAM_STATUS_LABELS,
+} from './labels'
 
 const ATTENTION_LABELS: Record<AgencyAttention, string> = { blocked: 'Blocked', help_requested: 'Help requested', at_risk: 'At risk' }
 const ATTENTION_STYLES: Record<AgencyAttention, string> = {
@@ -103,10 +63,35 @@ function SharedUpdate({ update }: { update: AgencySharedUpdate | null }) {
   )
 }
 
+// Completion bar + percentage; "done of total" in the tooltip.
+function Progress({ completion }: { completion: AgencyCompletion }) {
+  if (completion.pct === null) return null
+  return (
+    <div className="flex items-center gap-1.5" title={`${completion.done} of ${completion.total} items done`}>
+      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-zinc-200">
+        <div className="h-full rounded-full bg-orange-500" style={{ width: `${completion.pct}%` }} />
+      </div>
+      <span className="text-xs tabular-nums text-zinc-600">{completion.pct}%</span>
+    </div>
+  )
+}
+
+function KnowledgeBases({ names, label = 'Knowledge bases' }: { names: string[]; label?: string }) {
+  if (names.length === 0) return null
+  return (
+    <div className="mt-0.5 text-xs text-zinc-500">
+      {label}: <span className="text-zinc-700">{names.join(', ')}</span>
+    </div>
+  )
+}
+
 function ProposalRow({ proposal }: { proposal: AgencyProposalRow }) {
   return (
     <tr className="border-t border-zinc-100 align-top">
-      <td className="py-2 pr-3 font-medium">{proposal.name}</td>
+      <td className="py-2 pr-3">
+        <span className="font-medium">{proposal.name}</span>
+        <KnowledgeBases names={proposal.knowledgeBases} />
+      </td>
       <td className="py-2 pr-3">
         <div className="flex flex-col items-start gap-1">
           {proposal.promotionStatus ? (
@@ -116,6 +101,7 @@ function ProposalRow({ proposal }: { proposal: AgencyProposalRow }) {
           ) : (
             <Pill className="bg-zinc-100 text-zinc-700">{WORKSTREAM_STATUS_LABELS[proposal.status]}</Pill>
           )}
+          <Progress completion={proposal.completion} />
         </div>
       </td>
       <td className="py-2 pr-3 text-xs">
@@ -141,9 +127,27 @@ function ClientProjectRow({ project, linkable }: { project: AgencyClientProjectR
           Created {formatDate(project.createdAt)} · {project.clientViewerCount} client viewer{project.clientViewerCount === 1 ? '' : 's'} ·{' '}
           {project.activeWorkstreamCount} of {project.workstreamCount} workstream{project.workstreamCount === 1 ? '' : 's'} active
         </div>
+        <KnowledgeBases names={project.knowledgeBases} label="Project knowledge bases" />
+        {project.workstreams.length > 0 && (
+          <ul className="mt-1.5 flex flex-col gap-1 border-l-2 border-zinc-100 pl-2">
+            {project.workstreams.map((w) => (
+              <li key={w.id} className="text-xs">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="text-zinc-800">{w.name}</span>
+                  <span className="text-zinc-500">{WORKSTREAM_STATUS_LABELS[w.status]}</span>
+                  <Progress completion={w.completion} />
+                </div>
+                <KnowledgeBases names={w.knowledgeBases} />
+              </li>
+            ))}
+          </ul>
+        )}
       </td>
       <td className="py-2 pr-3">
-        <Pill className={PROJECT_STATUS_STYLES[project.status]}>{PROJECT_STATUS_LABELS[project.status]}</Pill>
+        <div className="flex flex-col items-start gap-1">
+          <Pill className={PROJECT_STATUS_STYLES[project.status]}>{PROJECT_STATUS_LABELS[project.status]}</Pill>
+          <Progress completion={project.completion} />
+        </div>
       </td>
       <td className="py-2 pr-3">
         <ClientFeeEditor projectId={project.id} fee={project.fee} />

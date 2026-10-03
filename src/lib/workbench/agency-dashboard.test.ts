@@ -5,7 +5,7 @@ import type { WorkbenchCallerContext } from './context'
 const createAdminClientMock = vi.fn()
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: (...args: unknown[]) => createAdminClientMock(...args) }))
 
-const { assembleAgencyDashboard, getAgencyDashboard, assignBuilderToAgency } = await import('./agency-dashboard')
+const { assembleAgencyDashboard, getAgencyDashboard, assignBuilderToAgency, workstreamCompletion } = await import('./agency-dashboard')
 
 beforeEach(() => {
   createAdminClientMock.mockReset()
@@ -33,6 +33,9 @@ const update = (workstreamId: string, overrides: Record<string, unknown> = {}) =
 })
 
 const empty = {
+  projectKnowledgeBases: [],
+  workstreamKnowledgeBases: [],
+  knowledgeBases: [],
   presentations: [],
   promotions: [],
   viewerMembers: [],
@@ -158,6 +161,90 @@ describe('assembleAgencyDashboard', () => {
     expect(blocked.agencies[0].builders[0].attention).toBe('blocked')
   })
 
+  it("lists a client project's live workstreams, knowledge bases and completion", () => {
+    const result = assembleAgencyDashboard({
+      ...empty,
+      viewerIsAdmin: false,
+      agencies: [person('agency-1', 'a@example.com')],
+      builders: [person('builder-1', 'b1@example.com')],
+      roster: [{ builder_id: 'builder-1', agency_id: 'agency-1' }],
+      projects: [
+        { id: 'p-workspace', name: 'Workspace', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z' },
+        { id: 'p-acme', name: 'Acme', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-10T00:00:00Z' },
+      ],
+      workstreams: [
+        {
+          id: 'ws-proposal',
+          project_id: 'p-workspace',
+          name: 'Acme proposal',
+          status: 'active',
+          updated_at: '2026-09-02T00:00:00Z',
+          deliverables: [
+            { label: 'Scope', completed: true },
+            { label: 'Quote', completed: false },
+          ],
+        },
+        {
+          id: 'ws-setup',
+          project_id: 'p-acme',
+          name: 'Setup',
+          status: 'active',
+          updated_at: '2026-09-11T00:00:00Z',
+          deliverables: [
+            { label: 'Accounts', completed: true },
+            { label: 'Data import', completed: true },
+            { label: 'Training', completed: false },
+          ],
+        },
+        // No checklist: one item, done because the workstream is completed.
+        { id: 'ws-kickoff', project_id: 'p-acme', name: 'Kickoff', status: 'completed', updated_at: '2026-09-11T00:00:00Z', deliverables: [] },
+        { id: 'ws-dropped', project_id: 'p-acme', name: 'Dropped', status: 'archived', updated_at: '2026-09-11T00:00:00Z', deliverables: [] },
+      ],
+      projectKnowledgeBases: [
+        { project_id: 'p-acme', knowledge_base_id: 'kb-policies' },
+        { project_id: 'p-workspace', knowledge_base_id: 'kb-playbook' },
+      ],
+      workstreamKnowledgeBases: [
+        { workstream_id: 'ws-setup', knowledge_base_id: 'kb-acme-data' },
+        { workstream_id: 'ws-proposal', knowledge_base_id: 'kb-acme-data' },
+        // A KB the caller couldn't resolve a name for is left out.
+        { workstream_id: 'ws-setup', knowledge_base_id: 'kb-missing' },
+      ],
+      knowledgeBases: [
+        { id: 'kb-policies', name: 'HR Policies' },
+        { id: 'kb-playbook', name: 'Builder Playbook' },
+        { id: 'kb-acme-data', name: 'Acme Data' },
+      ],
+      updates: [],
+      promotions: [
+        {
+          id: 'promo-1',
+          workstream_id: 'ws-proposal',
+          submitted_by: 'builder-1',
+          status: 'approved',
+          client_emails: [],
+          ...noFee,
+          created_project_id: 'p-acme',
+          decided_at: '2026-09-10T00:00:00Z',
+          created_at: '2026-09-06T00:00:00Z',
+        },
+      ],
+    })
+
+    const [builder] = result.agencies[0].builders
+    const [acme] = builder.clientProjects
+    expect(acme.knowledgeBases).toEqual(['HR Policies'])
+    expect(acme.workstreams).toEqual([
+      { id: 'ws-kickoff', name: 'Kickoff', status: 'completed', completion: { done: 1, total: 1, pct: 100 }, knowledgeBases: [] },
+      { id: 'ws-setup', name: 'Setup', status: 'active', completion: { done: 2, total: 3, pct: 67 }, knowledgeBases: ['Acme Data'] },
+    ])
+    expect(acme.completion).toEqual({ done: 3, total: 4, pct: 75 })
+    expect(builder.proposals[0]).toMatchObject({
+      completion: { done: 1, total: 2, pct: 50 },
+      knowledgeBases: ['Acme Data', 'Builder Playbook'],
+    })
+  })
+
   it('never lists unassigned builders for a curator', () => {
     const result = assembleAgencyDashboard({
       ...empty,
@@ -171,6 +258,14 @@ describe('assembleAgencyDashboard', () => {
     })
     expect(result.unassigned).toEqual([])
     expect(result.agencies[0].builders).toEqual([])
+  })
+})
+
+describe('workstreamCompletion', () => {
+  it('counts checklist items, or the workstream itself when it has none', () => {
+    expect(workstreamCompletion({ status: 'active', deliverables: [{ label: 'a', completed: true }] })).toEqual({ done: 1, total: 1, pct: 100 })
+    expect(workstreamCompletion({ status: 'active', deliverables: null })).toEqual({ done: 0, total: 1, pct: 0 })
+    expect(workstreamCompletion({ status: 'completed' })).toEqual({ done: 1, total: 1, pct: 100 })
   })
 })
 
@@ -200,6 +295,9 @@ describe('getAgencyDashboard', () => {
       project_members: [{ data: [], error: null }],
       builder_progress_updates: [{ data: [update('ws-1')], error: null }],
       presentations: [{ data: [{ workstream_id: 'ws-1', status: 'draft' }], error: null }],
+      project_knowledge_bases: [{ data: [{ project_id: 'p1', knowledge_base_id: 'kb-1' }], error: null }],
+      workstream_knowledge_bases: [{ data: [], error: null }],
+      knowledge_bases: [{ data: [{ id: 'kb-1', name: 'Playbook' }], error: null }],
     })
     createAdminClientMock.mockReturnValue(admin)
 
@@ -208,7 +306,7 @@ describe('getAgencyDashboard', () => {
     expect(admin._calls).toContainEqual({ table: 'profiles', method: 'eq', args: { column: 'role', value: 'consultant' } })
     expect(admin._calls).toContainEqual({ table: 'builder_progress_updates', method: 'eq', args: { column: 'status', value: 'active' } })
     const [builder] = result.agencies[0].builders
-    expect(builder.proposals).toEqual([expect.objectContaining({ name: 'Acme', presentationStatus: 'draft' })])
+    expect(builder.proposals).toEqual([expect.objectContaining({ name: 'Acme', presentationStatus: 'draft', knowledgeBases: ['Playbook'] })])
     expect(builder.proposals[0].latestUpdate?.currentStage).toBe('Specifying')
     expect(builder.clientProjects).toEqual([])
     expect(result.platformRatePct).toBe(10)

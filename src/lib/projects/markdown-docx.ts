@@ -1,11 +1,11 @@
-import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx'
+import { Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from 'docx'
 
 // Word export for the summaries Ember writes itself (status-summary.ts,
-// proposal-summary.ts). Not a general Markdown renderer: it covers the
-// subset those builders emit -- headings, bullets, checkboxes, quotes,
-// italic notes and **bold** runs. Anything else (an artifact's own tables
-// or code, passed through as-is) becomes plain paragraphs, which keeps
-// every word but not that formatting. Runs in the browser at click time;
+// proposal-summary.ts, agency-summary.ts). Not a general Markdown
+// renderer: it covers the subset those builders emit -- headings, bullets,
+// checkboxes, quotes, italic notes, pipe tables and **bold** runs. Anything
+// else (e.g. an artifact's own code, passed through as-is) becomes plain
+// paragraphs, which keeps every word but not that formatting. Runs in the browser at click time;
 // docx's Packer.toBlob needs no server.
 
 const HEADINGS: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLevel]> = {
@@ -29,11 +29,44 @@ export function inlineRuns(text: string, base: { italics?: boolean; font?: strin
     )
 }
 
-export function markdownToParagraphs(markdown: string): Paragraph[] {
-  const paragraphs: Paragraph[] = []
+// One pipe-table row's cells; "\|" is a literal pipe inside a cell.
+function tableCells(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/(?<!\\)\|$/, '')
+    .split(/(?<!\\)\|/)
+    .map((c) => c.trim().replace(/\\\|/g, '|'))
+}
+
+const isTableLine = (line: string) => line.trimStart().startsWith('|')
+const isSeparatorRow = (cells: string[]) => cells.length > 0 && cells.every((c) => /^:?-{3,}:?$/.test(c))
+
+function markdownTable(lines: string[]): Table | null {
+  const rows = lines.map(tableCells).filter((cells) => !isSeparatorRow(cells))
+  if (rows.length === 0) return null
+  const width = Math.max(...rows.map((r) => r.length))
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: rows.map(
+      (cells, i) =>
+        new TableRow({
+          tableHeader: i === 0,
+          children: Array.from(
+            { length: width },
+            (_, c) => new TableCell({ children: [new Paragraph({ children: i === 0 ? [new TextRun({ text: cells[c] ?? '', bold: true })] : inlineRuns(cells[c] ?? '') })] })
+          ),
+        })
+    ),
+  })
+}
+
+export function markdownToParagraphs(markdown: string): (Paragraph | Table)[] {
+  const paragraphs: (Paragraph | Table)[] = []
   let inCode = false
-  for (const raw of markdown.split('\n')) {
-    const line = raw.trimEnd()
+  const lines = markdown.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trimEnd()
     if (line.trimStart().startsWith('```')) {
       inCode = !inCode
       continue
@@ -43,6 +76,14 @@ export function markdownToParagraphs(markdown: string): Paragraph[] {
       continue
     }
     if (!line.trim()) continue
+
+    if (isTableLine(line)) {
+      const tableLines = [line]
+      while (i + 1 < lines.length && isTableLine(lines[i + 1])) tableLines.push(lines[++i].trimEnd())
+      const table = markdownTable(tableLines)
+      if (table) paragraphs.push(table)
+      continue
+    }
 
     const heading = /^(#{1,6})\s+(.*)$/.exec(line)
     if (heading) {
