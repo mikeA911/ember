@@ -3,10 +3,12 @@ import { listCategories } from '@/lib/wiki/queries'
 import { getRestrictedResourceIds } from '@/lib/projects/evidence-access'
 import { NewArticleForms } from '@/components/wiki/NewArticleForms'
 
-export default async function NewWikiArticlePage() {
+export default async function NewWikiArticlePage({ searchParams }: { searchParams: Promise<{ artifact?: string }> }) {
+  // ?artifact=<id> -- a workstream artifact's "Draft a Wiki article" link.
+  const { artifact: requestedArtifactId } = await searchParams
   const supabase = await createClient()
 
-  const [categories, { data: chunks }, { data: artifactRows }] = await Promise.all([
+  const [categories, { data: chunks }, { data: recentArtifactRows }] = await Promise.all([
     listCategories(supabase),
     supabase
       .from('document_chunks')
@@ -23,6 +25,19 @@ export default async function NewWikiArticlePage() {
       .order('created_at', { ascending: false })
       .limit(50),
   ])
+
+  // The linked artifact may be older than the 50 most recent -- fetch it too
+  // (same RLS-scoped client, so only if this viewer can see it).
+  let artifactRows = recentArtifactRows ?? []
+  if (requestedArtifactId && !artifactRows.some((a) => a.id === requestedArtifactId)) {
+    const { data: requested } = await supabase
+      .from('workstream_artifacts')
+      .select('id, title, content, workstream_id')
+      .eq('id', requestedArtifactId)
+      .not('content', 'is', null)
+      .maybeSingle()
+    if (requested) artifactRows = [requested, ...artifactRows]
+  }
 
   const documentIds = [...new Set((chunks ?? []).map((c) => c.document_id))]
   const { data: documents } = documentIds.length
@@ -82,7 +97,7 @@ export default async function NewWikiArticlePage() {
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
       <h1 className="text-xl font-semibold">New Wiki article</h1>
-      <NewArticleForms categories={categories} approvedChunks={approvedChunks} artifacts={artifacts} />
+      <NewArticleForms categories={categories} approvedChunks={approvedChunks} artifacts={artifacts} initialArtifactId={requestedArtifactId} />
     </div>
   )
 }
