@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { addSlideCommentAction, replyToCommentAction, classifyPendingCommentsAction } from '@/app/actions/presentations'
+import { BusyOverlay } from '@/components/shared/BusyOverlay'
 import { Markdown } from '@/components/shared/Markdown'
 import { OntologyMapDiagram } from '@/components/projects/OntologyMapDiagram'
 import type { OntologyMapLayout } from '@/lib/projects/ontology-map'
@@ -58,6 +59,7 @@ export function PresentationViewer({
   const router = useRouter()
   const [index, setIndex] = useState(0)
   const [isPending, startTransition] = useTransition()
+  const [processingFeedback, setProcessingFeedback] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
@@ -106,12 +108,15 @@ export function PresentationViewer({
 
   function handleProcessFeedback() {
     setError(null)
+    setProcessingFeedback(true)
     startTransition(async () => {
       try {
         await classifyPendingCommentsAction(projectId, workstreamId, versionId)
         router.refresh()
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to process feedback')
+      } finally {
+        setProcessingFeedback(false)
       }
     })
   }
@@ -120,6 +125,7 @@ export function PresentationViewer({
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row">
+      <BusyOverlay active={processingFeedback} message="Ember is sorting the review feedback…" />
       <nav className="flex shrink-0 flex-row gap-1.5 overflow-x-auto sm:w-48 sm:flex-col sm:overflow-visible">
         {slides.map((s, i) => (
           <button

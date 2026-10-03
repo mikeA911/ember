@@ -19,10 +19,11 @@ function currentOrNewSaying(): string {
   return lastPick && Date.now() - lastPick.at < REUSE_WINDOW_MS ? lastPick.saying : pickSaying()
 }
 
-// Full-screen glowing ember + ikigai saying. Used both by NavigationOverlay
-// (shown instantly on click) and by (app)/loading.tsx, and identical in both
-// so the hand-off between them is invisible.
-export function EmberLoadingScreen({ saying: givenSaying }: { saying?: string }) {
+// Full-screen glowing ember + ikigai saying. Used by NavigationOverlay
+// (shown instantly on click), by (app)/loading.tsx -- identical in both so
+// the hand-off between them is invisible -- and by BusyOverlay while a slow
+// action runs, with that action's own status message in place of "Loading…".
+export function EmberLoadingScreen({ saying: givenSaying, message = 'Loading…' }: { saying?: string; message?: string }) {
   // Without a given saying, pick after mount, not during render: loading.tsx
   // is prerendered and prefetched, so a render-time pick would freeze one
   // saying into the cached HTML (and mismatch on hydration).
@@ -39,7 +40,7 @@ export function EmberLoadingScreen({ saying: givenSaying }: { saying?: string })
           immediately, with no optimizer round trip. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/images/ember-loading.webp" alt="" width={96} height={96} className="ember-glow rounded-full" />
-      <span className="text-sm text-zinc-500">Loading…</span>
+      <span className="max-w-md text-center text-sm text-zinc-500">{message}</span>
       {/* Fixed min-height so the layout doesn't jump when the saying appears. */}
       <p
         className="min-h-[3rem] max-w-md text-center text-sm italic text-zinc-600 transition-opacity duration-500"

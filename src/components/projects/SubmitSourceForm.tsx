@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitFileSourceAction, submitArtifactSourceAction } from '@/app/actions/source-submissions'
+import { BusyOverlay } from '@/components/shared/BusyOverlay'
 
 // Vercel rejects a serverless request body over 4.5 MB before it ever
 // reaches the Server Action (a bare 413, which surfaces client-side as an
@@ -98,6 +99,7 @@ export function SubmitSourceForm({
 
   return (
     <div className="flex flex-col gap-3 rounded border border-zinc-200 bg-white p-4">
+      <BusyOverlay active={isPending} message={kind === 'file' ? 'Uploading your source…' : 'Submitting the artifact…'} />
       <div>
         <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Propose a new source</h3>
         <p className="mt-1 text-xs text-zinc-500">
