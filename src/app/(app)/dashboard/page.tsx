@@ -138,7 +138,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="flex flex-col gap-8">
-      <SectionHero image="/images/sections/kb-sandbox.png" height="compact" priority />
+      <SectionHero image="/images/sections/workbench.png" height="large" position="center 45%" priority />
 
       <ProjectsAwaitingApprovalWidget projects={projectsAwaitingApproval} />
 
