@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Header } from '@/components/Header'
 import { getBrandingUrls } from '@/lib/branding'
 import { ChatPanel } from '@/components/chat/ChatPanel'
+import { NavigationOverlay } from '@/components/shared/NavigationOverlay'
 import { listMemberProjectOptions } from '@/lib/projects/queries'
 import { env } from '@/lib/env'
 import type { Profile } from '@/types/database'
@@ -36,6 +37,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           so this doesn't de-opt the whole layout to client-only rendering. */}
       <Suspense fallback={null}>
         <ChatPanel projects={projects} role={(profile as Profile).role} productMode={env.productMode()} />
+      </Suspense>
+      {/* Instant ember loading screen on link click -- reads
+          useSearchParams(), so it needs its own Suspense boundary too. */}
+      <Suspense fallback={null}>
+        <NavigationOverlay />
       </Suspense>
     </div>
   )
