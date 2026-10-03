@@ -1,4 +1,5 @@
 import 'server-only'
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import type { Profile, UserRole } from '@/types/database'
 
@@ -12,7 +13,12 @@ export class AuthError extends Error {
 // Every Server Action / Route Handler that mutates data calls one of these
 // directly -- proxy.ts only refreshes the session cookie, it does not gate
 // routes (see proxy.ts comment). This is the actual enforcement point.
-export async function requireUser() {
+// cache(): deduped per request, so a page that calls this several times
+// (e.g. projects/[id]/page.tsx) pays for one auth.getUser() + profile round
+// trip instead of one per call. Outside a React render (Server Actions,
+// Route Handlers) cache() is a pass-through, so enforcement there is
+// unchanged.
+export const requireUser = cache(async function requireUser() {
   const supabase = await createClient()
   const {
     data: { user },
@@ -33,7 +39,7 @@ export async function requireUser() {
   }
 
   return { user, profile: profile as Profile, supabase }
-}
+})
 
 const ROLE_RANK: Record<UserRole, number> = { anonymous: 0, member: 1, consultant: 2, curator: 3, admin: 4 }
 

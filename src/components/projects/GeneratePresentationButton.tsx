@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { generatePresentationAction } from '@/app/actions/presentations'
+import { BusyOverlay } from '@/components/shared/BusyOverlay'
 
 // Workstream Presentation & Review, Part A. "Generate" always creates a NEW
 // version (presentation_versions is insert-only) -- offered again even
@@ -35,6 +36,8 @@ export function GeneratePresentationButton({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Stays up through router.push to the new presentation on success. */}
+      <BusyOverlay active={isPending} message="Ember is writing the presentation…" />
       <button
         type="button"
         disabled={isPending}

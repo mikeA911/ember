@@ -13,6 +13,7 @@ import {
   enrichMoreChunks,
 } from '@/app/actions/curator'
 import { HelpTip } from '@/components/shared/HelpTip'
+import { BusyOverlay } from '@/components/shared/BusyOverlay'
 
 // Plain-language status per chunk -- the raw review_status values ("pending",
 // "filtered", ...) don't say whether the chunk is searchable, which is the
@@ -177,6 +178,8 @@ export function ChunkReviewer({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* busyMessage is only set for the slow runs (embedding, AI metadata). */}
+      <BusyOverlay active={!!busyMessage} message={busyMessage ?? undefined} />
       <div className="flex flex-col gap-2">
         <h1 className="text-xl font-semibold">{document.original_filename}</h1>
         <p className="flex items-center gap-2 text-sm text-zinc-600">

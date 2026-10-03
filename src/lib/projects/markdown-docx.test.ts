@@ -23,4 +23,13 @@ describe('markdownToParagraphs', () => {
     expect(xml).toContain('code line')
     expect(xml).not.toContain('```')
   })
+
+  it('turns a pipe table into a Word table, header bold, escaped pipes kept', async () => {
+    const xml = await documentXml(['| Name | Note |', '| --- | --- |', '| Acme | a \\| b |', '| Globex | **75%** |'].join('\n'))
+    expect(xml).toContain('<w:tbl>')
+    expect(xml.match(/<w:tr>|<w:tr /g)?.length).toBe(3)
+    expect(xml).toContain('a | b')
+    expect(xml).not.toContain('---')
+    expect(xml).toMatch(/<w:b\/>[\s\S]*75%/)
+  })
 })

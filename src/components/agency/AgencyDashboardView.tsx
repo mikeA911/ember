@@ -5,53 +5,28 @@ import Link from 'next/link'
 import type {
   AgencyAttention,
   AgencyBuilderRow,
+  AgencyCategoryCompletion,
   AgencyClientProjectRow,
+  AgencyCompletion,
   AgencyDashboard,
   AgencyProposalRow,
   AgencySharedUpdate,
 } from '@/lib/workbench/agency-dashboard'
-import type { PresentationStatus, WorkstreamPromotionStatus, WorkstreamStatus } from '@/types/database'
 import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamPromotionsReview'
 import { AssignAgencySelect } from './AssignAgencySelect'
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_STYLES } from '@/lib/projects/status-labels'
 import { ClientFeeEditor } from './ClientFeeEditor'
 import { PlatformRateForm } from './PlatformRateForm'
+import { CATEGORY_LABELS } from '@/lib/projects/portfolio-categories'
 import { formatMoney, monthlyTotals } from './money'
-
-
-const WORKSTREAM_STATUS_LABELS: Record<WorkstreamStatus, string> = {
-  draft: 'Draft',
-  active: 'In progress',
-  completed: 'Completed',
-  archived: 'Archived',
-}
-
-const PRESENTATION_LABELS: Record<PresentationStatus, string> = {
-  draft: 'Proposal drafted',
-  review_open: 'Proposal in review',
-  review_closed: 'Review closed',
-  builder_revision: 'Revising proposal',
-  curator_review: 'Proposal with curator',
-  approved: 'Proposal approved',
-}
-
-const PROMOTION_LABELS: Record<WorkstreamPromotionStatus, string> = {
-  pending: 'Client project requested',
-  approved: 'Client project created',
-  rejected: 'Request declined',
-}
-const PROMOTION_STYLES: Record<WorkstreamPromotionStatus, string> = {
-  pending: 'bg-blue-100 text-blue-800',
-  approved: 'bg-green-100 text-green-800',
-  rejected: 'bg-zinc-200 text-zinc-600',
-}
-
-const CONFIDENCE_LABELS: Record<string, string> = { on_track: 'On track', at_risk: 'At risk', blocked: 'Blocked' }
-const CONFIDENCE_STYLES: Record<string, string> = {
-  on_track: 'bg-green-100 text-green-800',
-  at_risk: 'bg-amber-100 text-amber-800',
-  blocked: 'bg-red-100 text-red-800',
-}
+import {
+  CONFIDENCE_LABELS,
+  CONFIDENCE_STYLES,
+  PRESENTATION_LABELS,
+  PROMOTION_LABELS,
+  PROMOTION_STYLES,
+  WORKSTREAM_STATUS_LABELS,
+} from './labels'
 
 const ATTENTION_LABELS: Record<AgencyAttention, string> = { blocked: 'Blocked', help_requested: 'Help requested', at_risk: 'At risk' }
 const ATTENTION_STYLES: Record<AgencyAttention, string> = {
@@ -89,10 +64,35 @@ function SharedUpdate({ update }: { update: AgencySharedUpdate | null }) {
   )
 }
 
+// Completion bar + percentage; "done of total" in the tooltip.
+function Progress({ completion }: { completion: AgencyCompletion }) {
+  if (completion.pct === null) return null
+  return (
+    <div className="flex items-center gap-1.5" title={`${completion.done} of ${completion.total} items done`}>
+      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-zinc-200">
+        <div className="h-full rounded-full bg-orange-500" style={{ width: `${completion.pct}%` }} />
+      </div>
+      <span className="text-xs tabular-nums text-zinc-600">{completion.pct}%</span>
+    </div>
+  )
+}
+
+function KnowledgeBases({ names, label = 'Knowledge bases' }: { names: string[]; label?: string }) {
+  if (names.length === 0) return null
+  return (
+    <div className="mt-0.5 text-xs text-zinc-500">
+      {label}: <span className="text-zinc-700">{names.join(', ')}</span>
+    </div>
+  )
+}
+
 function ProposalRow({ proposal }: { proposal: AgencyProposalRow }) {
   return (
     <tr className="border-t border-zinc-100 align-top">
-      <td className="py-2 pr-3 font-medium">{proposal.name}</td>
+      <td className="py-2 pr-3">
+        <span className="font-medium">{proposal.name}</span>
+        <KnowledgeBases names={proposal.knowledgeBases} />
+      </td>
       <td className="py-2 pr-3">
         <div className="flex flex-col items-start gap-1">
           {proposal.promotionStatus ? (
@@ -102,6 +102,7 @@ function ProposalRow({ proposal }: { proposal: AgencyProposalRow }) {
           ) : (
             <Pill className="bg-zinc-100 text-zinc-700">{WORKSTREAM_STATUS_LABELS[proposal.status]}</Pill>
           )}
+          <Progress completion={proposal.completion} />
         </div>
       </td>
       <td className="py-2 pr-3 text-xs">
@@ -124,12 +125,30 @@ function ClientProjectRow({ project, linkable }: { project: AgencyClientProjectR
           <span className="font-medium">{project.name}</span>
         )}
         <div className="mt-0.5 text-xs text-zinc-500">
-          Created {formatDate(project.createdAt)} · {project.clientViewerCount} client viewer{project.clientViewerCount === 1 ? '' : 's'} ·{' '}
+          {CATEGORY_LABELS[project.category]} · Created {formatDate(project.createdAt)} · {project.clientViewerCount} client viewer{project.clientViewerCount === 1 ? '' : 's'} ·{' '}
           {project.activeWorkstreamCount} of {project.workstreamCount} workstream{project.workstreamCount === 1 ? '' : 's'} active
         </div>
+        <KnowledgeBases names={project.knowledgeBases} label="Project knowledge bases" />
+        {project.workstreams.length > 0 && (
+          <ul className="mt-1.5 flex flex-col gap-1 border-l-2 border-zinc-100 pl-2">
+            {project.workstreams.map((w) => (
+              <li key={w.id} className="text-xs">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="text-zinc-800">{w.name}</span>
+                  <span className="text-zinc-500">{WORKSTREAM_STATUS_LABELS[w.status]}</span>
+                  <Progress completion={w.completion} />
+                </div>
+                <KnowledgeBases names={w.knowledgeBases} />
+              </li>
+            ))}
+          </ul>
+        )}
       </td>
       <td className="py-2 pr-3">
-        <Pill className={PROJECT_STATUS_STYLES[project.status]}>{PROJECT_STATUS_LABELS[project.status]}</Pill>
+        <div className="flex flex-col items-start gap-1">
+          <Pill className={PROJECT_STATUS_STYLES[project.status]}>{PROJECT_STATUS_LABELS[project.status]}</Pill>
+          <Progress completion={project.completion} />
+        </div>
       </td>
       <td className="py-2 pr-3">
         <ClientFeeEditor projectId={project.id} fee={project.fee} />
@@ -241,6 +260,47 @@ function FeeTotals({ projects }: { projects: AgencyClientProjectRow[] }) {
   )
 }
 
+function categoryCounts(c: AgencyCategoryCompletion) {
+  const parts = []
+  if (c.clientProjectCount > 0) parts.push(`${c.clientProjectCount} client project${c.clientProjectCount === 1 ? '' : 's'}`)
+  if (c.proposalCount > 0) parts.push(`${c.proposalCount} proposal${c.proposalCount === 1 ? '' : 's'}`)
+  return parts.join(' · ')
+}
+
+// One meter per portfolio category, overall first. Single hue -- it's one
+// measure -- with the percentage printed beside each bar so the value never
+// rests on the bar alone; done-of-total counts on hover.
+function CompletionByCategory({ categories, overall }: { categories: AgencyCategoryCompletion[]; overall: AgencyCompletion }) {
+  if (categories.length === 0) return null
+  const rows = [
+    { key: 'overall', label: 'Overall', detail: 'All client projects and proposals', completion: overall, strong: true },
+    ...categories.map((c) => ({ key: c.category, label: CATEGORY_LABELS[c.category], detail: categoryCounts(c), completion: c.completion, strong: false })),
+  ]
+  return (
+    <section className="flex flex-col gap-2 rounded border border-zinc-200 bg-white px-3 py-2">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Completion by category</h2>
+      <ul className="flex flex-col gap-1.5">
+        {rows.map((r) => (
+          <li
+            key={r.key}
+            className="grid grid-cols-[minmax(6rem,9rem)_1fr_3rem] items-center gap-3 text-sm sm:grid-cols-[9rem_1fr_3rem_minmax(0,14rem)]"
+            title={r.completion.pct === null ? undefined : `${r.completion.done} of ${r.completion.total} items done`}
+          >
+            <span className={r.strong ? 'font-semibold' : 'text-zinc-700'}>{r.label}</span>
+            <div className="h-2 overflow-hidden rounded-full bg-zinc-200">
+              <div className="h-full rounded-full bg-orange-500" style={{ width: `${r.completion.pct ?? 0}%` }} />
+            </div>
+            <span className={`text-right tabular-nums ${r.strong ? 'font-semibold' : 'text-zinc-700'}`}>
+              {r.completion.pct === null ? '—' : `${r.completion.pct}%`}
+            </span>
+            <span className="hidden truncate text-xs text-zinc-500 sm:block">{r.detail}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded border border-zinc-200 bg-white px-3 py-2">
@@ -276,6 +336,8 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
         <Stat label="Client projects created this month" value={allClientProjects.filter((p) => isThisMonth(p.createdAt)).length} />
         <Stat label="Client projects in total" value={allClientProjects.length} />
       </div>
+
+      <CompletionByCategory categories={dashboard.completionByCategory} overall={dashboard.overallCompletion} />
 
       <FeeTotals projects={allClientProjects} />
       {viewerIsAdmin && <PlatformRateForm current={platformRatePct} />}

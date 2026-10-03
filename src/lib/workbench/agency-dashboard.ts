@@ -6,14 +6,17 @@ import type {
   BuilderProgressConfidence,
   FeeBillingPeriod,
   FeeCurrency,
+  PortfolioCategory,
   PresentationStatus,
   ProjectStatus,
   WorkstreamPromotionStatus,
+  WorkstreamDeliverable,
   WorkstreamStatus,
 } from '@/types/database'
 import type { WorkbenchCallerContext } from './context'
 import { shapePendingPromotions, type PendingWorkstreamPromotionRow } from './workstream-promotions'
 import { getPlatformRatePct, monthlyEquivalent } from './client-billing'
+import { CATEGORY_ORDER } from '@/lib/projects/portfolio-categories'
 
 // Builder agency dashboard (/agency, 2026-10-01, Mike): the platform owner
 // is the admin, each builder agency is a curator, each builder is a
@@ -30,7 +33,10 @@ import { getPlatformRatePct, monthlyEquivalent } from './client-billing'
 // Same consent-based, metadata-only posture as Builder Operations
 // (builder-progress-updates.ts, docs/dev-request-builder-operations-and-
 // progress-updates.md): names, statuses, counts, dates, and whatever
-// progress update the builder chose to share. Never goal/details/
+// progress update the builder chose to share -- plus, for the management
+// view (2026-10-03), each project's workstreams, the knowledge bases
+// attached to them (names only) and a completion percentage computed from
+// deliverable checklist counts, never the deliverable labels. Never goal/details/
 // objective, notebooks, conversations, artifacts or slides. The admin
 // client is the query engine only -- every query below is scoped to the
 // builders the caller is entitled to see before anything is read.
@@ -47,6 +53,24 @@ export interface AgencySharedUpdate {
   updatedAt: string
 }
 
+// Share of the work checked off. Each deliverable on a workstream's
+// checklist is one item; a workstream with no checklist counts as a single
+// item, done once the workstream is completed. pct is null with no items.
+export interface AgencyCompletion {
+  done: number
+  total: number
+  pct: number | null
+}
+
+export interface AgencyWorkstreamRow {
+  id: string
+  name: string
+  status: WorkstreamStatus
+  completion: AgencyCompletion
+  // Names of knowledge bases attached to this workstream itself.
+  knowledgeBases: string[]
+}
+
 // A Workstream in the builder's workspace -- one client proposal.
 export interface AgencyProposalRow {
   workstreamId: string
@@ -54,6 +78,10 @@ export interface AgencyProposalRow {
   status: WorkstreamStatus
   presentationStatus: PresentationStatus | null
   promotionStatus: WorkstreamPromotionStatus | null
+  // The builder workspace's own portfolio category.
+  category: PortfolioCategory
+  completion: AgencyCompletion
+  knowledgeBases: string[]
   lastActivityAt: string
   latestUpdate: AgencySharedUpdate | null
 }
@@ -73,11 +101,17 @@ export interface AgencyClientProjectRow {
   id: string
   name: string
   status: ProjectStatus
+  category: PortfolioCategory
   clientViewerCount: number
   fee: AgencyClientFee | null
   createdAt: string
   workstreamCount: number
   activeWorkstreamCount: number
+  // Non-archived workstreams, in name order.
+  workstreams: AgencyWorkstreamRow[]
+  // Names of knowledge bases attached at the project level.
+  knowledgeBases: string[]
+  completion: AgencyCompletion
   lastActivityAt: string
   latestUpdate: AgencySharedUpdate | null
 }
@@ -102,6 +136,16 @@ export interface AgencyGroup {
   builders: AgencyBuilderRow[]
 }
 
+// Completion rolled up per portfolio category (Foundation, Builder Lab,
+// ...) across every client project and proposal on the dashboard.
+export interface AgencyCategoryCompletion {
+  category: PortfolioCategory
+  clientProjectCount: number
+  proposalCount: number
+  workstreamCount: number
+  completion: AgencyCompletion
+}
+
 export interface AgencyDashboard {
   viewerIsAdmin: boolean
   // Today's platform rate, applied to fees recorded from now on.
@@ -109,6 +153,9 @@ export interface AgencyDashboard {
   agencies: AgencyGroup[]
   // Admin only -- builders with no agency_builders row yet.
   unassigned: AgencyBuilderRow[]
+  // In category order; only categories with work in them.
+  completionByCategory: AgencyCategoryCompletion[]
+  overallCompletion: AgencyCompletion
 }
 
 interface ProfileRow {
@@ -123,8 +170,26 @@ export interface AgencyDashboardInput {
   agencies: ProfileRow[]
   builders: ProfileRow[]
   roster: { builder_id: string; agency_id: string }[]
-  projects: { id: string; name: string; status: ProjectStatus; owner_id: string | null; updated_at: string }[]
-  workstreams: { id: string; project_id: string; name: string; status: WorkstreamStatus; updated_at: string }[]
+  projects: {
+    id: string
+    name: string
+    status: ProjectStatus
+    owner_id: string | null
+    updated_at: string
+    // Optional so fixtures can omit it; missing reads as 'other'.
+    portfolio_category?: PortfolioCategory | null
+  }[]
+  workstreams: {
+    id: string
+    project_id: string
+    name: string
+    status: WorkstreamStatus
+    updated_at: string
+    deliverables?: WorkstreamDeliverable[] | null
+  }[]
+  projectKnowledgeBases: { project_id: string; knowledge_base_id: string }[]
+  workstreamKnowledgeBases: { workstream_id: string; knowledge_base_id: string }[]
+  knowledgeBases: { id: string; name: string }[]
   updates: {
     workstream_id: string
     current_stage: string
@@ -167,6 +232,18 @@ function attentionFor(updates: AgencySharedUpdate[]): AgencyAttention | null {
   return null
 }
 
+function completionOf(items: { done: number; total: number }[]): AgencyCompletion {
+  const done = items.reduce((n, i) => n + i.done, 0)
+  const total = items.reduce((n, i) => n + i.total, 0)
+  return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : null }
+}
+
+export function workstreamCompletion(w: { status: WorkstreamStatus; deliverables?: WorkstreamDeliverable[] | null }): AgencyCompletion {
+  const deliverables = w.deliverables ?? []
+  if (deliverables.length === 0) return completionOf([{ done: w.status === 'completed' ? 1 : 0, total: 1 }])
+  return completionOf([{ done: deliverables.filter((d) => d.completed).length, total: deliverables.length }])
+}
+
 function byEmail(a: { email: string | null }, b: { email: string | null }) {
   return (a.email ?? '').localeCompare(b.email ?? '')
 }
@@ -179,6 +256,22 @@ function newestFirst(a: { lastActivityAt: string }, b: { lastActivityAt: string 
 export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDashboard {
   const updateByWorkstream = new Map(input.updates.map((u) => [u.workstream_id, u]))
   const presentationStatusByWorkstream = new Map(input.presentations.map((p) => [p.workstream_id, p.status]))
+
+  const kbNameById = new Map(input.knowledgeBases.map((kb) => [kb.id, kb.name]))
+  function kbNames<K extends string>(links: ({ knowledge_base_id: string } & Record<K, string>)[], key: K): Map<string, string[]> {
+    const byOwner = new Map<string, string[]>()
+    for (const l of links) {
+      const name = kbNameById.get(l.knowledge_base_id)
+      if (!name) continue
+      const list = byOwner.get(l[key]) ?? []
+      if (!list.includes(name)) list.push(name)
+      byOwner.set(l[key], list)
+    }
+    for (const list of byOwner.values()) list.sort((a, b) => a.localeCompare(b))
+    return byOwner
+  }
+  const kbNamesByProject = kbNames(input.projectKnowledgeBases, 'project_id')
+  const kbNamesByWorkstream = kbNames(input.workstreamKnowledgeBases, 'workstream_id')
 
   function sharedUpdate(w: AgencyDashboardInput['workstreams'][number]): AgencySharedUpdate | null {
     const u = updateByWorkstream.get(w.id)
@@ -246,16 +339,28 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
         const u = sharedUpdate(w)
         if (u && (!latestUpdate || u.updatedAt > latestUpdate.updatedAt)) latestUpdate = u
       }
+      const liveWorkstreams = workstreams.filter((w) => w.status !== 'archived').sort((a, b) => a.name.localeCompare(b.name))
+      const workstreamRows = liveWorkstreams.map((w) => ({
+        id: w.id,
+        name: w.name,
+        status: w.status,
+        completion: workstreamCompletion(w),
+        knowledgeBases: kbNamesByWorkstream.get(w.id) ?? [],
+      }))
       const list = clientProjectsByOwner.get(p.owner_id) ?? []
       list.push({
         id: p.id,
         name: p.name,
         status: p.status,
+        category: p.portfolio_category ?? 'other',
         clientViewerCount: viewerCountByProject.get(p.id) ?? 0,
         fee: feeByProject.get(p.id) ?? null,
         createdAt: promotedAt,
         workstreamCount: workstreams.length,
         activeWorkstreamCount: workstreams.filter((w) => w.status === 'active').length,
+        workstreams: workstreamRows,
+        knowledgeBases: kbNamesByProject.get(p.id) ?? [],
+        completion: completionOf(workstreamRows.map((w) => w.completion)),
         lastActivityAt,
         latestUpdate,
       })
@@ -271,6 +376,12 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
           status: w.status,
           presentationStatus: presentationStatusByWorkstream.get(w.id) ?? null,
           promotionStatus: promotionByWorkstream.get(w.id)?.status ?? null,
+          category: p.portfolio_category ?? 'other',
+          completion: workstreamCompletion(w),
+          // The workspace's own KBs back every proposal in it.
+          knowledgeBases: [...new Set([...(kbNamesByProject.get(p.id) ?? []), ...(kbNamesByWorkstream.get(w.id) ?? [])])].sort((a, b) =>
+            a.localeCompare(b)
+          ),
           lastActivityAt: w.updated_at,
           latestUpdate: sharedUpdate(w),
         })
@@ -317,11 +428,40 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
     builders: builderRows.filter((b) => b.agencyId === a.id),
   }))
 
+  const unassigned = input.viewerIsAdmin ? builderRows.filter((b) => !b.agencyId) : []
+  const shown = [...agencies.flatMap((a) => a.builders), ...unassigned]
+  const byCategory = new Map<PortfolioCategory, { clientProjectCount: number; proposalCount: number; workstreamCount: number; items: AgencyCompletion[] }>()
+  const bucket = (c: PortfolioCategory) => {
+    const b = byCategory.get(c) ?? { clientProjectCount: 0, proposalCount: 0, workstreamCount: 0, items: [] }
+    byCategory.set(c, b)
+    return b
+  }
+  for (const b of shown) {
+    for (const p of b.clientProjects) {
+      const cat = bucket(p.category)
+      cat.clientProjectCount++
+      cat.workstreamCount += p.workstreams.length
+      cat.items.push(p.completion)
+    }
+    for (const p of b.proposals) {
+      const cat = bucket(p.category)
+      cat.proposalCount++
+      cat.workstreamCount++
+      cat.items.push(p.completion)
+    }
+  }
+  const completionByCategory = CATEGORY_ORDER.flatMap((category) => {
+    const b = byCategory.get(category)
+    return b ? [{ category, clientProjectCount: b.clientProjectCount, proposalCount: b.proposalCount, workstreamCount: b.workstreamCount, completion: completionOf(b.items) }] : []
+  })
+
   return {
     viewerIsAdmin: input.viewerIsAdmin,
     platformRatePct: input.platformRatePct,
     agencies,
-    unassigned: input.viewerIsAdmin ? builderRows.filter((b) => !b.agencyId) : [],
+    unassigned,
+    completionByCategory,
+    overallCompletion: completionOf(completionByCategory.map((c) => c.completion)),
   }
 }
 
@@ -367,7 +507,7 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
   let promotions: AgencyDashboardInput['promotions'] = []
   if (builderIds.length > 0) {
     const [{ data: projectRows, error: projectError }, { data: promotionRows, error: promotionError }] = await Promise.all([
-      admin.from('projects').select('id, name, status, owner_id, updated_at').in('owner_id', builderIds).neq('status', 'archived'),
+      admin.from('projects').select('id, name, status, owner_id, updated_at, portfolio_category').in('owner_id', builderIds).neq('status', 'archived'),
       admin
         .from('workstream_promotions')
         .select(
@@ -385,37 +525,61 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
   let workstreams: AgencyDashboardInput['workstreams'] = []
   let viewerMembers: AgencyDashboardInput['viewerMembers'] = []
   let fees: AgencyDashboardInput['fees'] = []
+  let projectKnowledgeBases: AgencyDashboardInput['projectKnowledgeBases'] = []
   if (projectIds.length > 0) {
-    const [{ data: workstreamRows, error: workstreamError }, { data: memberRows, error: memberError }, { data: feeRows, error: feeError }] =
-      await Promise.all([
-        admin.from('project_workstreams').select('id, project_id, name, status, updated_at').in('project_id', projectIds),
-        admin.from('project_members').select('project_id').in('project_id', projectIds).eq('role', 'viewer').eq('status', 'active'),
-        admin.from('client_project_fees').select('project_id, amount, currency, billing_period, platform_rate_pct').in('project_id', projectIds),
-      ])
+    const [
+      { data: workstreamRows, error: workstreamError },
+      { data: memberRows, error: memberError },
+      { data: feeRows, error: feeError },
+      { data: projectKbRows, error: projectKbError },
+    ] = await Promise.all([
+      admin.from('project_workstreams').select('id, project_id, name, status, updated_at, deliverables').in('project_id', projectIds),
+      admin.from('project_members').select('project_id').in('project_id', projectIds).eq('role', 'viewer').eq('status', 'active'),
+      admin.from('client_project_fees').select('project_id, amount, currency, billing_period, platform_rate_pct').in('project_id', projectIds),
+      admin.from('project_knowledge_bases').select('project_id, knowledge_base_id').in('project_id', projectIds),
+    ])
     if (workstreamError) throw workstreamError
     if (memberError) throw memberError
     if (feeError) throw feeError
+    if (projectKbError) throw projectKbError
     workstreams = workstreamRows ?? []
     viewerMembers = memberRows ?? []
     fees = feeRows ?? []
+    projectKnowledgeBases = projectKbRows ?? []
   }
 
   const workstreamIds = workstreams.map((w) => w.id)
   let updates: AgencyDashboardInput['updates'] = []
   let presentations: AgencyDashboardInput['presentations'] = []
+  let workstreamKnowledgeBases: AgencyDashboardInput['workstreamKnowledgeBases'] = []
   if (workstreamIds.length > 0) {
-    const [{ data: updateRows, error: updateError }, { data: presentationRows, error: presentationError }] = await Promise.all([
+    const [
+      { data: updateRows, error: updateError },
+      { data: presentationRows, error: presentationError },
+      { data: workstreamKbRows, error: workstreamKbError },
+    ] = await Promise.all([
       admin
         .from('builder_progress_updates')
         .select('workstream_id, current_stage, progress, next_step, help_requested, confidence, updated_at')
         .in('workstream_id', workstreamIds)
         .eq('status', 'active'),
       admin.from('presentations').select('workstream_id, status').in('workstream_id', workstreamIds),
+      admin.from('workstream_knowledge_bases').select('workstream_id, knowledge_base_id').in('workstream_id', workstreamIds),
     ])
     if (updateError) throw updateError
     if (presentationError) throw presentationError
+    if (workstreamKbError) throw workstreamKbError
     updates = updateRows ?? []
     presentations = presentationRows ?? []
+    workstreamKnowledgeBases = workstreamKbRows ?? []
+  }
+
+  const knowledgeBaseIds = [...new Set([...projectKnowledgeBases, ...workstreamKnowledgeBases].map((l) => l.knowledge_base_id))]
+  let knowledgeBases: AgencyDashboardInput['knowledgeBases'] = []
+  if (knowledgeBaseIds.length > 0) {
+    const { data, error } = await admin.from('knowledge_bases').select('id, name').in('id', knowledgeBaseIds)
+    if (error) throw error
+    knowledgeBases = data ?? []
   }
 
   const [pendingPromotionRows, platformRatePct] = await Promise.all([
@@ -430,6 +594,9 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     roster: roster ?? [],
     projects,
     workstreams,
+    projectKnowledgeBases,
+    workstreamKnowledgeBases,
+    knowledgeBases,
     updates,
     presentations,
     promotions,
