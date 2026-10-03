@@ -8,7 +8,7 @@ import path from 'node:path'
 // public table -- a table added later without it would be writable by any
 // OAuth client token the owner's RLS permits.
 const dir = path.join(process.cwd(), 'supabase/migrations')
-const MCP_MIGRATION = '20261003100001_external_mcp_access.sql'
+const MCP_MIGRATION = '20261005100001_external_mcp_access.sql'
 const sql = fs.readFileSync(path.join(dir, MCP_MIGRATION), 'utf-8')
 
 describe('external MCP read-only enforcement', () => {

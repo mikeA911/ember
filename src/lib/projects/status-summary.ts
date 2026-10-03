@@ -72,7 +72,7 @@ function plural(n: number, one: string, many = `${one}s`) {
 }
 
 // Collapse free text onto one line so it can't break a list item or table.
-function inline(text: string) {
+export function inline(text: string) {
   return text.replace(/\s+/g, ' ').trim()
 }
 
@@ -83,7 +83,7 @@ function cell(text: string) {
 // Free text that is often already Markdown (goals, guardrails, findings) --
 // kept as-is except that its own headings become bold lines, so they can't
 // break this document's heading structure.
-function block(text: string): string[] {
+export function block(text: string): string[] {
   return [...text.trim().split('\n').map((line) => line.replace(/^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/, '**$1**')), '']
 }
 

@@ -24,3 +24,17 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Loading screen ember (src/app/(app)/loading.tsx): a slow, slightly
+   irregular glow so it reads as a live coal rather than a spinner. */
+@keyframes ember-glow {
+  0%, 100% { box-shadow: 0 0 18px 4px rgb(249 115 22 / 0.35); transform: scale(1); }
+  40% { box-shadow: 0 0 42px 14px rgb(249 115 22 / 0.6); transform: scale(1.04); }
+  70% { box-shadow: 0 0 28px 8px rgb(234 88 12 / 0.45); transform: scale(1.01); }
+}
+.ember-glow {
+  animation: ember-glow 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ember-glow { animation: none; box-shadow: 0 0 28px 8px rgb(249 115 22 / 0.45); }
+}

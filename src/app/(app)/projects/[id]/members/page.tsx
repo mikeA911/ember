@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { MembersManager } from '@/components/projects/MembersManager'
+import { listSelectableUsers } from '@/lib/projects/selectable-users'
 import type { UserRole } from '@/types/database'
 
 function platformRoleOf(role: UserRole | undefined) {
@@ -17,7 +18,7 @@ export default async function ProjectMembersPage({ params }: { params: Promise<{
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: project } = await supabase.from('projects').select('id, name, owner_id').eq('id', id).single()
+  const { data: project } = await supabase.from('projects').select('id, name, owner_id, approval_status').eq('id', id).single()
   if (!project) notFound()
 
   // RLS (is_project_member) already gated the project select above; members
@@ -54,6 +55,9 @@ export default async function ProjectMembersPage({ params }: { params: Promise<{
     .select('id, email, role')
     .in('id', (members ?? []).map((m) => m.user_id))
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]))
+  // Safe to list here: canManage above already limits this page to admin/
+  // owner/curator, who can add any of these people anyway.
+  const selectableUsers = await listSelectableUsers()
 
   return (
     <MembersManager
@@ -68,6 +72,8 @@ export default async function ProjectMembersPage({ params }: { params: Promise<{
       currentUserId={user.id}
       viewerIsAdmin={viewerIsAdmin}
       canTransferOwnership={canTransferOwnership}
+      selectableUsers={selectableUsers}
+      awaitingApproval={project.approval_status !== 'approved'}
     />
   )
 }

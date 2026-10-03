@@ -6,6 +6,7 @@ import type { KnowledgeBase } from '@/types/database'
 import { uploadAndProcessDocument } from '@/app/actions/curator'
 import { createKnowledgeBase } from '@/app/actions/admin'
 import { HelpTip } from '@/components/wiki/HelpTip'
+import { BusyOverlay } from '@/components/shared/BusyOverlay'
 
 const ALLOWED_TYPES = [
   'application/pdf',
@@ -109,6 +110,8 @@ export function DocumentUploader({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* Stays up through router.push to the review page on success. */}
+      <BusyOverlay active={submitting} message={stage ?? 'Processing…'} />
       <div>
         <label className="block text-sm font-medium mb-1" htmlFor="kb">Knowledge base</label>
         <select

@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ApprovalType, ProjectRole, ProjectType, WorkstreamLifecycleStage } from '@/types/database'
 import { createProjectAction, suggestProjectOntologyAction } from '@/app/actions/projects'
+import { BusyOverlay } from '@/components/shared/BusyOverlay'
+import { UserPicker, type UserOption } from './UserPicker'
 
 function slugify(name: string) {
   return name
@@ -94,7 +96,17 @@ interface StagedWorkstream {
   lifecycleStage: WorkstreamLifecycleStage | ''
 }
 
-export function ProjectWizard({ knowledgeBases, evalDatasets }: { knowledgeBases: Option[]; evalDatasets: Option[] }) {
+export function ProjectWizard({
+  knowledgeBases,
+  evalDatasets,
+  selectableUsers,
+  needsApproval,
+}: {
+  knowledgeBases: Option[]
+  evalDatasets: Option[]
+  selectableUsers: UserOption[]
+  needsApproval: boolean
+}) {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [projectType, setProjectType] = useState<ProjectType | null>(null)
@@ -277,6 +289,7 @@ export function ProjectWizard({ knowledgeBases, evalDatasets }: { knowledgeBases
 
   return (
     <div className="flex max-w-xl flex-col gap-6">
+      <BusyOverlay active={suggesting} message="Ember is suggesting objects and workstreams…" />
       <div className="flex gap-1 text-xs text-zinc-500">
         {WIZARD_STEPS.map((label, i) => (
           <div key={label} className={`flex-1 border-b-2 pb-2 ${step === i + 1 ? 'border-zinc-900 font-medium text-zinc-900' : 'border-zinc-200'}`}>
@@ -543,12 +556,19 @@ export function ProjectWizard({ knowledgeBases, evalDatasets }: { knowledgeBases
       {step === 6 && (
         <div className="flex flex-col gap-4">
           <p className="text-sm text-zinc-600">You become the project Owner automatically. Add anyone else who needs access.</p>
+          {needsApproval && (
+            <p className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              New projects need approval from a curator or platform admin. You can work on it straight away; the people you add here get
+              access once it&apos;s approved.
+            </p>
+          )}
           <div className="flex gap-2">
-            <input
+            <UserPicker
+              users={selectableUsers}
               value={memberEmail}
-              onChange={(e) => setMemberEmail(e.target.value)}
-              placeholder="Existing user's email"
-              className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+              onChange={setMemberEmail}
+              excludeEmails={members.map((m) => m.email)}
+              className="flex-1"
             />
             <select value={memberRole} onChange={(e) => setMemberRole(e.target.value as ProjectRole)} className="rounded border border-zinc-300 px-3 py-2 text-sm">
               {TEAM_ROLES.map((r) => (

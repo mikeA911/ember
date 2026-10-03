@@ -101,8 +101,9 @@ export interface BuilderOperationsRow {
 }
 
 // curator/admin only. Scoped to Projects tagged portfolio_category =
-// 'builder_lab' (provisionBuilderProject's own tag for a Builder's solo
-// workspace, src/lib/workbench/projects.ts) -- a precise signal
+// 'builder_lab' (the tag on every Project a builder owns -- their
+// provisioned workspace and each client Project, src/lib/workbench/
+// projects.ts), one row per builder -- a precise signal
 // independent of deployment mode, though the UI only ever surfaces this
 // tab in builder mode. Admin client throughout: a platform curator/admin
 // reviewing this is deliberately NOT expected to be a member of any
@@ -142,17 +143,27 @@ export async function listBuilderOperationsRows(ctx: WorkbenchCallerContext): Pr
       : { data: [] }
   const updateByWorkstreamId = new Map((updates ?? []).map((u) => [u.workstream_id, u]))
 
+  // A builder owns one builder_lab Project per client (plus their
+  // workspace), so roll every Project they own up into one row.
+  const projectIdsByBuilder = new Map<string, string[]>()
+  for (const p of builderProjects) {
+    if (!p.owner_id) continue
+    const list = projectIdsByBuilder.get(p.owner_id) ?? []
+    list.push(p.id)
+    projectIdsByBuilder.set(p.owner_id, list)
+  }
+
   return Promise.all(
-    builderProjects.map(async (project) => {
-      const projectWorkstreams = workstreamsByProject.get(project.id) ?? []
-      const activeWorkstreamCount = projectWorkstreams.filter((w) => w.status === 'active').length
-      const lastActivityAt = projectWorkstreams.reduce<string | null>(
+    [...projectIdsByBuilder].map(async ([builderId, ownedProjectIds]) => {
+      const builderWorkstreams = ownedProjectIds.flatMap((id) => workstreamsByProject.get(id) ?? [])
+      const activeWorkstreamCount = builderWorkstreams.filter((w) => w.status === 'active').length
+      const lastActivityAt = builderWorkstreams.reduce<string | null>(
         (latest, w) => (!latest || w.updated_at > latest ? w.updated_at : latest),
         null
       )
 
       let latestUpdate: BuilderOperationsRow['latestUpdate'] = null
-      for (const w of projectWorkstreams) {
+      for (const w of builderWorkstreams) {
         const u = updateByWorkstreamId.get(w.id)
         if (u && (!latestUpdate || u.updated_at > latestUpdate.updatedAt)) {
           latestUpdate = {
@@ -168,12 +179,10 @@ export async function listBuilderOperationsRows(ctx: WorkbenchCallerContext): Pr
         }
       }
 
-      const profile = project.owner_id ? profileById.get(project.owner_id) : undefined
-      const spend = project.owner_id
-        ? await getBuilderSpendSummary(admin, project.owner_id)
-        : { allowanceUsd: 0, creditsUsd: 0, spentThisPeriodUsd: 0, remainingUsd: 0, warningThresholdPct: 0, stopAtAllowance: true }
+      const profile = profileById.get(builderId)
+      const spend = await getBuilderSpendSummary(admin, builderId)
       return {
-        builderId: project.owner_id ?? '',
+        builderId,
         builderEmail: profile?.email ?? null,
         isActive: profile?.is_active ?? false,
         lastActivityAt,

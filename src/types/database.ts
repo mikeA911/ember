@@ -691,7 +691,7 @@ export type WorkingKnowledgeShareUpdate = Partial<Omit<WorkingKnowledgeShare, 'i
 // ============================================
 
 export type ProjectType = 'learning' | 'experiment' | 'consulting' | 'transformation' | 'knowledge'
-export type ProjectStatus = 'draft' | 'active' | 'review' | 'completed' | 'archived'
+export type ProjectStatus = 'draft' | 'active' | 'review' | 'completed' | 'live' | 'archived'
 // "My Projects" list grouping (2026-09-04) -- a separate axis from
 // ProjectType (see 20260904120001_project_portfolio_category.sql's own
 // comment for why the two don't line up). Mike's "Suggested categorization
@@ -803,6 +803,21 @@ export interface Project {
   // side-by-side comparison of two options under otherwise-identical
   // conditions. null for every ordinarily-created Project.
   cloned_from_project_id: string | null
+  // Project creation approval (20261004100001_project_creation_approval.sql):
+  // 'pending' for a project a consultant/builder created, until their
+  // agency curator or a platform admin decides (project-approval.ts).
+  approval_status: ProjectApprovalStatus
+  approval_decided_by: string | null
+  approval_decided_at: string | null
+  approval_decision_reason: string | null
+  // Wizard-picked team members held until approval adds them.
+  pending_members: PendingProjectMember[]
+}
+
+export type ProjectApprovalStatus = 'pending' | 'approved' | 'rejected'
+export interface PendingProjectMember {
+  user_id: string
+  role: ProjectRole
 }
 
 // Project role (owner/curator/consultant/viewer) is deliberately a separate
@@ -1404,6 +1419,15 @@ export interface WorkstreamPromotion {
   decided_by: string | null
   decided_at: string | null
   created_project_id: string | null
+  // Client email addresses the builder named when submitting -- added as
+  // viewers on the client Project at approval.
+  // 20261003100002_builder_proposal_promotions.sql.
+  client_emails: string[]
+  // The maintenance fee the builder proposes for this client -- all three
+  // set or all null. 20261003100003_client_project_fees.sql.
+  proposed_fee_amount: number | null
+  proposed_fee_currency: FeeCurrency | null
+  proposed_fee_period: FeeBillingPeriod | null
   created_at: string
 }
 
@@ -1425,6 +1449,32 @@ export interface BuilderProgressUpdate {
   help_requested: string | null
   confidence: BuilderProgressConfidence
   status: BuilderProgressUpdateStatus
+  created_at: string
+  updated_at: string
+}
+
+// Client maintenance fees and the platform's share. See
+// 20261003100003_client_project_fees.sql.
+export type FeeCurrency = 'PHP' | 'USD'
+export type FeeBillingPeriod = 'monthly' | 'annual'
+
+export interface ClientProjectFee {
+  project_id: string
+  amount: number
+  currency: FeeCurrency
+  billing_period: FeeBillingPeriod
+  platform_rate_pct: number
+  set_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Builder agencies: which curator (agency) a consultant (builder) works
+// under. See 20261003100001_agency_builders.sql.
+export interface AgencyBuilder {
+  builder_id: string
+  agency_id: string
+  assigned_by: string | null
   created_at: string
   updated_at: string
 }
@@ -2363,6 +2413,11 @@ export type ProjectInsert = Omit<
   | 'assistant_prompt_version'
   | 'assistant_conversation_id'
   | 'cloned_from_project_id'
+  | 'approval_status'
+  | 'approval_decided_by'
+  | 'approval_decided_at'
+  | 'approval_decision_reason'
+  | 'pending_members'
 > &
   Partial<
     Pick<
@@ -2383,6 +2438,8 @@ export type ProjectInsert = Omit<
       | 'assistant_prompt_version'
       | 'assistant_conversation_id'
       | 'cloned_from_project_id'
+      | 'approval_status'
+      | 'pending_members'
     >
   >
 export type ProjectUpdate = Partial<Omit<Project, 'id' | 'created_at'>>
@@ -2461,9 +2518,32 @@ export type ProjectStatusHistoryEntryInsert = Omit<ProjectStatusHistoryEntry, 'i
 
 export type WorkstreamPromotionInsert = Omit<
   WorkstreamPromotion,
-  'id' | 'created_at' | 'status' | 'decision_reason' | 'decided_by' | 'decided_at' | 'created_project_id'
+  | 'id'
+  | 'created_at'
+  | 'status'
+  | 'decision_reason'
+  | 'decided_by'
+  | 'decided_at'
+  | 'created_project_id'
+  | 'client_emails'
+  | 'proposed_fee_amount'
+  | 'proposed_fee_currency'
+  | 'proposed_fee_period'
 > &
-  Partial<Pick<WorkstreamPromotion, 'status' | 'decision_reason' | 'decided_by' | 'decided_at' | 'created_project_id'>>
+  Partial<
+    Pick<
+      WorkstreamPromotion,
+      | 'status'
+      | 'decision_reason'
+      | 'decided_by'
+      | 'decided_at'
+      | 'created_project_id'
+      | 'client_emails'
+      | 'proposed_fee_amount'
+      | 'proposed_fee_currency'
+      | 'proposed_fee_period'
+    >
+  >
 export type WorkstreamPromotionUpdate = Partial<Omit<WorkstreamPromotion, 'id' | 'workstream_id' | 'submitted_by' | 'created_at'>>
 
 export type BuilderProgressUpdateInsert = Omit<BuilderProgressUpdate, 'id' | 'created_at' | 'updated_at' | 'status'> &
@@ -2471,6 +2551,12 @@ export type BuilderProgressUpdateInsert = Omit<BuilderProgressUpdate, 'id' | 'cr
 export type BuilderProgressUpdateUpdate = Partial<
   Omit<BuilderProgressUpdate, 'id' | 'workstream_id' | 'submitted_by' | 'created_at'>
 >
+
+export type ClientProjectFeeInsert = Omit<ClientProjectFee, 'created_at' | 'updated_at'>
+export type ClientProjectFeeUpdate = Partial<Omit<ClientProjectFee, 'project_id' | 'created_at'>>
+
+export type AgencyBuilderInsert = Omit<AgencyBuilder, 'created_at' | 'updated_at'>
+export type AgencyBuilderUpdate = Partial<Omit<AgencyBuilder, 'builder_id' | 'created_at'>>
 
 export type BuilderAiAllowanceInsert = Omit<BuilderAiAllowance, 'created_at' | 'updated_at'> &
   Partial<Pick<BuilderAiAllowance, 'monthly_allowance_usd' | 'warning_threshold_pct' | 'stop_at_allowance' | 'current_period_start'>>
@@ -2736,7 +2822,7 @@ export type BuilderIntegrationInvocationInsert = Omit<
   Partial<Pick<BuilderIntegrationInvocation, 'status' | 'output' | 'error' | 'correlated_amount' | 'executed_at'>>
 export type BuilderIntegrationInvocationUpdate = Partial<Omit<BuilderIntegrationInvocation, 'id' | 'created_at'>>
 
-// External MCP server (supabase/migrations/20261003100001_external_mcp_access.sql).
+// External MCP server (supabase/migrations/20261005100001_external_mcp_access.sql).
 export interface McpAccessUser {
   user_id: string
   note: string | null
@@ -2961,6 +3047,18 @@ interface DatabaseDefinition {
         Row: BuilderProgressUpdate
         Insert: BuilderProgressUpdateInsert
         Update: BuilderProgressUpdateUpdate
+        Relationships: []
+      }
+      client_project_fees: {
+        Row: ClientProjectFee
+        Insert: ClientProjectFeeInsert
+        Update: ClientProjectFeeUpdate
+        Relationships: []
+      }
+      agency_builders: {
+        Row: AgencyBuilder
+        Insert: AgencyBuilderInsert
+        Update: AgencyBuilderUpdate
         Relationships: []
       }
       builder_ai_allowances: {

@@ -12,6 +12,8 @@ import { CopyArtifactButton } from '@/components/projects/CopyArtifactButton'
 import { ArtifactStatusBadge, ArtifactReviewActions } from '@/components/projects/ArtifactReviewActions'
 import { WorkstreamPromotionForm } from '@/components/projects/WorkstreamPromotionForm'
 import { CloneWorkstreamButton } from '@/components/projects/CloneWorkstreamButton'
+import { ProposalSummaryButton } from '@/components/projects/ProposalSummaryButton'
+import type { ProposalSummaryInput } from '@/lib/projects/proposal-summary'
 import { PromoteToMethodForm } from '@/components/projects/PromoteToMethodForm'
 import { ShareBuilderUpdateForm, type ExistingBuilderUpdate } from '@/components/projects/ShareBuilderUpdateForm'
 import {
@@ -67,13 +69,17 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   let canAttach = false // consultant+ -- attach evidence
   let isActiveMember = false // Workstream Promotion: any active member of this workstream's Project may submit it for promotion
   let isProjectOwner = false // Builder Operations: Share Builder Update is owner-only (can_manage_project), no curator branch
+  let canDraftWiki = false // platform curator/admin -- createAIAssistedDraftAction's own bar
   let presentation = null as Awaited<ReturnType<typeof getPresentation>>
+  let viewerName: string | null = null // Proposal summary's "prepared by"
   if (user) {
     const [{ data: viewerProfile }, { data: viewerMembership }] = await Promise.all([
-      supabase.from('profiles').select('role').eq('id', user.id).single(),
+      supabase.from('profiles').select('role, email, full_name').eq('id', user.id).single(),
       supabase.from('project_members').select('role').eq('project_id', id).eq('user_id', user.id).maybeSingle(),
     ])
     const isAdmin = viewerProfile?.role === 'admin'
+    canDraftWiki = isAdmin || viewerProfile?.role === 'curator'
+    viewerName = viewerProfile?.full_name && viewerProfile.email ? `${viewerProfile.full_name} (${viewerProfile.email})` : (viewerProfile?.email ?? null)
     isActiveMember = isAdmin || !!viewerMembership
     isProjectOwner = isAdmin || viewerMembership?.role === 'owner'
     canEdit = isAdmin || viewerMembership?.role === 'owner' || viewerMembership?.role === 'curator'
@@ -142,6 +148,19 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   const artifactLabel = artifactCountLabel(artifactCounts)
   const sortedArtifacts = sortArtifactsForReview(artifacts)
 
+  // Client-facing: approved artifacts only, same line workstream promotion
+  // draws (see proposal-summary.ts).
+  const proposalSummary: ProposalSummaryInput = {
+    title: workstream.name,
+    preparedBy: viewerName,
+    goal: workstream.goal,
+    guardrail: workstream.guardrail,
+    deliverables: workstream.deliverables.map((d) => ({ label: d.label, completed: d.completed })),
+    artifacts: artifacts
+      .filter((a) => a.status === 'approved')
+      .map((a) => ({ title: a.title, typeLabel: ARTIFACT_TYPE_LABELS[a.artifact_type] ?? a.artifact_type, content: a.content, externalUrl: a.external_url })),
+  }
+
   // Who added each artifact, for its collapsed row. Emails are display-only
   // -- RLS already decided which artifacts this viewer sees; profiles RLS
   // wouldn't let a member resolve a teammate's email, so this narrow
@@ -171,7 +190,12 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
             <h1 className="text-xl font-semibold">{workstream.name}</h1>
             <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">{workstream.status}</span>
           </div>
-          {canEdit && <CloneWorkstreamButton workstreamId={workstream.id} />}
+          {canEdit && (
+            <div className="flex items-center gap-2">
+              <ProposalSummaryButton proposal={proposalSummary} />
+              <CloneWorkstreamButton workstreamId={workstream.id} />
+            </div>
+          )}
         </div>
         <p className="mt-1 text-xs text-zinc-500">
           {completedCount}/{workstream.deliverables.length} deliverables complete
@@ -276,6 +300,26 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
                   >
                     Add a note about this artifact
                   </Link>
+                  {/* Promotion: an approved artifact with content can become a knowledge
+                      base source (Submit a source, project curator reviews) or the basis
+                      of a Wiki draft (platform curators). */}
+                  {isActiveMember && a.content && (
+                    <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
+                      <span>Promote:</span>
+                      {a.status === 'approved' ? (
+                        <Link href={`/projects/${id}?submitArtifact=${a.id}#submit-source`} className="text-blue-700 underline">
+                          Submit to a knowledge base
+                        </Link>
+                      ) : (
+                        <span title="Only approved artifacts can be submitted to a knowledge base">Submit to a knowledge base (approve it first)</span>
+                      )}
+                      {canDraftWiki && (
+                        <Link href={`/wiki/new?artifact=${a.id}`} className="text-blue-700 underline">
+                          Draft a Wiki article from this
+                        </Link>
+                      )}
+                    </p>
+                  )}
                   <ArtifactReviewActions artifactId={a.id} projectId={id} workstreamId={workstreamId} status={a.status} canReview={canEdit} />
                 </details>
               ),
@@ -339,8 +383,8 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Knowledge</h2>
         <p className="text-xs text-zinc-500">
-          Scoped to this workstream only -- distinct from the project&apos;s own knowledge, and not automatically visible
-          to any other workstream in this project.
+          Scoped to this workstream only and not automatically visible to any other workstream in this project. A new
+          workstream starts with the project&apos;s own knowledge bases attached.
         </p>
         {workstreamKnowledgeBases.length > 0 ? (
           <ul className="flex flex-col gap-1 text-sm">
@@ -390,7 +434,9 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
         />
       )}
 
-      {canOfferPromotion && <WorkstreamPromotionForm projectId={id} workstreamId={workstream.id} />}
+      {canOfferPromotion && (
+        <WorkstreamPromotionForm projectId={id} workstreamId={workstream.id} isBuilderProposal={canOfferBuilderUpdate} />
+      )}
 
       {canEdit && <PromoteToMethodForm projectId={id} workstreamId={workstream.id} defaultGuardrail={workstream.guardrail} />}
     </div>

@@ -42,6 +42,7 @@ import {
 import { SUBMIT_FEEDBACK_REPORT_TOOL, SUBMIT_FEEDBACK_REPORT_TOOL_NAME, runSubmitFeedbackReport } from './feedback-tool'
 import { LIST_PROJECT_MEMBERS_TOOL, LIST_PROJECT_MEMBERS_TOOL_NAME, runListProjectMembers } from './project-members-tool'
 import { SEND_PROJECT_NOTE_TOOL, SEND_PROJECT_NOTE_TOOL_NAME, runSendProjectNote } from './project-note-tool'
+import { UPDATE_PROJECT_DESCRIPTION_TOOL, UPDATE_PROJECT_DESCRIPTION_TOOL_NAME, runUpdateProjectDescription } from './project-description-tool'
 import { SEARCH_WEB_TOOL, SEARCH_WEB_TOOL_NAME, runSearchWeb } from './web-search-tool'
 import { LIST_WORKSTREAMS_TOOL, LIST_WORKSTREAMS_TOOL_NAME, runListWorkstreams } from './workstream-list-tool'
 import {
@@ -82,7 +83,7 @@ import type { FeedbackType } from '@/types/database'
 // changes meaningfully enough that old provenance is worth distinguishing
 // from new. Not tied to a package/app version; this is specifically about
 // "which assistant behavior produced this row."
-export const ASSISTANT_PROMPT_VERSION = 'm7-v12'
+export const ASSISTANT_PROMPT_VERSION = 'm7-v13'
 
 const SYSTEM_PROMPT = `You are the Ember Workbench Assistant. You help users navigate and operate the platform: search the Wiki, look up project notes, create projects and workstreams, and attach evidence artifacts.
 
@@ -127,7 +128,7 @@ export function getSystemPromptText(): string {
 // (search_project_knowledge's own code-enforced project-first ordering is
 // the real guarantee; this just tells the model to actually call it) and
 // the "don't silently merge conflicting evidence" requirement.
-function buildProjectPromptAddendum(context: { name: string; goal: string | null }, knowledgeScope: string, webSearchAvailable: boolean): string {
+function buildProjectPromptAddendum(context: { name: string; goal: string | null; objective: string | null }, knowledgeScope: string, webSearchAvailable: boolean): string {
   const base = `\n\nThis conversation is bound to the Ember project "${context.name}"${context.goal ? ` (goal: ${context.goal})` : ''}. Its own knowledge scope: ${knowledgeScope}.
 
 You have an additional tool, search_project_knowledge, that searches this project's own attached knowledge first. Call it before search_wiki when you need evidence -- its results are tagged layer:'project' (this project's own approved evidence -- prefer this, it wins over general platform guidance when the two conflict) or layer:'platform' (general shared knowledge, used only to fill a genuine gap). If project evidence and platform guidance materially conflict, say so explicitly rather than silently merging them. If the project has no relevant attached knowledge for this question, say that plainly instead of presenting platform guidance as if it were project-specific evidence.
@@ -138,6 +139,8 @@ You also have list_project_members (no Project ID needed) for questions like who
 
 If the user asks you to send someone a Project Note (e.g. "send Maria a note about X"), first call list_project_members to find the exact person. Then state the exact recipient, subject and body you're about to send in your reply and wait for the user's explicit confirmation in their next message -- only call send_project_note once they've clearly agreed to that exact content, never in the same turn you proposed it.
 
+This project's current description (the short line under its title, separate from its goal) is: ${context.objective ? `"${context.objective}"` : '(none yet)'}. If the user asks you to write, rewrite or change it, show them the exact new description in your reply and wait for their explicit confirmation in their next message -- only then call update_project_description with that exact text, never in the same turn you proposed it. Only the project's owner or curator (or a platform admin) can change it; if the tool refuses, say so plainly.
+
 You also have list_workstreams (no Project ID needed) for this project's existing workstreams with their real ids. Call it before attach_workstream_artifact whenever you need to reference an existing workstream -- a workstream's display name (e.g. "Phase 1 -- Showcase") is never a valid workstreamId, and guessing one will fail.
 
 If the user asks you to sketch, suggest, or "produce" a domain-object ontology for this project (the business's own noun types, e.g. Plane/Route -- not instances), call suggest_project_ontology. Present what it suggests in your own words -- don't just dump the raw tool output -- and wait for the user's explicit confirmation, or their requested changes, in their next message. Only once they've clearly agreed to a specific set of objects and workstreams, call create_project_ontology with exactly that tree (keeping each item's tempId/parentTempId links intact, or adjusted consistently if they asked for changes) -- never in the same turn you proposed it. After it succeeds, tell the user their new project's Ontology Map -- a visual diagram of what you just created -- is on the project page, and give them the ontologyMapUrl the tool returned.
@@ -145,6 +148,8 @@ If the user asks you to sketch, suggest, or "produce" a domain-object ontology f
 If the user attaches a Turtle ontology file (.ttl/.n3/.nt -- a message containing "Attached file:" with that extension) and wants it on this project's ontology/Ontology Map, call preview_ontology_file_import with that fileName. Never rebuild a Turtle file's tree yourself and never use create_project_ontology for it. Present the preview in your own words: how many objects it would create, a short version of the outline (the top-level groups and a few examples are enough for a long one), anything already on the map (skipped), and what's left out. If canImport is false, say they need the project's owner or curator to run it. Then wait for the user's explicit confirmation in their next message, and only then call import_ontology_file with the same fileName -- it is refused in the same turn as the preview. After it succeeds, give them the ontologyMapUrl. If the file is attached as an artifact too, that's separate: attaching an artifact never changes the Ontology Map.
 
 For an ontology in another format (OWL/RDF-XML, JSON-LD, JSON, YAML, or a CSV/list of classes), map THEIR file yourself instead: its classes/entity types become objects (subclass/parent relationships become parentTempId links; descriptions/comments become the description), and only include workstreams if the file actually describes units of work. Say how many objects you found, show the tree (or a representative part of it if it's large), and point out anything you had to leave out or interpret. Then wait for the user's explicit confirmation, exactly as above, before calling create_project_ontology with that tree.
+
+If the user's message says its attached files were saved as Findings in a workstream, they already exist there as artifacts -- don't attach them again with attach_workstream_artifact unless the user asks for a copy somewhere else. Saved findings can later be submitted to a knowledge base or drafted into a Wiki article from the artifact itself on the workstream page.
 
 Never tell the user the Ontology Map was created or updated unless import_ontology_file or create_project_ontology actually succeeded in this conversation.
 
@@ -481,6 +486,7 @@ export async function runAssistantTurn(
           SEARCH_PROJECT_KNOWLEDGE_TOOL,
           LIST_PROJECT_MEMBERS_TOOL,
           SEND_PROJECT_NOTE_TOOL,
+          UPDATE_PROJECT_DESCRIPTION_TOOL,
           LIST_WORKSTREAMS_TOOL,
           SUGGEST_PROJECT_ONTOLOGY_TOOL,
           CREATE_PROJECT_ONTOLOGY_TOOL,
@@ -915,6 +921,17 @@ export async function runAssistantTurn(
             // below -- the Artifacts panel's "Created records" group is how
             // the structured link back to the note actually surfaces.
             createdRecordRefs.push({ kind: 'project_note', id: output.noteId })
+          } catch (err) {
+            toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
+          }
+        }
+      } else if (toolCall.name === UPDATE_PROJECT_DESCRIPTION_TOOL_NAME) {
+        if (!resolvedProjectId) {
+          toolResultText = JSON.stringify({ error: 'update_project_description is only available in a project-bound conversation.' })
+        } else {
+          try {
+            const output = await runUpdateProjectDescription(ctx, resolvedProjectId, toolCall.arguments)
+            toolResultText = JSON.stringify(output)
           } catch (err) {
             toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
           }

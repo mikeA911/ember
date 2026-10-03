@@ -18,7 +18,7 @@ describe('getProjectContext', () => {
     const supabase = createFakeSupabase({
       projects: [
         {
-          data: { id: 'proj-1', name: 'Zadara Pilot', goal: 'Answer helpdesk questions', information_sensitivity: null, starter_prompt: 'Ask about the Zadara pilot' },
+          data: { id: 'proj-1', name: 'Zadara Pilot', goal: 'Answer helpdesk questions', objective: 'Pilot Ember for the helpdesk', information_sensitivity: null, starter_prompt: 'Ask about the Zadara pilot' },
           error: null,
         },
       ],
@@ -39,6 +39,7 @@ describe('getProjectContext', () => {
       id: 'proj-1',
       name: 'Zadara Pilot',
       goal: 'Answer helpdesk questions',
+      objective: 'Pilot Ember for the helpdesk',
       informationSensitivity: null,
       knowledgeBases: [{ id: 'zadara_sandz', name: 'Zadara / Sandz' }],
       wikiArticles: [{ id: 'article-1', slug: 'zadara-copilot', title: 'Zadara Copilot' }],
@@ -65,6 +66,7 @@ describe('describeProjectKnowledgeScope', () => {
       id: 'proj-1',
       name: 'Zadara Pilot',
       goal: null,
+      objective: null,
       informationSensitivity: null,
       knowledgeBases: [{ id: 'zadara_sandz', name: 'Zadara / Sandz' }],
       wikiArticles: [{ id: 'a1', slug: 'zadara-copilot', title: 'Zadara Copilot' }],
@@ -78,6 +80,7 @@ describe('describeProjectKnowledgeScope', () => {
       id: 'proj-1',
       name: 'Empty Project',
       goal: null,
+      objective: null,
       informationSensitivity: null,
       knowledgeBases: [],
       wikiArticles: [],

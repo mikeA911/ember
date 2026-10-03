@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { approveSourceSubmissionAction, rejectSourceSubmissionAction } from '@/app/actions/source-submissions'
+import { BusyOverlay } from '@/components/shared/BusyOverlay'
 
 export interface SourceSubmissionRow {
   id: string
@@ -66,6 +67,10 @@ export function SourceSubmissionsReview({ projectId, submissions }: { projectId:
 
   return (
     <div className="flex flex-col gap-2 rounded border border-amber-300 bg-amber-50 p-3">
+      <BusyOverlay
+        active={approvingId !== null}
+        message="Approving the source -- processing it and embedding every chunk. This can take a minute; please don't leave the page."
+      />
       <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-900">Pending sources ({submissions.length})</h3>
       <ul className="flex flex-col gap-2">
         {submissions.map((s) => (

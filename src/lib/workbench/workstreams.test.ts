@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 import { reviewArtifact, createWorkstream } from './workstreams'
 
@@ -151,5 +151,50 @@ describe('createWorkstream -- Builder Ontology fields (Part A)', () => {
       lifecycle_stage: null,
       operational_status: 'open',
     })
+  })
+})
+
+describe('createWorkstream -- project knowledge bases', () => {
+  it("attaches every one of the project's knowledge bases to the new workstream", async () => {
+    const fakeSupabase = createFakeSupabase({
+      project_members: [{ data: { role: 'owner' }, error: null }],
+      project_workstreams: [{ data: { id: 'ws-4' }, error: null }],
+      project_knowledge_bases: [{ data: [{ knowledge_base_id: 'kb-1' }, { knowledge_base_id: 'kb-2' }], error: null }],
+      workstream_knowledge_bases: [{ data: null, error: null }],
+    })
+
+    await createWorkstream(ctxWithProfile(fakeSupabase, 'consultant'), baseWorkstreamInput)
+
+    const insert = fakeSupabase._calls.find((c) => c.table === 'workstream_knowledge_bases' && c.method === 'insert')
+    expect(insert?.args).toEqual([
+      { workstream_id: 'ws-4', knowledge_base_id: 'kb-1', attached_by: 'user-1' },
+      { workstream_id: 'ws-4', knowledge_base_id: 'kb-2', attached_by: 'user-1' },
+    ])
+  })
+
+  it('skips the attach when the project has no knowledge bases', async () => {
+    const fakeSupabase = createFakeSupabase({
+      project_members: [{ data: { role: 'owner' }, error: null }],
+      project_workstreams: [{ data: { id: 'ws-5' }, error: null }],
+      project_knowledge_bases: [{ data: [], error: null }],
+    })
+
+    await createWorkstream(ctxWithProfile(fakeSupabase, 'consultant'), baseWorkstreamInput)
+
+    expect(fakeSupabase._calls.find((c) => c.table === 'workstream_knowledge_bases')).toBeUndefined()
+  })
+
+  it('still reports the workstream as created when the attach fails', async () => {
+    const fakeSupabase = createFakeSupabase({
+      project_members: [{ data: { role: 'owner' }, error: null }],
+      project_workstreams: [{ data: { id: 'ws-6' }, error: null }],
+      project_knowledge_bases: [{ data: [{ knowledge_base_id: 'kb-1' }], error: null }],
+      workstream_knowledge_bases: [{ data: null, error: new Error('rls') }],
+    })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const result = await createWorkstream(ctxWithProfile(fakeSupabase, 'consultant'), baseWorkstreamInput)
+    expect(result).toEqual({ workstreamId: 'ws-6', projectId: 'project-1' })
+    consoleError.mockRestore()
   })
 })

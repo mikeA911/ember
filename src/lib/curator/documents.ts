@@ -13,6 +13,22 @@ const ALLOWED_MIME_TYPES = [
   'text/plain',
 ]
 
+// Mobile file pickers (notably Android picking from Drive) can hand over a
+// File with an empty or generic type even for a real PDF, which the exact
+// ALLOWED_MIME_TYPES check then rejected. Fall back to the extension in
+// that case only -- a browser-reported specific type is still trusted.
+const MIME_TYPE_BY_EXTENSION: Record<string, string> = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  txt: 'text/plain',
+}
+
+export function resolveUploadMimeType(file: { name: string; type: string }): string {
+  if (file.type && file.type !== 'application/octet-stream') return file.type
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+  return MIME_TYPE_BY_EXTENSION[extension] ?? file.type
+}
+
 export class DocumentValidationError extends Error {}
 export class DocumentPermissionError extends Error {}
 
@@ -41,8 +57,9 @@ export async function createUploadedDocument(supabase: SupabaseClient<Database>,
   if (input.file.size > MAX_FILE_SIZE) {
     throw new DocumentValidationError(`File exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`)
   }
-  if (!ALLOWED_MIME_TYPES.includes(input.file.type)) {
-    throw new DocumentValidationError(`Unsupported file type: ${input.file.type}`)
+  const mimeType = resolveUploadMimeType(input.file)
+  if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
+    throw new DocumentValidationError(`Unsupported file type: ${mimeType || 'unknown'} -- upload a PDF, Word .docx or plain-text .txt file`)
   }
 
   if (input.sourceUrl) {
@@ -58,7 +75,7 @@ export async function createUploadedDocument(supabase: SupabaseClient<Database>,
   }
 
   const path = buildStoragePath(input.file.name)
-  await uploadDocument(supabase, path, input.file, input.file.type)
+  await uploadDocument(supabase, path, input.file, mimeType)
 
   const { data: source, error: sourceError } = await supabase
     .from('knowledge_sources')
@@ -87,7 +104,7 @@ export async function createUploadedDocument(supabase: SupabaseClient<Database>,
       retired_at: null,
       storage_path: path,
       file_size: input.file.size,
-      mime_type: input.file.type,
+      mime_type: mimeType,
       source_url: input.sourceUrl ?? null,
       uploaded_by: input.uploadedBy,
       processing_status: 'pending',

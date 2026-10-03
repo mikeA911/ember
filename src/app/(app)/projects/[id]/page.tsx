@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ProjectFindings } from '@/components/projects/ProjectFindings'
 import { MemberDirectory } from '@/components/projects/MemberDirectory'
 import { ProjectGoalForm } from '@/components/projects/ProjectGoalForm'
+import { ProjectObjectiveForm } from '@/components/projects/ProjectObjectiveForm'
 import { ProjectStarterPromptForm } from '@/components/projects/ProjectStarterPromptForm'
 import { ProjectStatusSection } from '@/components/projects/ProjectStatusSection'
 import { listWorkstreams } from '@/lib/projects/workstreams'
@@ -23,6 +24,7 @@ import { listPendingWorkstreamPromotionsForProject } from '@/lib/workbench/works
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 import type { WorkstreamArtifactStatus } from '@/types/database'
 import { countArtifacts } from '@/lib/projects/artifact-summary'
+import { ProjectArchiveDeleteActions } from '@/components/projects/ProjectArchiveDeleteActions'
 import { ProjectCategorySelector } from '@/components/projects/ProjectCategorySelector'
 import { ProjectDiscoverabilitySelector } from '@/components/projects/ProjectDiscoverabilitySelector'
 import { RequestToJoinButton } from '@/components/projects/RequestToJoinButton'
@@ -37,6 +39,8 @@ import { getOntologyMapData, computeOntologyMapLayout } from '@/lib/projects/ont
 import { OntologyMapButton } from '@/components/projects/OntologyMapButton'
 import { ProjectSummaryButton } from '@/components/projects/ProjectSummaryButton'
 import type { ProjectSummaryInput } from '@/lib/projects/status-summary'
+import { getProjectApprovalState } from '@/lib/workbench/project-approval'
+import { ProjectApprovalBanner } from '@/components/projects/ProjectApprovalBanner'
 
 const TYPE_LABELS: Record<string, string> = {
   learning: 'Learning',
@@ -46,8 +50,17 @@ const TYPE_LABELS: Record<string, string> = {
   knowledge: 'Knowledge',
 }
 
-export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProjectPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  // ?submitArtifact=<id> -- the workstream page's "Submit to a knowledge
+  // base" link, preselecting that artifact in the Submit a source form.
+  searchParams: Promise<{ submitArtifact?: string }>
+}) {
   const { id } = await params
+  const { submitArtifact } = await searchParams
   const supabase = await createClient()
 
   const {
@@ -205,11 +218,6 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       .eq('workstream.project_id', id),
   ])
   const statusHistoryActorIds = [...new Set((statusHistory ?? []).map((h) => h.actor_id).filter((x): x is string => !!x))]
-  const { data: statusHistoryActors } =
-    statusHistoryActorIds.length > 0
-      ? await supabase.from('profiles').select('id, email').in('id', statusHistoryActorIds)
-      : { data: [] }
-  const statusHistoryActorEmail = new Map((statusHistoryActors ?? []).map((p) => [p.id, p.email]))
 
   // Emails are for display only, same narrow admin-client pattern as
   // members/page.tsx and notes/page.tsx -- project_members itself (fetched
@@ -221,25 +229,6 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       ...(joinRequests ?? []).map((r) => r.requester_id),
     ]),
   ]
-  const { data: memberProfiles } =
-    memberUserIds.length > 0 ? await createAdminClient().from('profiles').select('id, email').in('id', memberUserIds) : { data: [] }
-  const memberEmailById = new Map((memberProfiles ?? []).map((p) => [p.id, p.email]))
-  const directoryMembers = (activeMembers ?? []).map((m) => ({
-    membershipId: m.id,
-    userId: m.user_id,
-    email: memberEmailById.get(m.user_id) ?? null,
-    role: m.role,
-    businessFunction: m.business_function,
-  }))
-
-  // Builder Ontology, Part B: cheap provenance display -- only ever fetched
-  // for a genuinely cloned project, and only the name (same narrow-columns
-  // convention as every other cross-row display lookup on this page).
-  let clonedFromProjectName: string | null = null
-  if (project.cloned_from_project_id) {
-    const { data: source } = await supabase.from('projects').select('name').eq('id', project.cloned_from_project_id).maybeSingle()
-    clonedFromProjectName = source?.name ?? null
-  }
 
   const canManage = viewerProfile?.role === 'admin' || viewerMembership?.role === 'owner'
   // Workstreams are curator+ manageable, not just owner -- matches
@@ -250,13 +239,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // promotions submitted from this Project's own workstreams -- the
   // primary review path for an ordinary team's own curator (e.g. an HR
   // Manager), who may have no /admin access at all.
-  const pendingWorkstreamPromotions =
-    canCurateWorkstreams && user && viewerProfile
-      ? await listPendingWorkstreamPromotionsForProject(
-          { user, profile: viewerProfile, supabase } as unknown as WorkbenchCallerContext,
-          project.id
-        )
-      : []
+  const showWorkstreamPromotions = canCurateWorkstreams && !!user && !!viewerProfile
   // Same bar as approveProjectAction's own check -- curator or admin, by
   // either role system (platform role, or project role on this project).
   const canApprove =
@@ -286,49 +269,113 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // already-known project id (never a blanket table query, so this can
   // never let an admin discover another project's attachments), and only
   // when the primary RLS-scoped result came back empty.
-  let effectiveKnowledgeBases = knowledgeBases
-  let effectiveUnattachedKnowledgeBases = unattachedKnowledgeBases
-  let effectiveLinkedArticles = linkedArticles
-  if (viewerProfile?.role === 'admin' && !viewerMembership && (knowledgeBases.length === 0 || linkedArticles.length === 0)) {
-    const admin = createAdminClient()
-    if (knowledgeBases.length === 0) {
-      const { data: links } = await admin.from('project_knowledge_bases').select('knowledge_base_id').eq('project_id', id)
-      const kbIds = (links ?? []).map((l) => l.knowledge_base_id)
-      if (kbIds.length > 0) {
-        const { data: kbs } = await admin.from('knowledge_bases').select('id, name, status').in('id', kbIds)
-        effectiveKnowledgeBases = kbs ?? []
-        effectiveUnattachedKnowledgeBases = unattachedKnowledgeBases.filter((kb) => !kbIds.includes(kb.id))
+  const needsAdminFallback = viewerProfile?.role === 'admin' && !viewerMembership
+  const loadKnowledgeBases = async () => {
+    const admin = needsAdminFallback ? createAdminClient() : null
+    const [kbFallback, articleFallback] = await Promise.all([
+      admin && knowledgeBases.length === 0
+        ? (async () => {
+            const { data: links } = await admin.from('project_knowledge_bases').select('knowledge_base_id').eq('project_id', id)
+            const kbIds = (links ?? []).map((l) => l.knowledge_base_id)
+            if (kbIds.length === 0) return null
+            const { data: kbs } = await admin.from('knowledge_bases').select('id, name, status').in('id', kbIds)
+            return { kbs: kbs ?? [], kbIds }
+          })()
+        : null,
+      admin && linkedArticles.length === 0
+        ? (async () => {
+            const { data: links } = await admin.from('project_wiki_articles').select('id, wiki_article_id').eq('project_id', id)
+            if (!links || links.length === 0) return null
+            const { data: articles } = await admin
+              .from('wiki_articles')
+              .select('id, slug, title, status, visibility_scope')
+              .in('id', links.map((l) => l.wiki_article_id))
+            const byId = new Map((articles ?? []).map((a) => [a.id, a]))
+            return links.map((l) => ({ linkId: l.id, article: byId.get(l.wiki_article_id) ?? null })).filter((l) => l.article !== null)
+          })()
+        : null,
+    ])
+    const effectiveKnowledgeBases = kbFallback ? kbFallback.kbs : knowledgeBases
+    const effectiveUnattachedKnowledgeBases = kbFallback
+      ? unattachedKnowledgeBases.filter((kb) => !kbFallback.kbIds.includes(kb.id))
+      : unattachedKnowledgeBases
+    const effectiveLinkedArticles = articleFallback ?? linkedArticles
+
+    // Any project member gets this, not just canManage -- RLS on
+    // knowledge_sources already scopes it correctly per-source (see
+    // listSourcesForKnowledgeBases' own comment).
+    const sourcesByKbId = new Map<string, Awaited<ReturnType<typeof listSourcesForKnowledgeBases>>>()
+    if (user && effectiveKnowledgeBases.length > 0) {
+      const sources = await listSourcesForKnowledgeBases(
+        supabase,
+        effectiveKnowledgeBases.map((kb) => kb.id)
+      )
+      for (const source of sources) {
+        sourcesByKbId.set(source.knowledgeBaseId, [...(sourcesByKbId.get(source.knowledgeBaseId) ?? []), source])
       }
     }
-    if (linkedArticles.length === 0) {
-      const { data: links } = await admin.from('project_wiki_articles').select('id, wiki_article_id').eq('project_id', id)
-      if (links && links.length > 0) {
-        const { data: articles } = await admin
-          .from('wiki_articles')
-          .select('id, slug, title, status, visibility_scope')
-          .in('id', links.map((l) => l.wiki_article_id))
-        const byId = new Map((articles ?? []).map((a) => [a.id, a]))
-        effectiveLinkedArticles = links.map((l) => ({ linkId: l.id, article: byId.get(l.wiki_article_id) ?? null })).filter((l) => l.article !== null)
-      }
-    }
+    const reviewCountsByDocumentId = await getSourceReviewCounts(
+      [...sourcesByKbId.values()].flat().map((s) => s.documentId).filter((id): id is string => !!id)
+    )
+    return { effectiveKnowledgeBases, effectiveUnattachedKnowledgeBases, effectiveLinkedArticles, sourcesByKbId, reviewCountsByDocumentId }
   }
 
-  // Any project member gets this, not just canManage -- RLS on
-  // knowledge_sources already scopes it correctly per-source (see
-  // listSourcesForKnowledgeBases' own comment).
-  const sourcesByKbId = new Map<string, Awaited<ReturnType<typeof listSourcesForKnowledgeBases>>>()
-  if (user && effectiveKnowledgeBases.length > 0) {
-    const sources = await listSourcesForKnowledgeBases(
-      supabase,
-      effectiveKnowledgeBases.map((kb) => kb.id)
-    )
-    for (const source of sources) {
-      sourcesByKbId.set(source.knowledgeBaseId, [...(sourcesByKbId.get(source.knowledgeBaseId) ?? []), source])
-    }
-  }
-  const reviewCountsByDocumentId = await getSourceReviewCounts(
-    [...sourcesByKbId.values()].flat().map((s) => s.documentId).filter((id): id is string => !!id)
-  )
+  // Every follow-up lookup below depends only on the batch above, so they
+  // run concurrently rather than as a chain of sequential round trips.
+  const showWorkingKnowledge = !!user && !!viewerMembership
+  const [
+    { data: statusHistoryActors },
+    { data: memberProfiles },
+    clonedFromProjectName,
+    pendingWorkstreamPromotions,
+    { effectiveKnowledgeBases, effectiveUnattachedKnowledgeBases, effectiveLinkedArticles, sourcesByKbId, reviewCountsByDocumentId },
+    // Project creation approval -- only the creator (and admins) can see a
+    // project that isn't approved yet, so this banner only ever reaches them.
+    approvalState,
+    directoryProjects,
+    myWorkingKnowledge,
+    sharedWorkingKnowledge,
+  ] = await Promise.all([
+    statusHistoryActorIds.length > 0
+      ? supabase.from('profiles').select('id, email').in('id', statusHistoryActorIds)
+      : Promise.resolve({ data: [] as { id: string; email: string | null }[] }),
+    memberUserIds.length > 0
+      ? createAdminClient().from('profiles').select('id, email').in('id', memberUserIds)
+      : Promise.resolve({ data: [] as { id: string; email: string | null }[] }),
+    // Builder Ontology, Part B: cheap provenance display -- only ever fetched
+    // for a genuinely cloned project, and only the name (same narrow-columns
+    // convention as every other cross-row display lookup on this page).
+    project.cloned_from_project_id
+      ? supabase
+          .from('projects')
+          .select('name')
+          .eq('id', project.cloned_from_project_id)
+          .maybeSingle()
+          .then(({ data }) => data?.name ?? null)
+      : Promise.resolve(null),
+    showWorkstreamPromotions
+      ? listPendingWorkstreamPromotionsForProject(
+          { user, profile: viewerProfile, supabase } as unknown as WorkbenchCallerContext,
+          project.id
+        )
+      : Promise.resolve([]),
+    loadKnowledgeBases(),
+    project.approval_status !== 'approved' ? getProjectApprovalState(project) : Promise.resolve(null),
+    project.is_organization_home
+      ? requireUser().then((ctx) => listDiscoverableProjects(ctx, { excludeProjectId: project.id }))
+      : Promise.resolve([]),
+    showWorkingKnowledge ? requireUser().then((ctx) => listMyWorkingKnowledge(ctx, project.id)) : Promise.resolve([]),
+    showWorkingKnowledge ? requireUser().then((ctx) => listSharedWorkingKnowledge(ctx, project.id)) : Promise.resolve([]),
+  ])
+  const statusHistoryActorEmail = new Map((statusHistoryActors ?? []).map((p) => [p.id, p.email]))
+  const memberEmailById = new Map((memberProfiles ?? []).map((p) => [p.id, p.email]))
+  const directoryMembers = (activeMembers ?? []).map((m) => ({
+    membershipId: m.id,
+    userId: m.user_id,
+    email: memberEmailById.get(m.user_id) ?? null,
+    role: m.role,
+    businessFunction: m.business_function,
+  }))
   // Chunk review (/review/[docId] and its approve actions) is a platform
   // curator/admin tool, so only they get the "Review" link.
   const canReviewChunks = viewerProfile?.role === 'admin' || viewerProfile?.role === 'curator'
@@ -398,6 +445,15 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="flex flex-col gap-8">
+      {approvalState && (
+        <ProjectApprovalBanner
+          projectId={project.id}
+          projectName={project.name}
+          state={approvalState}
+          viewerIsCreator={!!user && project.owner_id === user.id}
+          viewerCanDecide={viewerProfile?.role === 'admin' && project.owner_id !== user?.id}
+        />
+      )}
       <div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -452,7 +508,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             </Link>
           </p>
         )}
-        {project.objective && <p className="mt-2 text-sm text-zinc-600">{project.objective}</p>}
+        <ProjectObjectiveForm projectId={project.id} objective={project.objective} canEdit={canCurateWorkstreams} />
         {Object.keys(project.details ?? {}).length > 0 && (
           <dl className="mt-3 flex flex-col gap-1 text-sm">
             {/* details has no schema ("no template engine," per the Project
@@ -494,7 +550,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
       {project.is_organization_home && (
         <ProjectDirectory
-          projects={await listDiscoverableProjects(await requireUser(), { excludeProjectId: project.id })}
+          projects={directoryProjects}
           viewerIsAdmin={viewerProfile?.role === 'admin'}
         />
       )}
@@ -591,11 +647,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           />
         )}
         {user && viewerMembership && (
-          <SubmitSourceForm
-            projectId={project.id}
-            knowledgeBases={knowledgeBases}
-            artifacts={(submittableArtifacts ?? []).map((a) => ({ id: a.id, title: a.title }))}
-          />
+          <div id="submit-source" className="scroll-mt-4">
+            <SubmitSourceForm
+              projectId={project.id}
+              knowledgeBases={knowledgeBases}
+              artifacts={(submittableArtifacts ?? []).map((a) => ({ id: a.id, title: a.title }))}
+              initialArtifactId={submitArtifact}
+            />
+          </div>
         )}
       </section>
 
@@ -606,14 +665,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       {user && viewerMembership && (
         <WorkingKnowledgePanel
           projectId={project.id}
-          mine={(await listMyWorkingKnowledge(await requireUser(), project.id)).map((i) => ({
+          mine={myWorkingKnowledge.map((i) => ({
             id: i.id,
             title: i.title,
             type: i.type,
             visibility: i.visibility,
             updatedAt: i.updated_at,
           }))}
-          shared={(await listSharedWorkingKnowledge(await requireUser(), project.id)).map((i) => ({
+          shared={sharedWorkingKnowledge.map((i) => ({
             id: i.id,
             title: i.title,
             type: i.type,
@@ -723,6 +782,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           projectId={project.id}
           status={project.status}
           canApprove={canApprove}
+          canAddWorkstream={canCurateWorkstreams}
           showStatus={showStatusBadge}
           history={(statusHistory ?? []).map((h) => ({
             fromStatus: h.from_status,
@@ -761,6 +821,14 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           <p className="text-sm text-zinc-500">No open notes.</p>
         )}
       </section>
+
+      <ProjectArchiveDeleteActions
+        projectId={project.id}
+        projectName={project.name}
+        category={project.portfolio_category}
+        canArchive={canCurateWorkstreams}
+        canDelete={viewerProfile?.role === 'admin' && !project.is_organization_home}
+      />
     </div>
   )
 }

@@ -114,10 +114,11 @@ export async function createProject(
   }
   // KB Sandbox Builder: a builder (consultant role) gets exactly one
   // Project, auto-provisioned at account creation (provisionBuilderProject)
-  // -- new clients are Workstreams on it, not new Projects (see that
-  // function's own comment). Curator/admin (operator staff) are unaffected
-  // -- they aren't builders and may need several Projects for programme
-  // administration. 'member' role is already excluded by the role check
+  // -- each client proposal is a Workstream on it, not a new Project (see
+  // that function's own comment). A client Project only comes from an
+  // accepted proposal, via workstream promotion, never from here.
+  // Curator/admin (operator staff) are unaffected -- they aren't builders
+  // and may need several Projects for programme administration. 'member' role is already excluded by the role check
   // above in both modes, so no separate case is needed there.
   if (env.productMode() === 'builder' && profile.role === 'consultant') {
     const { data: existing } = await supabase.from('projects').select('id').eq('owner_id', user.id).limit(1).maybeSingle()
@@ -129,6 +130,25 @@ export async function createProject(
   }
   if (input.knowledgeBaseId) await requireActiveKnowledgeBase(supabase, input.knowledgeBaseId)
 
+  // Project creation approval (project-approval.ts): below curator, the
+  // project starts 'pending' -- enforce_project_approval forces that in the
+  // DB regardless, this just decides where wizard-picked members go. They
+  // can't join until approval, so they're held on the project row instead.
+  const needsApproval = !hasRequiredRole(profile.role, 'curator')
+  const staged = input.members.filter((m) => m.email && m.email !== user.email)
+  const approvals = input.approvals ?? []
+  // One lookup covers both staged members and approval assignees (an
+  // assignee is always either '__self__' or an email already staged as a
+  // member -- the wizard's own UI only offers those two options).
+  const emailsToResolve = [...new Set(staged.map((m) => m.email))]
+  const idByEmail = emailsToResolve.length > 0 ? await resolveUserIdsByEmail(emailsToResolve) : new Map<string, string>()
+  const memberRows = staged
+    .map((m) => {
+      const userId = idByEmail.get(m.email)
+      return userId ? { user_id: userId, role: m.role } : null
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+
   const { data: project, error } = await supabase
     .from('projects')
     .insert({
@@ -139,6 +159,8 @@ export async function createProject(
       notes: null,
       details: input.details,
       owner_id: user.id,
+      approval_status: needsApproval ? 'pending' : 'approved',
+      pending_members: needsApproval ? memberRows : [],
     })
     .select()
     .single()
@@ -185,24 +207,8 @@ export async function createProject(
     await supabase.from('eval_datasets').update({ project_id: project.id }).eq('id', input.evalDatasetId)
   }
 
-  const staged = input.members.filter((m) => m.email && m.email !== user.email)
-  const approvals = input.approvals ?? []
-  // One lookup covers both staged members and approval assignees (an
-  // assignee is always either '__self__' or an email already staged as a
-  // member -- the wizard's own UI only offers those two options).
-  const emailsToResolve = [...new Set(staged.map((m) => m.email))]
-  const idByEmail = emailsToResolve.length > 0 ? await resolveUserIdsByEmail(emailsToResolve) : new Map<string, string>()
-
-  if (staged.length > 0) {
-    const rows = staged
-      .map((m) => {
-        const userId = idByEmail.get(m.email)
-        return userId ? { project_id: project.id, user_id: userId, role: m.role, status: 'active' as ProjectMemberStatus } : null
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null)
-    if (rows.length > 0) {
-      await supabase.from('project_members').insert(rows)
-    }
+  if (!needsApproval && memberRows.length > 0) {
+    await supabase.from('project_members').insert(memberRows.map((m) => ({ ...m, project_id: project.id, status: 'active' as ProjectMemberStatus })))
   }
 
   if (approvals.length > 0) {
@@ -253,7 +259,7 @@ export async function createProject(
     }
   }
 
-  return { projectId: project.id }
+  return { projectId: project.id, approvalStatus: project.approval_status }
 }
 
 // project_knowledge_bases is many-to-many, so attaching an already-active KB
@@ -392,6 +398,7 @@ export async function approveProject(ctx: WorkbenchCallerContext, projectId: str
   // history entry's from_status is accurate rather than assumed.
   const { data: before, error: readError } = await admin.from('projects').select('status').eq('id', projectId).single()
   if (readError || !before) throw readError ?? new Error('Project not found')
+  if (before.status === 'completed' || before.status === 'live') throw new ProjectValidationError('This project is already approved')
   const { error } = await admin.from('projects').update({ status: 'completed' }).eq('id', projectId)
   if (error) throw error
   await logStatusChange(projectId, before.status, 'completed', ctx.user.id)
@@ -453,6 +460,21 @@ export async function sendProjectBackToWorking(ctx: WorkbenchCallerContext, proj
   await transitionProjectStatus(projectId, 'review', 'active', ctx.user.id)
 }
 
+// Approved -> Live: the client has approved the project (normally through
+// its workstream presentation), so it's in production and in maintenance.
+export async function markProjectLive(ctx: WorkbenchCallerContext, projectId: string) {
+  await requireCanApprove(ctx, projectId)
+  await transitionProjectStatus(projectId, 'completed', 'live', ctx.user.id)
+}
+
+// Approved -> Working on it, when the client asks for changes before
+// go-live. A Live project is never reopened: bug fixes and new features
+// are new workstreams inside it, and it stays Live meanwhile.
+export async function reopenProject(ctx: WorkbenchCallerContext, projectId: string) {
+  await requireCanApprove(ctx, projectId)
+  await transitionProjectStatus(projectId, 'completed', 'active', ctx.user.id)
+}
+
 export async function listProjectStatusHistory(ctx: WorkbenchCallerContext, projectId: string) {
   const { data, error } = await ctx.supabase
     .from('project_status_history')
@@ -489,6 +511,23 @@ export async function updateProjectStarterPrompt(ctx: WorkbenchCallerContext, pr
   }
   const admin = createAdminClient()
   const { error } = await admin.from('projects').update({ starter_prompt: starterPrompt.trim() || null }).eq('id', projectId)
+  if (error) throw error
+}
+
+// The one-line description under the project title (the `objective`
+// column, set by ProjectWizard at creation). Same owner/curator/admin bar
+// and admin-client-after-explicit-check pattern as
+// updateProjectStarterPrompt above -- a curator should be able to fix their
+// own team's Project description, not just its owner.
+export async function updateProjectObjective(ctx: WorkbenchCallerContext, projectId: string, objective: string): Promise<void> {
+  if (ctx.profile.role !== 'admin') {
+    const role = await getActiveProjectRole(ctx, projectId)
+    if (role !== 'owner' && role !== 'curator') {
+      throw new AuthError('Requires this project\'s owner or curator role (or platform admin) to edit its description')
+    }
+  }
+  const admin = createAdminClient()
+  const { error } = await admin.from('projects').update({ objective: objective.trim() || null }).eq('id', projectId)
   if (error) throw error
 }
 
@@ -532,6 +571,39 @@ export async function updateProjectDiscoverability(
   if (error) throw error
 }
 
+// Permanent removal -- platform admins only. Owners/curators "archive"
+// instead (portfolio_category = 'archived', via
+// updateProjectPortfolioCategory), which is reversible. projects has no
+// delete RLS policy at all, so this goes through the admin client after an
+// explicit check, same pattern as updateProjectStarterPrompt. Every FK to
+// projects is ON DELETE CASCADE (members, workstreams, notes, assessments,
+// governance, ...) or SET NULL (conversations, knowledge_bases, clones'
+// cloned_from_project_id, ...), so one delete removes the project's own
+// data and unlinks everything else. confirmName must match the current
+// name exactly -- a server-side guard against deleting the wrong one of two
+// similarly named projects, not just a UI nicety.
+export async function deleteProject(ctx: WorkbenchCallerContext, projectId: string, confirmName: string): Promise<void> {
+  if (ctx.profile.role !== 'admin') {
+    throw new AuthError('Only a platform admin can permanently delete a project -- archive it instead')
+  }
+  const admin = createAdminClient()
+  const { data: project, error: readError } = await admin
+    .from('projects')
+    .select('name, is_organization_home')
+    .eq('id', projectId)
+    .maybeSingle()
+  if (readError) throw readError
+  if (!project) throw new ProjectValidationError('Project not found')
+  if (project.is_organization_home) {
+    throw new ProjectValidationError('The Organization Home project cannot be deleted')
+  }
+  if (confirmName.trim() !== project.name) {
+    throw new ProjectValidationError('The name you typed does not match this project\'s name')
+  }
+  const { error } = await admin.from('projects').delete().eq('id', projectId)
+  if (error) throw error
+}
+
 // Every newly created account is auto-enrolled in the Organization Home
 // project (OR-036, Mike) -- makes it genuinely function as "everyone's home
 // base" without relying on discovery + a manual join request for the one
@@ -557,9 +629,12 @@ export async function enrollInOrganizationHome(admin: ReturnType<typeof createAd
 // KB Sandbox Builder (docs/dev-request-kb-sandbox-builder-product.md): each
 // builder gets exactly one Project, auto-provisioned once at account
 // creation -- not one Project per client/opportunity. A new client is a
-// Workstream on this same Project (already has status/goal/deliverables and
-// its own workstream_artifacts evidence trail -- no new schema needed for
-// that), and the builder's own free-form research/CRM notes are a Working
+// Workstream (the builder's proposal) on this same Project; once the client
+// accepts it, workstream promotion (workstream-promotions.ts) creates the
+// client Project, owned by the builder with the client as viewers. A
+// Workstream already has status/goal/deliverables and its own
+// workstream_artifacts evidence trail -- no new schema needed for that,
+// and the builder's own free-form research/CRM notes are a Working
 // Knowledge item on it. Called from createUserAction (app/actions/admin.ts)
 // only when the deployment is in builder mode and the new account's
 // platform role is 'consultant' -- gating lives at the call site, this

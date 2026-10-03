@@ -10,7 +10,7 @@ Design and guardrails: [`docs/dev-request-ember-external-mcp-server.md`](../dev-
 
 ## 1. Apply the database migration
 
-Apply `supabase/migrations/20261003100001_external_mcp_access.sql` the same way as any other migration (SQL Editor, or `scripts/run-migrations.mjs`). It creates:
+Apply `supabase/migrations/20261005100001_external_mcp_access.sql` the same way as any other migration (SQL Editor, or `scripts/run-migrations.mjs`). It creates:
 
 - `mcp_access_users`: who may connect (empty until you add people).
 - `mcp_approved_clients`: which chatbots may connect. Pre-filled with Claude (`claude.ai`, `claude.com`) and ChatGPT, each capped at **Internal** sensitivity.

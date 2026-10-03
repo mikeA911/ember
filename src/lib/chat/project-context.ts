@@ -12,6 +12,9 @@ export interface ProjectContext {
   id: string
   name: string
   goal: string | null
+  // The short description under the project title -- lets Ember see what
+  // update_project_description would be replacing.
+  objective: string | null
   // Read by loop.ts's pre-inference sensitivity check -- name/goal are
   // embedded into the system prompt every turn (buildProjectPromptAddendum),
   // independent of whether any tool ever retrieves anything, so this has to
@@ -32,7 +35,7 @@ export interface ProjectContext {
 export async function getProjectContext(ctx: WorkbenchCallerContext, projectId: string): Promise<ProjectContext | null> {
   const { data: project, error } = await ctx.supabase
     .from('projects')
-    .select('id, name, goal, information_sensitivity, starter_prompt')
+    .select('id, name, goal, objective, information_sensitivity, starter_prompt')
     .eq('id', projectId)
     .maybeSingle()
   if (error) throw error
@@ -47,6 +50,7 @@ export async function getProjectContext(ctx: WorkbenchCallerContext, projectId: 
     id: project.id,
     name: project.name,
     goal: project.goal,
+    objective: project.objective,
     informationSensitivity: project.information_sensitivity,
     knowledgeBases,
     wikiArticles: articleLinks

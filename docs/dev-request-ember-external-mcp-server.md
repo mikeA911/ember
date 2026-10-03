@@ -128,7 +128,7 @@ Every result includes an Ember URL, so the builder can tap through to the PWA fo
 | Token verification, allowlist, revocation, rate limit, audit | `src/lib/mcp/access.ts` |
 | Project summary loader (RLS-only; the project page's own loader keeps its service-role fallbacks, which an external app must not get) | `src/lib/mcp/project-summary.ts` |
 | Profile → Connected AI apps; Admin → Agent access | components under `src/components/profile`, `src/components/admin` |
-| Migration: `mcp_access_users`, `mcp_approved_clients` (+ per-app sensitivity ceiling), `mcp_access_log`, `mcp_rate_counters`, restrictive no-write policies, `SECURITY DEFINER` guards | `supabase/migrations/20261003100001_external_mcp_access.sql` |
+| Migration: `mcp_access_users`, `mcp_approved_clients` (+ per-app sensitivity ceiling), `mcp_access_log`, `mcp_rate_counters`, restrictive no-write policies, `SECURITY DEFINER` guards | `supabase/migrations/20261005100001_external_mcp_access.sql` |
 
 ## Prerequisites / setup
 

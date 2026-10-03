@@ -17,6 +17,8 @@ import {
   getConversationMessagesAction,
   getAssistantOverviewAction,
   extractChatAttachmentAction,
+  listFindingsTargetsAction,
+  saveAttachmentsAsFindingsAction,
 } from '@/app/actions/chat'
 import { sendFeedbackMessageAction } from '@/app/actions/feedback'
 import type { ChatModelOption } from '@/lib/ai'
@@ -29,9 +31,9 @@ import { deriveArtifacts, artifactsCount } from '@/lib/chat/artifacts'
 import {
   formatMessageWithAttachments,
   totalAttachmentChars,
-  ATTACHMENT_ACCEPT,
   ATTACHMENT_TYPES_LABEL,
   MAX_TOTAL_ATTACHMENT_CHARS,
+  savedAsFindingsNote,
   type ChatAttachment,
 } from '@/lib/chat/attachments'
 import { defaultNoteTitle } from '@/lib/chat/transcript'
@@ -53,6 +55,8 @@ const FEEDBACK_LABEL_BY_TYPE: Record<string, string> = Object.fromEntries(FEEDBA
 // mode, blocked storage); read via useSyncExternalStore so the server render
 // (always collapsed) never mismatches hydration.
 const HEADER_EXPANDED_KEY = 'ember:header-options-expanded'
+// Last workstream chosen for "Save as findings in", per project.
+const FINDINGS_WORKSTREAM_KEY = 'ember:findings-workstream'
 let headerExpandedMemory: boolean | null = null
 const headerExpandedListeners = new Set<() => void>()
 
@@ -196,6 +200,10 @@ export function ChatSession({
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   // e.g. what a zip contained that couldn't be attached.
   const [attachNotice, setAttachNotice] = useState<string | null>(null)
+  // Project chats: also save attached files as Findings in a workstream.
+  // Loaded on first attach; '' means "don't save".
+  const [findingsTargets, setFindingsTargets] = useState<{ canSave: boolean; workstreams: { id: string; name: string }[] } | null>(null)
+  const [findingsWorkstreamId, setFindingsWorkstreamId] = useState('')
   const [isAttaching, setIsAttaching] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Composer: grows with its content up to a few lines; "Expand" gives a
@@ -587,6 +595,8 @@ export function ChatSession({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // Enter submits the form even while the Send button is disabled.
+    if (isAttaching) return
     const typed = input.trim()
     if (attachments.length === 0) {
       setComposerExpanded(false)
@@ -597,7 +607,25 @@ export function ChatSession({
       setError(`Attachments are too large to send together (over ${MAX_TOTAL_ATTACHMENT_CHARS.toLocaleString('en-US')} characters) -- remove some and send them in a separate message.`)
       return
     }
-    const message = formatMessageWithAttachments(typed, attachments)
+    let text = typed
+    const saveTo = findingsTargets?.canSave && !feedbackCategory && projectId ? findingsWorkstreamId : ''
+    if (saveTo) {
+      setIsAttaching(true)
+      try {
+        const result = await saveAttachmentsAsFindingsAction({ projectId: projectId!, workstreamId: saveTo, attachments })
+        if (result.error !== undefined) {
+          setError(`Not sent -- ${result.error}. Choose "Don't save" to send without saving.`)
+          return
+        }
+        text = [typed, savedAsFindingsNote(result.saved, result.workstreamName)].filter(Boolean).join('\n\n')
+      } catch {
+        setError('Not sent -- the files could not be saved as findings. Choose "Don\'t save" to send without saving.')
+        return
+      } finally {
+        setIsAttaching(false)
+      }
+    }
+    const message = formatMessageWithAttachments(text, attachments)
     setAttachments([])
     setAttachNotice(null)
     setComposerExpanded(false)
@@ -638,6 +666,48 @@ export function ChatSession({
     }
     if (errors.length > 0) setError(errors.join(' · '))
     if (skipped.length > 0) setAttachNotice(`Skipped: ${skipped.join(', ')}`)
+  }
+
+  // Default: the workstream page you're on, else the last one used for this
+  // project, else the project's only workstream, else "don't save".
+  useEffect(() => {
+    if (!projectId || feedbackCategory || attachments.length === 0 || findingsTargets) return
+    let cancelled = false
+    listFindingsTargetsAction(projectId)
+      .then((targets) => {
+        if (cancelled) return
+        setFindingsTargets(targets)
+        if (!targets.canSave) return
+        const ids = new Set(targets.workstreams.map((w) => w.id))
+        const onPage = pathname.match(new RegExp(`^/projects/${projectId}/workstreams/([^/?#]+)`))?.[1]
+        let remembered: string | null = null
+        try {
+          remembered = window.localStorage.getItem(`${FINDINGS_WORKSTREAM_KEY}:${projectId}`)
+        } catch {
+          // Storage unavailable -- no remembered choice.
+        }
+        const choice =
+          (onPage && ids.has(onPage) && onPage) ||
+          (remembered && ids.has(remembered) && remembered) ||
+          (targets.workstreams.length === 1 ? targets.workstreams[0].id : '')
+        setFindingsWorkstreamId(choice)
+      })
+      .catch(() => {
+        // Saving is optional -- the chat still works without it.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, feedbackCategory, attachments.length, findingsTargets, pathname])
+
+  function chooseFindingsWorkstream(id: string) {
+    setFindingsWorkstreamId(id)
+    if (!projectId) return
+    try {
+      window.localStorage.setItem(`${FINDINGS_WORKSTREAM_KEY}:${projectId}`, id)
+    } catch {
+      // Best-effort preference only.
+    }
   }
 
   function toggleHeaderExpanded() {
@@ -1403,6 +1473,12 @@ export function ChatSession({
               <span className="truncate">
                 Attached: <span className="font-medium">{a.name}</span>
                 {a.truncated && ' (only the first part will be sent)'}
+                {a.hiddenSecrets && (
+                  <span className="text-amber-700">
+                    {' '}
+                    · {a.hiddenSecrets} {a.hiddenSecrets === 1 ? 'secret' : 'secrets'} hidden
+                  </span>
+                )}
               </span>
               <button
                 type="button"
@@ -1415,6 +1491,27 @@ export function ChatSession({
             </div>
           ))}
           {attachNotice && <p className="text-zinc-400">{attachNotice}</p>}
+          {attachments.length > 0 && !feedbackCategory && projectId && findingsTargets?.canSave && (
+            <label className="mt-0.5 flex flex-wrap items-center gap-1.5">
+              <span>Save as findings in:</span>
+              <select
+                value={findingsWorkstreamId}
+                onChange={(e) => chooseFindingsWorkstream(e.target.value)}
+                disabled={isPending || isAttaching}
+                className="min-w-0 max-w-full rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-700"
+              >
+                <option value="">Don&apos;t save -- just this chat</option>
+                {findingsTargets.workstreams.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {attachments.length > 0 && !feedbackCategory && !projectId && (
+            <p className="text-zinc-400">To also save files to a project workstream, switch Ember to that project (Options).</p>
+          )}
         </div>
       )}
       <form
@@ -1426,7 +1523,6 @@ export function ChatSession({
             <input
               ref={fileInputRef}
               type="file"
-              accept={ATTACHMENT_ACCEPT}
               multiple
               onChange={handleAttachFile}
               className="hidden"

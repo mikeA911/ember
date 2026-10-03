@@ -3,6 +3,13 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitFileSourceAction, submitArtifactSourceAction } from '@/app/actions/source-submissions'
+import { BusyOverlay } from '@/components/shared/BusyOverlay'
+
+// Vercel rejects a serverless request body over 4.5 MB before it ever
+// reaches the Server Action (a bare 413, which surfaces client-side as an
+// opaque error), so check here and say so plainly. Kept just under the hard
+// limit to leave room for the other form fields and multipart overhead.
+const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024
 
 export interface SubmittableArtifact {
   id: string
@@ -19,18 +26,22 @@ export function SubmitSourceForm({
   projectId,
   knowledgeBases,
   artifacts,
+  initialArtifactId,
 }: {
   projectId: string
   knowledgeBases: { id: string; name: string }[]
   artifacts: SubmittableArtifact[]
+  // From a workstream artifact's "Submit to a knowledge base" link.
+  initialArtifactId?: string
 }) {
+  const preselected = artifacts.some((a) => a.id === initialArtifactId) ? initialArtifactId : undefined
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
-  const [kind, setKind] = useState<'file' | 'artifact'>('file')
+  const [kind, setKind] = useState<'file' | 'artifact'>(preselected ? 'artifact' : 'file')
   const [knowledgeBaseId, setKnowledgeBaseId] = useState(knowledgeBases[0]?.id ?? '')
-  const [artifactId, setArtifactId] = useState(artifacts[0]?.id ?? '')
+  const [artifactId, setArtifactId] = useState(preselected ?? artifacts[0]?.id ?? '')
 
   if (knowledgeBases.length === 0) {
     return <p className="text-sm text-zinc-500">Attach a project knowledge base above before submitting a source.</p>
@@ -40,11 +51,22 @@ export function SubmitSourceForm({
     e.preventDefault()
     setError(null)
     const formData = new FormData(e.currentTarget)
+    const file = formData.get('file')
+    if (file instanceof File && file.size > MAX_UPLOAD_BYTES) {
+      setError(
+        `This file is ${(file.size / 1024 / 1024).toFixed(1)} MB -- uploads here are limited to about 4 MB. Try a compressed or text-only version of the PDF.`
+      )
+      return
+    }
     formData.set('projectId', projectId)
     formData.set('knowledgeBaseId', knowledgeBaseId)
     startTransition(async () => {
       try {
-        await submitFileSourceAction(formData)
+        const result = await submitFileSourceAction(formData)
+        if (!result.ok) {
+          setError(result.error)
+          return
+        }
         setSubmitted(true)
         router.refresh()
       } catch (err) {
@@ -81,6 +103,7 @@ export function SubmitSourceForm({
 
   return (
     <div className="flex flex-col gap-3 rounded border border-zinc-200 bg-white p-4">
+      <BusyOverlay active={isPending} message={kind === 'file' ? 'Uploading your source…' : 'Submitting the artifact…'} />
       <div>
         <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Propose a new source</h3>
         <p className="mt-1 text-xs text-zinc-500">

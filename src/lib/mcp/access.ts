@@ -15,7 +15,7 @@ import { resourceMetadataUrl } from './discovery-metadata'
 // issued by Supabase Auth's OAuth 2.1 server, so the resulting context's
 // Supabase client is RLS-scoped to that user AND carries the token's
 // client_id claim -- which the restrictive oauth_clients_no_* policies
-// (20261003100001_external_mcp_access.sql) turn into database-level
+// (20261005100001_external_mcp_access.sql) turn into database-level
 // read-only. The service-role client below is used for exactly three
 // things, none of which read project data: looking up the OAuth client's
 // registered redirect URIs, the rate-limit counter, and the audit log.

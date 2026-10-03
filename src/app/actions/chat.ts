@@ -7,11 +7,22 @@ import { getLatestActivityLabel, listRecentConversations, listMessages, toDispla
 import { getProjectContext, describeProjectKnowledgeScope } from '@/lib/chat/project-context'
 import { listChatCapableModels, listProviders, listModels } from '@/lib/ai'
 import { getAssistantDescriptor } from '@/lib/workbench/assistant-descriptor'
-import { parseDocument } from '@/lib/parsing'
 import { createWorkingKnowledgeItem } from '@/lib/projects/working-knowledge'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import { conversationToTranscript, isTranscriptRow, messagePreview } from '@/lib/chat/transcript'
-import { attachmentMimeType, isZipFileName, truncateAttachmentText, MAX_ATTACHMENT_BYTES, ATTACHMENT_TYPES_LABEL, type ChatAttachment } from '@/lib/chat/attachments'
+import {
+  isZipFileName,
+  findingsContentForAttachment,
+  findingsNotesForAttachment,
+  MAX_ATTACHMENT_BYTES,
+  MAX_TOTAL_ATTACHMENT_CHARS,
+  totalAttachmentChars,
+  type ChatAttachment,
+} from '@/lib/chat/attachments'
+import { attachArtifact } from '@/lib/workbench/workstreams'
+import { getActiveProjectRole } from '@/lib/workbench/context'
+import { listWorkstreams } from '@/lib/projects/workstreams'
+import { readAttachmentFile, AttachmentReadError } from '@/lib/chat/attachment-reader'
 import { readZipAttachments, ZipAttachmentError } from '@/lib/chat/zip-attachments'
 
 // projectId is only consulted for a brand-new conversation (conversationId
@@ -40,25 +51,76 @@ export async function extractChatAttachmentAction(
   if (!(file instanceof File)) return { error: 'No file provided' }
   if (file.size > MAX_ATTACHMENT_BYTES) return { error: 'File exceeds the 5MB attachment limit' }
 
+  const bytes = Buffer.from(await file.arrayBuffer())
   if (isZipFileName(file.name)) {
     try {
-      return await readZipAttachments(Buffer.from(await file.arrayBuffer()))
+      return await readZipAttachments(bytes)
     } catch (err) {
-      return { error: err instanceof ZipAttachmentError ? err.message : "Could not read that zip file" }
+      return { error: err instanceof ZipAttachmentError ? err.message : 'Could not read that zip file' }
     }
   }
 
-  const mimeType = attachmentMimeType(file.name)
-  if (!mimeType) return { error: `Unsupported file type (${ATTACHMENT_TYPES_LABEL} only)` }
-
   try {
-    const parsed = await parseDocument(Buffer.from(await file.arrayBuffer()), mimeType)
-    const { text, truncated } = truncateAttachmentText(parsed.pages.map((p) => p.text).join('\n\n'))
-    if (!text) return { error: 'No readable text found in that file' }
-    return { attachments: [{ name: file.name, text, truncated }], skipped: [] }
-  } catch {
-    return { error: 'Could not read that file' }
+    return { attachments: [await readAttachmentFile(file.name, bytes)], skipped: [] }
+  } catch (err) {
+    return { error: err instanceof AttachmentReadError ? `This file ${err.message}` : 'Could not read that file' }
   }
+}
+
+// Files attached in a project chat can also be saved as Findings artifacts
+// in one of the project's workstreams, so they don't only live inside the
+// conversation -- and from there can be submitted to a knowledge base or
+// drafted into a Wiki article like any other artifact. Saving needs the same
+// project role as attaching evidence anywhere (workstream_artifacts'
+// insert RLS: owner, curator or consultant, or platform admin), so the
+// composer only offers it when canSave.
+export async function listFindingsTargetsAction(
+  projectId: string
+): Promise<{ canSave: boolean; workstreams: { id: string; name: string }[] }> {
+  const ctx = await requireUser()
+  const role = ctx.profile.role === 'admin' ? 'admin' : await getActiveProjectRole(ctx, projectId)
+  const canSave = role === 'admin' || role === 'owner' || role === 'curator' || role === 'consultant'
+  if (!canSave) return { canSave: false, workstreams: [] }
+  const workstreams = await listWorkstreams(ctx.supabase, projectId)
+  return { canSave, workstreams: workstreams.map((w) => ({ id: w.id, name: w.name })) }
+}
+
+export async function saveAttachmentsAsFindingsAction(input: {
+  projectId: string
+  workstreamId: string
+  attachments: ChatAttachment[]
+}): Promise<{ saved: number; workstreamName: string; error?: never } | { saved?: never; workstreamName?: never; error: string }> {
+  const ctx = await requireUser()
+  if (input.attachments.length === 0) return { error: 'Nothing to save' }
+  if (totalAttachmentChars(input.attachments) > MAX_TOTAL_ATTACHMENT_CHARS) return { error: 'Attachments are too large to save together' }
+
+  const { data: workstream } = await ctx.supabase.from('project_workstreams').select('id, name, project_id').eq('id', input.workstreamId).maybeSingle()
+  if (!workstream || workstream.project_id !== input.projectId) return { error: 'That workstream is not in this project' }
+
+  let saved = 0
+  try {
+    for (const attachment of input.attachments) {
+      await attachArtifact(ctx, {
+        workstreamId: workstream.id,
+        artifactType: 'findings',
+        title: attachment.name.split('/').pop() || attachment.name,
+        content: findingsContentForAttachment(attachment),
+        notes: findingsNotesForAttachment(attachment),
+      })
+      saved++
+    }
+  } catch (err) {
+    const reason =
+      err instanceof AuthError || err instanceof ProjectValidationError
+        ? err.message
+        : err && typeof err === 'object' && 'code' in err && err.code === '42501'
+          ? "Saving files to a workstream needs this project's owner, curator or consultant role"
+          : 'Could not save the files'
+    return { error: saved > 0 ? `${reason} (${saved} of ${input.attachments.length} were saved)` : reason }
+  }
+  revalidatePath(`/projects/${input.projectId}/workstreams/${workstream.id}`)
+  revalidatePath(`/projects/${input.projectId}`)
+  return { saved, workstreamName: workstream.name }
 }
 
 // Ember header's "Save as note" -- the whole visible conversation becomes a
