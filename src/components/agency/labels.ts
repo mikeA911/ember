@@ -1,23 +1,11 @@
-import type { PresentationStatus, ProjectStatus, WorkstreamPromotionStatus, WorkstreamStatus } from '@/types/database'
+import type { PresentationStatus, WorkstreamPromotionStatus, WorkstreamStatus } from '@/types/database'
 
 // Shared by the agency dashboard (AgencyDashboardView.tsx) and its
 // downloadable summary (agency-summary.ts), so both say the same thing.
 
-// Same display relabeling as ProjectStatusSection.tsx's own pipeline.
-export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  draft: 'Initial Draft',
-  active: 'Working on it',
-  review: 'For Approval',
-  completed: 'Approved',
-  archived: 'Archived',
-}
-export const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
-  draft: 'bg-zinc-100 text-zinc-700',
-  active: 'bg-amber-100 text-amber-800',
-  review: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  archived: 'bg-zinc-200 text-zinc-500',
-}
+// Project status labels live in lib/projects/status-labels.ts, shared by
+// every screen that shows a project's status (including "Live").
+export { PROJECT_STATUS_LABELS, PROJECT_STATUS_STYLES } from '@/lib/projects/status-labels'
 
 export const WORKSTREAM_STATUS_LABELS: Record<WorkstreamStatus, string> = {
   draft: 'Draft',

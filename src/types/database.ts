@@ -691,7 +691,7 @@ export type WorkingKnowledgeShareUpdate = Partial<Omit<WorkingKnowledgeShare, 'i
 // ============================================
 
 export type ProjectType = 'learning' | 'experiment' | 'consulting' | 'transformation' | 'knowledge'
-export type ProjectStatus = 'draft' | 'active' | 'review' | 'completed' | 'archived'
+export type ProjectStatus = 'draft' | 'active' | 'review' | 'completed' | 'live' | 'archived'
 // "My Projects" list grouping (2026-09-04) -- a separate axis from
 // ProjectType (see 20260904120001_project_portfolio_category.sql's own
 // comment for why the two don't line up). Mike's "Suggested categorization

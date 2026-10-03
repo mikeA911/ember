@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { SectionHero } from '@/components/SectionHero'
+import { projectStatusLabel, projectStatusStyle } from '@/lib/projects/status-labels'
 
 const TYPE_LABELS: Record<string, string> = {
   learning: 'Learning',
@@ -26,12 +27,6 @@ const CATEGORY_SECTIONS: { key: string; title: string; description: string }[] =
   { key: 'other', title: 'Others', description: 'Not yet categorized.' },
 ]
 
-const STATUS_STYLES: Record<string, string> = {
-  draft: 'bg-zinc-100 text-zinc-700',
-  active: 'bg-green-100 text-green-800',
-  completed: 'bg-blue-100 text-blue-700',
-  archived: 'bg-zinc-200 text-zinc-500',
-}
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'Owner',
@@ -147,7 +142,7 @@ export default async function ProjectsPage() {
                             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Published</span>
                           )}
                           {(p.status !== 'draft' || canSeeDraftBadge(p)) && (
-                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[p.status]}`}>{p.status}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${projectStatusStyle(p.status)}`}>{projectStatusLabel(p.status)}</span>
                           )}
                         </div>
                       </div>

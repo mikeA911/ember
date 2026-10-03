@@ -7,7 +7,7 @@ export default async function NewWorkstreamPage({ params }: { params: Promise<{ 
   const { id } = await params
   const supabase = await createClient()
 
-  const { data: project } = await supabase.from('projects').select('id, name').eq('id', id).single()
+  const { data: project } = await supabase.from('projects').select('id, name, status').eq('id', id).single()
   if (!project) notFound()
 
   return (
@@ -17,8 +17,13 @@ export default async function NewWorkstreamPage({ params }: { params: Promise<{ 
           &larr; {project.name}
         </Link>
         <h1 className="mt-2 text-xl font-semibold">New Workstream</h1>
+        {project.status === 'live' && (
+          <p className="mt-1 text-sm text-zinc-600">
+            {project.name} is Live -- add each bug fix or new feature as its own workstream here. The project stays Live while you work on it.
+          </p>
+        )}
       </div>
-      <CreateWorkstreamForm projectId={id} />
+      <CreateWorkstreamForm projectId={id} defaultLifecycleStage={project.status === 'live' ? 'management_maintenance' : ''} />
     </div>
   )
 }

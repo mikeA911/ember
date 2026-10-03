@@ -14,6 +14,7 @@ import type {
 } from '@/lib/workbench/agency-dashboard'
 import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamPromotionsReview'
 import { AssignAgencySelect } from './AssignAgencySelect'
+import { PROJECT_STATUS_LABELS, PROJECT_STATUS_STYLES } from '@/lib/projects/status-labels'
 import { ClientFeeEditor } from './ClientFeeEditor'
 import { PlatformRateForm } from './PlatformRateForm'
 import { CATEGORY_LABELS } from '@/lib/projects/portfolio-categories'
@@ -22,8 +23,6 @@ import {
   CONFIDENCE_LABELS,
   CONFIDENCE_STYLES,
   PRESENTATION_LABELS,
-  PROJECT_STATUS_LABELS,
-  PROJECT_STATUS_STYLES,
   PROMOTION_LABELS,
   PROMOTION_STYLES,
   WORKSTREAM_STATUS_LABELS,

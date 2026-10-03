@@ -770,6 +770,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           projectId={project.id}
           status={project.status}
           canApprove={canApprove}
+          canAddWorkstream={canCurateWorkstreams}
           showStatus={showStatusBadge}
           history={(statusHistory ?? []).map((h) => ({
             fromStatus: h.from_status,

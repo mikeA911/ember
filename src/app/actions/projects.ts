@@ -127,6 +127,20 @@ export async function approveProjectAction(projectId: string) {
   revalidatePath(`/projects/${projectId}`)
 }
 
+export async function markProjectLiveAction(projectId: string) {
+  const ctx = await requireUser()
+  await workbench.markProjectLive(ctx, projectId)
+  revalidatePath('/projects')
+  revalidatePath(`/projects/${projectId}`)
+}
+
+export async function reopenProjectAction(projectId: string) {
+  const ctx = await requireUser()
+  await workbench.reopenProject(ctx, projectId)
+  revalidatePath('/projects')
+  revalidatePath(`/projects/${projectId}`)
+}
+
 export async function startWorkingOnProjectAction(projectId: string) {
   const ctx = await requireUser()
   await workbench.startWorkingOnProject(ctx, projectId)
