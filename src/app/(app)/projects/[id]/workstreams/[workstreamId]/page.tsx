@@ -361,8 +361,8 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Knowledge</h2>
         <p className="text-xs text-zinc-500">
-          Scoped to this workstream only -- distinct from the project&apos;s own knowledge, and not automatically visible
-          to any other workstream in this project.
+          Scoped to this workstream only and not automatically visible to any other workstream in this project. A new
+          workstream starts with the project&apos;s own knowledge bases attached.
         </p>
         {workstreamKnowledgeBases.length > 0 ? (
           <ul className="flex flex-col gap-1 text-sm">

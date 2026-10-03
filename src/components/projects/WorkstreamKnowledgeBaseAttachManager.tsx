@@ -43,10 +43,15 @@ export function WorkstreamKnowledgeBaseAttachManager({
     return <p className="text-xs text-zinc-500">No unattached knowledge bases available to attach.</p>
   }
 
+  // Collapsed by default -- the list of attachable KBs grows with the
+  // platform, and the workstream already starts with its Project's own KBs
+  // attached (createWorkstream), so picking more is the less common path.
   return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Attach a knowledge base</h3>
-      <ul className="flex flex-col gap-1.5">
+    <details>
+      <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        Attach a knowledge base ({availableKnowledgeBases.length} available)
+      </summary>
+      <ul className="mt-2 flex flex-col gap-1.5">
         {availableKnowledgeBases.map((kb) => (
           <li key={kb.id} className="flex items-start justify-between gap-3 rounded border border-zinc-200 bg-white p-2 text-xs">
             <div>
@@ -66,8 +71,8 @@ export function WorkstreamKnowledgeBaseAttachManager({
           </li>
         ))}
       </ul>
-      {error && <span className="text-xs text-red-600">{error}</span>}
-    </div>
+      {error && <span className="mt-2 block text-xs text-red-600">{error}</span>}
+    </details>
   )
 }
 
