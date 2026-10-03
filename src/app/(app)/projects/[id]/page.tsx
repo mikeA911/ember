@@ -41,6 +41,7 @@ import { ProjectSummaryButton } from '@/components/projects/ProjectSummaryButton
 import type { ProjectSummaryInput } from '@/lib/projects/status-summary'
 import { getProjectApprovalState } from '@/lib/workbench/project-approval'
 import { ProjectApprovalBanner } from '@/components/projects/ProjectApprovalBanner'
+import { WorkstreamsDropdown } from '@/components/projects/WorkstreamsDropdown'
 
 const TYPE_LABELS: Record<string, string> = {
   learning: 'Learning',
@@ -210,7 +211,7 @@ export default async function ProjectPage({
     // sourceSubmissions above.
     user ? supabase.from('project_join_requests').select('*').eq('project_id', id).order('created_at', { ascending: false }) : Promise.resolve({ data: null }),
     getOntologyMapData(supabase, id),
-    // Per-workstream artifact counts for the Workstreams list below --
+    // Per-workstream artifact counts for the header Workstreams menu --
     // status only, RLS-scoped like the rest of this page.
     supabase
       .from('workstream_artifacts')
@@ -455,7 +456,7 @@ export default async function ProjectPage({
         />
       )}
       <div>
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">{project.name}</h1>
             {viewerMembership?.role && (
@@ -465,20 +466,38 @@ export default async function ProjectPage({
               <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Published</span>
             )}
           </div>
-          {canManage && (
-            <div className="flex items-center gap-3">
-              <Link href={`/projects/${project.id}/members`} className="text-sm underline">
-                Members
-              </Link>
-              <Link href={`/projects/${project.id}/access`} className="text-sm underline">
-                Access &amp; Evidence
-              </Link>
-              <Link href={`/projects/${project.id}/publish`} className="text-sm underline">
-                Publish
-              </Link>
-              <CloneProjectButton projectId={project.id} />
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <WorkstreamsDropdown
+              projectId={project.id}
+              canCreate={canCurateWorkstreams}
+              workstreams={workstreams.map((w) => {
+                const artifactCounts = countArtifacts(artifactStatusesByWorkstream.get(w.id) ?? [])
+                return {
+                  id: w.id,
+                  name: w.name,
+                  status: w.status,
+                  deliverablesCompleted: w.deliverables.filter((d) => d.completed).length,
+                  deliverablesTotal: w.deliverables.length,
+                  artifactsTotal: artifactCounts.total,
+                  artifactsAwaitingReview: artifactCounts.awaitingReview,
+                }
+              })}
+            />
+            {canManage && (
+              <>
+                <Link href={`/projects/${project.id}/members`} className="text-sm underline">
+                  Members
+                </Link>
+                <Link href={`/projects/${project.id}/access`} className="text-sm underline">
+                  Access &amp; Evidence
+                </Link>
+                <Link href={`/projects/${project.id}/publish`} className="text-sm underline">
+                  Publish
+                </Link>
+                <CloneProjectButton projectId={project.id} />
+              </>
+            )}
+          </div>
           {project.visibility === 'public' && project.public_slug && (
             <Link href={`/examples/${project.public_slug}`} className="text-sm underline text-green-700">
               View public page
@@ -631,7 +650,7 @@ export default async function ProjectPage({
         {/* Member-submitted knowledge sources (2026-09-04) -- any active
             member can propose a source; the project's owner/curator/admin
             (canCurateWorkstreams -- can_curate_project, the same bar as
-            Workstreams above) decides. */}
+            New Workstream in the header) decides. */}
         {canCurateWorkstreams && (
           <SourceSubmissionsReview
             projectId={project.id}
@@ -700,49 +719,6 @@ export default async function ProjectPage({
           </ul>
         ) : (
           <p className="text-sm text-zinc-500">No benchmark attached yet.</p>
-        )}
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Workstreams</h2>
-          {canCurateWorkstreams && (
-            <Link href={`/projects/${project.id}/workstreams/new`} className="text-sm underline">
-              New Workstream
-            </Link>
-          )}
-        </div>
-        {workstreams.length > 0 ? (
-          <ul className="flex flex-col gap-1 text-sm">
-            {workstreams.map((w) => {
-              const completed = w.deliverables.filter((d) => d.completed).length
-              const artifactCounts = countArtifacts(artifactStatusesByWorkstream.get(w.id) ?? [])
-              return (
-                <li key={w.id}>
-                  <Link href={`/projects/${project.id}/workstreams/${w.id}`} className="underline">
-                    {w.name}
-                  </Link>{' '}
-                  <span className="text-zinc-500">
-                    ({w.status} · {completed}/{w.deliverables.length} deliverables
-                    {artifactCounts.total > 0 && (
-                      <>
-                        {' · '}
-                        <Link href={`/projects/${project.id}/workstreams/${w.id}#artifacts`} className="hover:underline">
-                          {artifactCounts.total} {artifactCounts.total === 1 ? 'artifact' : 'artifacts'}
-                        </Link>
-                        {artifactCounts.awaitingReview > 0 && (
-                          <span className="font-medium text-amber-700"> ({artifactCounts.awaitingReview} to review)</span>
-                        )}
-                      </>
-                    )}
-                    )
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        ) : (
-          <p className="text-sm text-zinc-500">No workstreams defined yet.</p>
         )}
       </section>
 
