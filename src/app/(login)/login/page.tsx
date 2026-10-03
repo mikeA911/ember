@@ -53,6 +53,14 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           }}
         />
       </div>
+      <a
+        href="https://sandz.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute left-4 top-4 shadow-md transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:left-6 sm:top-6"
+      >
+        <Image src="/images/sandz-logo.png" alt="Sandz (opens in a new tab)" width={71} height={90} priority className="h-[72px] w-auto sm:h-[90px]" />
+      </a>
       <div className="w-full max-w-sm rounded-lg border border-white/40 bg-white/95 p-6 shadow-xl backdrop-blur sm:p-8">
         <h1 className="mb-6 text-2xl font-semibold tracking-tight">Ember</h1>
         <LoginForm next={safeNextPath(next)} />
