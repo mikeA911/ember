@@ -169,8 +169,8 @@ describe('assembleAgencyDashboard', () => {
       builders: [person('builder-1', 'b1@example.com')],
       roster: [{ builder_id: 'builder-1', agency_id: 'agency-1' }],
       projects: [
-        { id: 'p-workspace', name: 'Workspace', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z' },
-        { id: 'p-acme', name: 'Acme', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-10T00:00:00Z' },
+        { id: 'p-workspace', name: 'Workspace', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z', portfolio_category: 'builder_lab' },
+        { id: 'p-acme', name: 'Acme', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-10T00:00:00Z', portfolio_category: 'foundation' },
       ],
       workstreams: [
         {
@@ -240,9 +240,31 @@ describe('assembleAgencyDashboard', () => {
     ])
     expect(acme.completion).toEqual({ done: 3, total: 4, pct: 75 })
     expect(builder.proposals[0]).toMatchObject({
+      category: 'builder_lab',
       completion: { done: 1, total: 2, pct: 50 },
       knowledgeBases: ['Acme Data', 'Builder Playbook'],
     })
+    // Category order, not insertion order; each category's items pooled.
+    expect(result.completionByCategory).toEqual([
+      { category: 'foundation', clientProjectCount: 1, proposalCount: 0, workstreamCount: 2, completion: { done: 3, total: 4, pct: 75 } },
+      { category: 'builder_lab', clientProjectCount: 0, proposalCount: 1, workstreamCount: 1, completion: { done: 1, total: 2, pct: 50 } },
+    ])
+    expect(result.overallCompletion).toEqual({ done: 4, total: 6, pct: 67 })
+  })
+
+  it('reads a project without a category as Uncategorized', () => {
+    const result = assembleAgencyDashboard({
+      ...empty,
+      viewerIsAdmin: false,
+      agencies: [person('agency-1', 'a@example.com')],
+      builders: [person('builder-1', 'b1@example.com')],
+      roster: [{ builder_id: 'builder-1', agency_id: 'agency-1' }],
+      projects: [{ id: 'p1', name: 'Workspace', status: 'active', owner_id: 'builder-1', updated_at: '2026-09-01T00:00:00Z' }],
+      workstreams: [{ id: 'ws-1', project_id: 'p1', name: 'A', status: 'active', updated_at: '2026-09-01T00:00:00Z' }],
+      updates: [],
+    })
+    expect(result.completionByCategory.map((c) => c.category)).toEqual(['other'])
+    expect(result.overallCompletion).toEqual({ done: 0, total: 1, pct: 0 })
   })
 
   it('never lists unassigned builders for a curator', () => {

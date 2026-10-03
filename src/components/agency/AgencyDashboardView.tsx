@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type {
   AgencyAttention,
   AgencyBuilderRow,
+  AgencyCategoryCompletion,
   AgencyClientProjectRow,
   AgencyCompletion,
   AgencyDashboard,
@@ -15,6 +16,7 @@ import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamProm
 import { AssignAgencySelect } from './AssignAgencySelect'
 import { ClientFeeEditor } from './ClientFeeEditor'
 import { PlatformRateForm } from './PlatformRateForm'
+import { CATEGORY_LABELS } from '@/lib/projects/portfolio-categories'
 import { formatMoney, monthlyTotals } from './money'
 import {
   CONFIDENCE_LABELS,
@@ -124,7 +126,7 @@ function ClientProjectRow({ project, linkable }: { project: AgencyClientProjectR
           <span className="font-medium">{project.name}</span>
         )}
         <div className="mt-0.5 text-xs text-zinc-500">
-          Created {formatDate(project.createdAt)} · {project.clientViewerCount} client viewer{project.clientViewerCount === 1 ? '' : 's'} ·{' '}
+          {CATEGORY_LABELS[project.category]} · Created {formatDate(project.createdAt)} · {project.clientViewerCount} client viewer{project.clientViewerCount === 1 ? '' : 's'} ·{' '}
           {project.activeWorkstreamCount} of {project.workstreamCount} workstream{project.workstreamCount === 1 ? '' : 's'} active
         </div>
         <KnowledgeBases names={project.knowledgeBases} label="Project knowledge bases" />
@@ -259,6 +261,47 @@ function FeeTotals({ projects }: { projects: AgencyClientProjectRow[] }) {
   )
 }
 
+function categoryCounts(c: AgencyCategoryCompletion) {
+  const parts = []
+  if (c.clientProjectCount > 0) parts.push(`${c.clientProjectCount} client project${c.clientProjectCount === 1 ? '' : 's'}`)
+  if (c.proposalCount > 0) parts.push(`${c.proposalCount} proposal${c.proposalCount === 1 ? '' : 's'}`)
+  return parts.join(' · ')
+}
+
+// One meter per portfolio category, overall first. Single hue -- it's one
+// measure -- with the percentage printed beside each bar so the value never
+// rests on the bar alone; done-of-total counts on hover.
+function CompletionByCategory({ categories, overall }: { categories: AgencyCategoryCompletion[]; overall: AgencyCompletion }) {
+  if (categories.length === 0) return null
+  const rows = [
+    { key: 'overall', label: 'Overall', detail: 'All client projects and proposals', completion: overall, strong: true },
+    ...categories.map((c) => ({ key: c.category, label: CATEGORY_LABELS[c.category], detail: categoryCounts(c), completion: c.completion, strong: false })),
+  ]
+  return (
+    <section className="flex flex-col gap-2 rounded border border-zinc-200 bg-white px-3 py-2">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Completion by category</h2>
+      <ul className="flex flex-col gap-1.5">
+        {rows.map((r) => (
+          <li
+            key={r.key}
+            className="grid grid-cols-[minmax(6rem,9rem)_1fr_3rem] items-center gap-3 text-sm sm:grid-cols-[9rem_1fr_3rem_minmax(0,14rem)]"
+            title={r.completion.pct === null ? undefined : `${r.completion.done} of ${r.completion.total} items done`}
+          >
+            <span className={r.strong ? 'font-semibold' : 'text-zinc-700'}>{r.label}</span>
+            <div className="h-2 overflow-hidden rounded-full bg-zinc-200">
+              <div className="h-full rounded-full bg-orange-500" style={{ width: `${r.completion.pct ?? 0}%` }} />
+            </div>
+            <span className={`text-right tabular-nums ${r.strong ? 'font-semibold' : 'text-zinc-700'}`}>
+              {r.completion.pct === null ? '—' : `${r.completion.pct}%`}
+            </span>
+            <span className="hidden truncate text-xs text-zinc-500 sm:block">{r.detail}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded border border-zinc-200 bg-white px-3 py-2">
@@ -294,6 +337,8 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
         <Stat label="Client projects created this month" value={allClientProjects.filter((p) => isThisMonth(p.createdAt)).length} />
         <Stat label="Client projects in total" value={allClientProjects.length} />
       </div>
+
+      <CompletionByCategory categories={dashboard.completionByCategory} overall={dashboard.overallCompletion} />
 
       <FeeTotals projects={allClientProjects} />
       {viewerIsAdmin && <PlatformRateForm current={platformRatePct} />}

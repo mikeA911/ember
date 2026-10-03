@@ -16,6 +16,7 @@ const builder: AgencyBuilderRow = {
       id: 'p-acme',
       name: 'Acme | HR',
       status: 'active',
+      category: 'foundation',
       clientViewerCount: 1,
       fee: { amount: 1000, currency: 'USD', period: 'monthly', platformRatePct: 10, monthlyAmount: 1000, platformMonthly: 100 },
       createdAt: '2026-09-10T00:00:00Z',
@@ -46,6 +47,7 @@ const builder: AgencyBuilderRow = {
       status: 'active',
       presentationStatus: 'review_open',
       promotionStatus: null,
+      category: 'builder_lab',
       completion: { done: 1, total: 2, pct: 50 },
       knowledgeBases: ['Builder Playbook'],
       lastActivityAt: '2026-09-25T00:00:00Z',
@@ -59,6 +61,11 @@ const dashboard: AgencyDashboard = {
   platformRatePct: 10,
   agencies: [{ agencyId: 'agency-1', email: 'agency@example.com', fullName: 'North Agency', builders: [builder] }],
   unassigned: [],
+  completionByCategory: [
+    { category: 'foundation', clientProjectCount: 1, proposalCount: 0, workstreamCount: 2, completion: { done: 3, total: 4, pct: 75 } },
+    { category: 'builder_lab', clientProjectCount: 0, proposalCount: 1, workstreamCount: 1, completion: { done: 1, total: 2, pct: 50 } },
+  ],
+  overallCompletion: { done: 4, total: 6, pct: 67 },
 }
 
 describe('buildAgencySummaryMarkdown', () => {
@@ -68,18 +75,24 @@ describe('buildAgencySummaryMarkdown', () => {
     expect(md).toContain('# My builders — summary')
     expect(md).toContain('_Generated Oct 3, 2026, 9:00 AM.')
     expect(md).toContain('- **Client projects:** 1, with 2 workstreams')
-    expect(md).toContain('- **Overall completion:** 75% (3 of 4 items)')
+    expect(md).toContain('- **Overall completion:** 67% (4 of 6 items, client projects and proposals)')
     expect(md).toContain('- **Open proposals:** 1')
     expect(md).toMatch(/Maintenance fees \(USD\):\*\* \$1,000(\.00)?\/month, platform share \$100(\.00)?\/month/)
   })
 
   it('lists each client project with its workstreams, knowledge bases and completion', () => {
-    expect(md).toContain('| Acme \\| HR | Bea Builder | Working on it | 2 | 75% |')
+    expect(md).toContain('| Acme \\| HR | Foundation | Bea Builder | Working on it | 2 | 75% |')
     expect(md).toContain('#### Acme | HR')
     expect(md).toContain('**Project knowledge bases:** HR Policies')
     expect(md).toContain('| Kickoff | Completed | 100% | — |')
     expect(md).toContain('| Setup | In progress | 67% | Acme Data |')
     expect(md).toContain('**Latest update** (Setup): Importing (On track) — Half the records in — Next: Finish import')
+  })
+
+  it('breaks completion down by portfolio category', () => {
+    expect(md).toContain('## Completion by category')
+    expect(md).toContain('| Foundation | 1 | 0 | 2 | 75% (3 of 4) |')
+    expect(md).toContain('| Builder Lab | 0 | 1 | 1 | 50% (1 of 2) |')
   })
 
   it("lists the builder's proposals with their stage", () => {

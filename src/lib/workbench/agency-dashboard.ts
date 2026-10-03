@@ -6,6 +6,7 @@ import type {
   BuilderProgressConfidence,
   FeeBillingPeriod,
   FeeCurrency,
+  PortfolioCategory,
   PresentationStatus,
   ProjectStatus,
   WorkstreamPromotionStatus,
@@ -15,6 +16,7 @@ import type {
 import type { WorkbenchCallerContext } from './context'
 import { shapePendingPromotions, type PendingWorkstreamPromotionRow } from './workstream-promotions'
 import { getPlatformRatePct, monthlyEquivalent } from './client-billing'
+import { CATEGORY_ORDER } from '@/lib/projects/portfolio-categories'
 
 // Builder agency dashboard (/agency, 2026-10-01, Mike): the platform owner
 // is the admin, each builder agency is a curator, each builder is a
@@ -76,6 +78,8 @@ export interface AgencyProposalRow {
   status: WorkstreamStatus
   presentationStatus: PresentationStatus | null
   promotionStatus: WorkstreamPromotionStatus | null
+  // The builder workspace's own portfolio category.
+  category: PortfolioCategory
   completion: AgencyCompletion
   knowledgeBases: string[]
   lastActivityAt: string
@@ -97,6 +101,7 @@ export interface AgencyClientProjectRow {
   id: string
   name: string
   status: ProjectStatus
+  category: PortfolioCategory
   clientViewerCount: number
   fee: AgencyClientFee | null
   createdAt: string
@@ -131,6 +136,16 @@ export interface AgencyGroup {
   builders: AgencyBuilderRow[]
 }
 
+// Completion rolled up per portfolio category (Foundation, Builder Lab,
+// ...) across every client project and proposal on the dashboard.
+export interface AgencyCategoryCompletion {
+  category: PortfolioCategory
+  clientProjectCount: number
+  proposalCount: number
+  workstreamCount: number
+  completion: AgencyCompletion
+}
+
 export interface AgencyDashboard {
   viewerIsAdmin: boolean
   // Today's platform rate, applied to fees recorded from now on.
@@ -138,6 +153,9 @@ export interface AgencyDashboard {
   agencies: AgencyGroup[]
   // Admin only -- builders with no agency_builders row yet.
   unassigned: AgencyBuilderRow[]
+  // In category order; only categories with work in them.
+  completionByCategory: AgencyCategoryCompletion[]
+  overallCompletion: AgencyCompletion
 }
 
 interface ProfileRow {
@@ -152,7 +170,15 @@ export interface AgencyDashboardInput {
   agencies: ProfileRow[]
   builders: ProfileRow[]
   roster: { builder_id: string; agency_id: string }[]
-  projects: { id: string; name: string; status: ProjectStatus; owner_id: string | null; updated_at: string }[]
+  projects: {
+    id: string
+    name: string
+    status: ProjectStatus
+    owner_id: string | null
+    updated_at: string
+    // Optional so fixtures can omit it; missing reads as 'other'.
+    portfolio_category?: PortfolioCategory | null
+  }[]
   workstreams: {
     id: string
     project_id: string
@@ -326,6 +352,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
         id: p.id,
         name: p.name,
         status: p.status,
+        category: p.portfolio_category ?? 'other',
         clientViewerCount: viewerCountByProject.get(p.id) ?? 0,
         fee: feeByProject.get(p.id) ?? null,
         createdAt: promotedAt,
@@ -349,6 +376,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
           status: w.status,
           presentationStatus: presentationStatusByWorkstream.get(w.id) ?? null,
           promotionStatus: promotionByWorkstream.get(w.id)?.status ?? null,
+          category: p.portfolio_category ?? 'other',
           completion: workstreamCompletion(w),
           // The workspace's own KBs back every proposal in it.
           knowledgeBases: [...new Set([...(kbNamesByProject.get(p.id) ?? []), ...(kbNamesByWorkstream.get(w.id) ?? [])])].sort((a, b) =>
@@ -400,11 +428,40 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
     builders: builderRows.filter((b) => b.agencyId === a.id),
   }))
 
+  const unassigned = input.viewerIsAdmin ? builderRows.filter((b) => !b.agencyId) : []
+  const shown = [...agencies.flatMap((a) => a.builders), ...unassigned]
+  const byCategory = new Map<PortfolioCategory, { clientProjectCount: number; proposalCount: number; workstreamCount: number; items: AgencyCompletion[] }>()
+  const bucket = (c: PortfolioCategory) => {
+    const b = byCategory.get(c) ?? { clientProjectCount: 0, proposalCount: 0, workstreamCount: 0, items: [] }
+    byCategory.set(c, b)
+    return b
+  }
+  for (const b of shown) {
+    for (const p of b.clientProjects) {
+      const cat = bucket(p.category)
+      cat.clientProjectCount++
+      cat.workstreamCount += p.workstreams.length
+      cat.items.push(p.completion)
+    }
+    for (const p of b.proposals) {
+      const cat = bucket(p.category)
+      cat.proposalCount++
+      cat.workstreamCount++
+      cat.items.push(p.completion)
+    }
+  }
+  const completionByCategory = CATEGORY_ORDER.flatMap((category) => {
+    const b = byCategory.get(category)
+    return b ? [{ category, clientProjectCount: b.clientProjectCount, proposalCount: b.proposalCount, workstreamCount: b.workstreamCount, completion: completionOf(b.items) }] : []
+  })
+
   return {
     viewerIsAdmin: input.viewerIsAdmin,
     platformRatePct: input.platformRatePct,
     agencies,
-    unassigned: input.viewerIsAdmin ? builderRows.filter((b) => !b.agencyId) : [],
+    unassigned,
+    completionByCategory,
+    overallCompletion: completionOf(completionByCategory.map((c) => c.completion)),
   }
 }
 
@@ -450,7 +507,7 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
   let promotions: AgencyDashboardInput['promotions'] = []
   if (builderIds.length > 0) {
     const [{ data: projectRows, error: projectError }, { data: promotionRows, error: promotionError }] = await Promise.all([
-      admin.from('projects').select('id, name, status, owner_id, updated_at').in('owner_id', builderIds).neq('status', 'archived'),
+      admin.from('projects').select('id, name, status, owner_id, updated_at, portfolio_category').in('owner_id', builderIds).neq('status', 'archived'),
       admin
         .from('workstream_promotions')
         .select(

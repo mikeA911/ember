@@ -6,6 +6,7 @@ import type {
   AgencyDashboard,
   AgencySharedUpdate,
 } from '@/lib/workbench/agency-dashboard'
+import { CATEGORY_LABELS } from '@/lib/projects/portfolio-categories'
 import { formatMoney, monthlyTotals } from './money'
 import { CONFIDENCE_LABELS, PROJECT_STATUS_LABELS, WORKSTREAM_STATUS_LABELS, proposalStageLabel } from './labels'
 
@@ -90,8 +91,7 @@ export function buildAgencySummaryMarkdown(dashboard: AgencyDashboard, generated
   const clientProjects = builders.flatMap((b) => b.clientProjects)
   const workstreams = clientProjects.flatMap((p) => p.workstreams)
   const openProposals = builders.flatMap((b) => b.proposals).filter((p) => p.promotionStatus !== 'approved')
-  const done = clientProjects.reduce((n, p) => n + p.completion.done, 0)
-  const total = clientProjects.reduce((n, p) => n + p.completion.total, 0)
+  const overall = dashboard.overallCompletion
 
   const lines = [
     `# ${dashboard.viewerIsAdmin ? 'Builder agencies' : 'My builders'} — summary`,
@@ -102,7 +102,7 @@ export function buildAgencySummaryMarkdown(dashboard: AgencyDashboard, generated
     '',
     `- **Builders:** ${builders.length}`,
     `- **Client projects:** ${clientProjects.length}, with ${plural(workstreams.length, 'workstream')}`,
-    `- **Overall completion:** ${total > 0 ? `${Math.round((done / total) * 100)}% (${done} of ${total} items)` : '—'}`,
+    `- **Overall completion:** ${overall.pct === null ? '—' : `${overall.pct}% (${overall.done} of ${overall.total} items, client projects and proposals)`}`,
     `- **Open proposals:** ${openProposals.length}`,
   ]
   for (const [currency, t] of monthlyTotals(clientProjects.flatMap((p) => (p.fee ? [p.fee] : [])))) {
@@ -110,12 +110,24 @@ export function buildAgencySummaryMarkdown(dashboard: AgencyDashboard, generated
   }
   lines.push('')
 
+  if (dashboard.completionByCategory.length > 0) {
+    lines.push('## Completion by category', '', '| Category | Client projects | Proposals | Workstreams | Complete |', '| --- | --- | --- | --- | --- |')
+    for (const c of dashboard.completionByCategory) {
+      lines.push(
+        `| ${CATEGORY_LABELS[c.category]} | ${c.clientProjectCount} | ${c.proposalCount} | ${c.workstreamCount} | ${completionLabel(c.completion)}${
+          c.completion.pct === null ? '' : ` (${c.completion.done} of ${c.completion.total})`
+        } |`
+      )
+    }
+    lines.push('')
+  }
+
   if (clientProjects.length > 0) {
-    lines.push('## Client projects at a glance', '', '| Project | Builder | Status | Workstreams | Complete |', '| --- | --- | --- | --- | --- |')
+    lines.push('## Client projects at a glance', '', '| Project | Category | Builder | Status | Workstreams | Complete |', '| --- | --- | --- | --- | --- | --- |')
     for (const b of builders) {
       for (const p of b.clientProjects) {
         lines.push(
-          `| ${cell(p.name)} | ${cell(b.fullName || b.email || b.builderId)} | ${PROJECT_STATUS_LABELS[p.status]} | ${p.workstreams.length} | ${completionLabel(p.completion)} |`
+          `| ${cell(p.name)} | ${CATEGORY_LABELS[p.category]} | ${cell(b.fullName || b.email || b.builderId)} | ${PROJECT_STATUS_LABELS[p.status]} | ${p.workstreams.length} | ${completionLabel(p.completion)} |`
         )
       }
     }

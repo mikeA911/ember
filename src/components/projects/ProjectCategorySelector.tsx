@@ -4,17 +4,9 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import type { PortfolioCategory } from '@/types/database'
 import { updateProjectPortfolioCategoryAction } from '@/app/actions/projects'
+import { CATEGORY_LABELS } from '@/lib/projects/portfolio-categories'
 
-export const CATEGORY_LABELS: Record<PortfolioCategory, string> = {
-  sandz: 'Sandz',
-  foundation: 'Foundation',
-  showcases: 'Showcases',
-  builder_lab: 'Builder Lab',
-  templates: 'Templates',
-  legacy_test: 'Legacy/Test',
-  archived: 'Archived',
-  other: 'Uncategorized',
-}
+export { CATEGORY_LABELS }
 
 // Inline editor for the "My Projects" list-grouping tag (2026-09-04) --
 // deliberately a plain select-and-save, not ProjectStarterPromptForm's
