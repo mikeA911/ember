@@ -29,7 +29,7 @@ import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
 // copy of an existing tree the same way (tempId = the source row's own id).
 export async function insertStagedTree<T extends { tempId: string; parentTempId: string | null }>(
   supabase: WorkbenchCallerContext['supabase'],
-  table: string,
+  table: 'project_objects' | 'project_workstreams',
   items: T[],
   toRow: (item: T, resolvedParentId: string | null) => Record<string, unknown>
 ): Promise<Map<string, string>> {
@@ -41,7 +41,7 @@ export async function insertStagedTree<T extends { tempId: string; parentTempId:
       throw new ProjectValidationError(`Invalid ${table} hierarchy: a parent reference is missing or forms a cycle`)
     }
     const rows = ready.map((item) => toRow(item, item.parentTempId ? (idByTempId.get(item.parentTempId) ?? null) : null))
-    const { data, error } = await supabase.from(table).insert(rows).select('id')
+    const { data, error } = await supabase.from(table).insert(rows as never).select('id')
     if (error || !data) throw error ?? new ProjectValidationError(`Failed to create ${table}`)
     ready.forEach((item, i) => idByTempId.set(item.tempId, data[i].id))
     pending = pending.filter((item) => !ready.includes(item))

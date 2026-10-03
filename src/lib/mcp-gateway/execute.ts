@@ -355,10 +355,11 @@ interface ExecuteResult {
 // other admin-client follow-up writes.
 async function syncToolMessageForInvocation(
   admin: ReturnType<typeof createAdminClient>,
-  conversationId: string,
+  conversationId: string | null,
   invocationId: string,
   resolvedContent: Record<string, unknown>
 ): Promise<void> {
+  if (!conversationId) return
   await admin
     .from('chat_messages')
     .update({ content: JSON.stringify(resolvedContent) })

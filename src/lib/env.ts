@@ -49,4 +49,8 @@ export const env = {
   // whenever an env var literally named CRON_SECRET is set -- naming it
   // exactly this is what makes that automatic, not a convention we chose.
   cronSecret: () => required('CRON_SECRET'),
+  // External MCP server (docs/dev-request-ember-external-mcp-server.md) --
+  // off unless literally 'true'. When off, /api/mcp answers 503 and the OAuth
+  // consent page refuses every request.
+  mcpEnabled: () => optional('EMBER_MCP_ENABLED') === 'true',
 }

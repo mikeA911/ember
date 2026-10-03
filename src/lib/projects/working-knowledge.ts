@@ -10,6 +10,7 @@ import type {
   WorkingKnowledgeItemType,
   WorkingKnowledgeSource,
   WorkingKnowledgeVisibility,
+  TableUpdate,
   UserRole,
 } from '@/types/database'
 
@@ -94,7 +95,7 @@ export async function updateWorkingKnowledgeItem(
   itemId: string,
   updates: { title?: string; objective?: string | null; content?: string }
 ): Promise<void> {
-  const patch: Record<string, unknown> = {}
+  const patch: TableUpdate<'working_knowledge_items'> = {}
   if (updates.title !== undefined) {
     if (!updates.title.trim()) throw new ProjectValidationError('Title is required')
     patch.title = updates.title.trim()

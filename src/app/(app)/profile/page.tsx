@@ -8,6 +8,8 @@ import { getBuilderSpendSummary } from '@/lib/ai'
 import { getBuilderLlmCredentialStatus } from '@/lib/workbench/builder-llm-credentials'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 import { env } from '@/lib/env'
+import { ConnectedAiApps, type ConnectedAppActivity, type ConnectedAppGrant } from '@/components/profile/ConnectedAiApps'
+import { listMcpActivity } from '@/lib/mcp/admin'
 import type { Profile, UserRole } from '@/types/database'
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -41,6 +43,32 @@ export default async function ProfilePage() {
       getBuilderSpendSummary(createAdminClient(), user.id),
       getBuilderLlmCredentialStatus(ctx),
     ])
+  }
+
+  // Connected AI apps (external MCP server). Grants come from Supabase
+  // Auth's OAuth server; if that isn't enabled in the Supabase project yet,
+  // listGrants errors and the list is simply empty.
+  const mcpEnabled = env.mcpEnabled()
+  let mcpAllowlisted = false
+  let mcpGrants: ConnectedAppGrant[] = []
+  let mcpActivity: ConnectedAppActivity[] = []
+  if (mcpEnabled && profile.role !== 'anonymous') {
+    const ctx = { user, profile, supabase } as unknown as WorkbenchCallerContext
+    const [{ data: allowRow }, { data: grants }, activity] = await Promise.all([
+      supabase.from('mcp_access_users').select('user_id').eq('user_id', user.id).maybeSingle(),
+      supabase.auth.oauth.listGrants(),
+      listMcpActivity(ctx, { ownOnly: true, limit: 15 }),
+    ])
+    mcpAllowlisted = allowRow !== null
+    mcpGrants = (grants ?? []).map((g) => ({ clientId: g.client.id, name: g.client.name || 'AI app', uri: g.client.uri || null, grantedAt: g.granted_at }))
+    mcpActivity = activity.map((a) => ({
+      id: a.id,
+      tool: a.tool,
+      status: a.status,
+      resultCount: a.result_count,
+      withheldCount: a.withheld_count,
+      createdAt: a.created_at,
+    }))
   }
 
   return (
@@ -109,6 +137,16 @@ export default async function ProfilePage() {
                 }
               : null
           }
+        />
+      )}
+
+      {profile.role !== 'anonymous' && (
+        <ConnectedAiApps
+          enabled={mcpEnabled}
+          allowlisted={mcpAllowlisted}
+          mcpUrl={`${env.siteUrl()}/api/mcp`}
+          grants={mcpGrants}
+          activity={mcpActivity}
         />
       )}
 

@@ -55,7 +55,7 @@ export async function getProjectContext(ctx: WorkbenchCallerContext, projectId: 
     knowledgeBases,
     wikiArticles: articleLinks
       .map((l) => l.article)
-      .filter((a): a is { id: string; slug: string; title: string; status: string; visibility_scope: string } => a !== null)
+      .filter((a): a is NonNullable<typeof a> => a !== null)
       .map((a) => ({ id: a.id, slug: a.slug, title: a.title })),
     starterPrompt: project.starter_prompt,
   }

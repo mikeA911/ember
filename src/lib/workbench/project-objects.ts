@@ -1,6 +1,7 @@
 import 'server-only'
 import { AuthError } from '@/lib/auth'
 import { ProjectValidationError } from '@/lib/projects/errors'
+import type { TableUpdate } from '@/types/database'
 import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
 
 // Builder Ontology, Part A (docs/kbs-ontology-dev-req-3.md): a per-project
@@ -84,7 +85,7 @@ export async function updateProjectObject(
 
   if (patch.parentObjectId) await assertNoProjectObjectCycle(ctx, patch.parentObjectId, objectId)
 
-  const update: Record<string, unknown> = {}
+  const update: TableUpdate<'project_objects'> = {}
   if (patch.name !== undefined) update.name = patch.name
   if (patch.description !== undefined) update.description = patch.description || null
   if (patch.parentObjectId !== undefined) update.parent_object_id = patch.parentObjectId || null

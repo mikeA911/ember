@@ -191,7 +191,7 @@ export async function appendMessage(
       tool_name: input.toolName ?? null,
       provider: input.provider ?? null,
       model: input.model ?? null,
-      response_payload: input.responsePayload ?? null,
+      response_payload: (input.responsePayload ?? null) as Record<string, unknown> | null,
       retrieved_resources: input.retrievedResources ?? null,
     })
     .select()

@@ -1,13 +1,26 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
-import {
+import { createFakeSupabase as createBaseFake } from '@/lib/test-support/fake-supabase'
+
+// Tier reads (readResourceTiers) use the service-role client; route them to
+// whichever fake the test just built, so each test still queues
+// resource_access_policies rows in one place.
+let adminFake: unknown
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => adminFake }))
+function createFakeSupabase(...args: Parameters<typeof createBaseFake>) {
+  const fake = createBaseFake(...args)
+  adminFake = fake
+  return fake
+}
+
+const {
   getEffectiveSensitivity,
   assertProviderEligible,
   evaluatePolicy,
   withPolicyGate,
+  readResourceTiers,
   AISensitivityError,
   SENSITIVITY_RANK,
-} from './sensitivity'
+} = await import('./sensitivity')
 import type { AIProvider } from './provider'
 
 describe('SENSITIVITY_RANK', () => {
@@ -221,5 +234,30 @@ describe('withPolicyGate', () => {
     expect(provider.generateText).not.toHaveBeenCalled()
     expect(provider.generateChat).not.toHaveBeenCalled()
     expect(provider.embed).not.toHaveBeenCalled()
+  })
+})
+
+describe('tier lookup does not depend on who is asking', () => {
+  // Regression: resource_access_policies is readable under RLS only by the
+  // project's manager, so reading tiers through the caller's own client made
+  // every document look unclassified ('internal') for anyone else -- a
+  // Confidential document then passed an Internal-only provider check.
+  it("uses the service-role tier even when the caller's own client can't see any policy rows", async () => {
+    const callerClient = createBaseFake({ resource_access_policies: [{ data: [], error: null }] })
+    adminFake = createBaseFake({
+      resource_access_policies: [{ data: [{ resource_id: 'ks-1', information_sensitivity: 'confidential' }], error: null }],
+    })
+    const result = await getEffectiveSensitivity(callerClient as never, { wikiArticleSlugs: [], knowledgeSourceIds: ['ks-1'] })
+    expect(result).toBe('confidential')
+    expect(callerClient._calls.some((c) => c.table === 'resource_access_policies')).toBe(false)
+  })
+
+  it('readResourceTiers returns a tier for every id asked about, defaulting to internal', async () => {
+    adminFake = createBaseFake({ resource_access_policies: [{ data: [{ resource_id: 'a', information_sensitivity: 'public' }], error: null }] })
+    const tiers = await readResourceTiers('knowledge_source', ['a', 'b'])
+    expect([...tiers.entries()]).toEqual([
+      ['a', 'public'],
+      ['b', 'internal'],
+    ])
   })
 })

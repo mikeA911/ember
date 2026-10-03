@@ -3,6 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { MembersManager } from '@/components/projects/MembersManager'
 import { listSelectableUsers } from '@/lib/projects/selectable-users'
+import type { UserRole } from '@/types/database'
+
+function platformRoleOf(role: UserRole | undefined) {
+  return role && role !== 'anonymous' ? role : null
+}
 
 export default async function ProjectMembersPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -61,7 +66,8 @@ export default async function ProjectMembersPage({ params }: { params: Promise<{
       members={(members ?? []).map((m) => ({
         ...m,
         email: profileById.get(m.user_id)?.email ?? m.user_id,
-        platformRole: profileById.get(m.user_id)?.role ?? null,
+        // 'anonymous' isn't an assignable platform role in the members UI.
+        platformRole: platformRoleOf(profileById.get(m.user_id)?.role),
       }))}
       currentUserId={user.id}
       viewerIsAdmin={viewerIsAdmin}

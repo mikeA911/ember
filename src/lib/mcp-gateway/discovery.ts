@@ -1,6 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { BuilderIntegrationRiskClassification, Database, ExternalAgentProtocol } from '@/types/database'
+import type { BuilderIntegrationRiskClassification, Database, ExternalAgentCertificationStatus, ExternalAgentProtocol } from '@/types/database'
 import type { ToolSpec } from '@/lib/ai/provider'
 import { connectAndListTools } from './client'
 import { classifyToolRisk } from './risk'
@@ -57,7 +57,7 @@ export interface GatewayDiscoveryResult {
 // via the registry UI (and by the registering builder/staff directly), but
 // not exposed in an ordinary conversation -- deliberately adjustable policy,
 // not a hard architectural constraint (see the plan's own design note).
-const DISCOVERABLE_STATUSES = ['sandbox_tested', 'security_reviewed', 'outlet_accepted', 'production_approved']
+const DISCOVERABLE_STATUSES: ExternalAgentCertificationStatus[] = ['sandbox_tested', 'security_reviewed', 'outlet_accepted', 'production_approved']
 
 export async function listAvailableTools(
   supabase: SupabaseClient<Database>,
