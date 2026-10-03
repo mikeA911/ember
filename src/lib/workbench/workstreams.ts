@@ -118,7 +118,37 @@ export async function createWorkstream(
     .single()
   if (error || !data) throw error ?? new ProjectValidationError('Failed to create workstream')
 
+  await attachProjectKnowledgeBasesToWorkstream(ctx, input.projectId, data.id)
+
   return { workstreamId: data.id, projectId: input.projectId }
+}
+
+// A new Workstream starts with its Project's own knowledge bases attached,
+// so the builder doesn't have to re-pick them one by one. Copies the
+// project_knowledge_bases links as-is, including a project_private KB --
+// unlike attachWorkstreamKnowledgeBase's self-serve visibility_scope check,
+// this can't widen access: these KBs are already attached to this exact
+// Project, and a Workstream's members are its Project's members. Same
+// curator-gated RLS insert (workstream_knowledge_bases_insert_curator) as
+// the manual attach path. Best-effort: the workstream already exists, so a
+// failure here is logged rather than reported as a failed create -- the KBs
+// can still be attached by hand from the workstream page.
+async function attachProjectKnowledgeBasesToWorkstream(ctx: WorkbenchCallerContext, projectId: string, workstreamId: string) {
+  const { data: links, error: linkError } = await ctx.supabase
+    .from('project_knowledge_bases')
+    .select('knowledge_base_id')
+    .eq('project_id', projectId)
+  if (linkError) {
+    console.error('Failed to load project knowledge bases for new workstream', linkError)
+    return
+  }
+  const kbIds = (links ?? []).map((l: { knowledge_base_id: string }) => l.knowledge_base_id)
+  if (kbIds.length === 0) return
+
+  const { error } = await ctx.supabase
+    .from('workstream_knowledge_bases')
+    .insert(kbIds.map((kbId: string) => ({ workstream_id: workstreamId, knowledge_base_id: kbId, attached_by: ctx.user.id })))
+  if (error) console.error('Failed to attach project knowledge bases to new workstream', error)
 }
 
 // A deliverable being marked done is treated as a reviewed claim, not a
