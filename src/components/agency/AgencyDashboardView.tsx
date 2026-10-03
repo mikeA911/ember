@@ -301,12 +301,30 @@ function CompletionByCategory({ categories, overall }: { categories: AgencyCateg
   )
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, title, children }: { label: string; value: number | string; title?: string; children?: React.ReactNode }) {
   return (
-    <div className="rounded border border-zinc-200 bg-white px-3 py-2">
-      <div className="text-xl font-semibold">{value}</div>
+    <div className="rounded border border-zinc-200 bg-white px-3 py-2" title={title}>
+      <div className="text-xl font-semibold tabular-nums">{value}</div>
+      {children}
       <div className="text-xs text-zinc-500">{label}</div>
     </div>
+  )
+}
+
+// Same figure as the Overall row of Completion by category.
+function OverallCompletionStat({ completion }: { completion: AgencyCompletion }) {
+  return (
+    <Stat
+      label="Overall completion"
+      value={completion.pct === null ? '—' : `${completion.pct}%`}
+      title={completion.pct === null ? 'No work items yet' : `${completion.done} of ${completion.total} items done, across client projects and proposals`}
+    >
+      {completion.pct !== null && (
+        <div className="my-1 h-1.5 overflow-hidden rounded-full bg-zinc-200">
+          <div className="h-full rounded-full bg-orange-500" style={{ width: `${completion.pct}%` }} />
+        </div>
+      )}
+    </Stat>
   )
 }
 
@@ -329,7 +347,8 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <OverallCompletionStat completion={dashboard.overallCompletion} />
         <Stat label="Builders" value={allBuilders.length} />
         <Stat label="Open proposals" value={allBuilders.flatMap((b) => b.proposals).filter((p) => p.promotionStatus !== 'approved').length} />
         <Stat label="Client project requests" value={allBuilders.reduce((n, b) => n + b.pendingPromotions.length, 0)} />
