@@ -5,7 +5,16 @@ const createAdminClientMock = vi.fn()
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: (...args: unknown[]) => createAdminClientMock(...args) }))
 
 const getActiveStructuredOutputProviderMock = vi.fn()
-vi.mock('@/lib/ai', () => ({ getActiveStructuredOutputProvider: (...args: unknown[]) => getActiveStructuredOutputProviderMock(...args) }))
+vi.mock('@/lib/ai', () => ({
+  aiHostingForWorkstream: async () => 'any',
+  gateProvider: async (_supabase: unknown, provider: unknown) => provider,
+  manifestForDocuments: async () => ({ entries: [] }),
+  manifestForProject: async () => ({ entries: [] }),
+  manifestForWorkstream: async () => ({ entries: [] }),
+  manifestForArtifact: async () => ({ entries: [] }),
+  manifestForWikiVersion: async () => ({ entries: [] }),
+  getActiveStructuredOutputProvider: (...args: unknown[]) => getActiveStructuredOutputProviderMock(...args),
+}))
 
 const {
   generatePresentation,
@@ -245,7 +254,11 @@ describe('classifyPendingComments', () => {
   it('classifies pending comments and creates one action per proposed next step', async () => {
     const supabase = createFakeSupabase({
       presentation_versions: [{ data: { presentation_id: 'presentation-1' }, error: null }],
-      presentations: [{ data: { workstream_id: 'ws-1' }, error: null }],
+      // Twice: the curator check, then the policy gate's workstream lookup.
+      presentations: [
+        { data: { workstream_id: 'ws-1' }, error: null },
+        { data: { workstream_id: 'ws-1' }, error: null },
+      ],
       project_workstreams: [{ data: { project_id: 'project-1' }, error: null }],
       project_members: [{ data: { role: 'curator' }, error: null }],
       presentation_slide_comments: [
@@ -285,7 +298,11 @@ describe('classifyPendingComments', () => {
   it('does not create an action for a classification with no proposed next step (e.g. a plain question)', async () => {
     const supabase = createFakeSupabase({
       presentation_versions: [{ data: { presentation_id: 'presentation-1' }, error: null }],
-      presentations: [{ data: { workstream_id: 'ws-1' }, error: null }],
+      // Twice: the curator check, then the policy gate's workstream lookup.
+      presentations: [
+        { data: { workstream_id: 'ws-1' }, error: null },
+        { data: { workstream_id: 'ws-1' }, error: null },
+      ],
       project_workstreams: [{ data: { project_id: 'project-1' }, error: null }],
       project_members: [{ data: { role: 'curator' }, error: null }],
       presentation_slide_comments: [{ data: [{ id: 'comment-1', comment_text: 'What does this mean?', slide_id: 'slide-1' }], error: null }],

@@ -16,6 +16,12 @@ vi.mock('@/lib/auth', async () => {
   }
 })
 vi.mock('@/lib/ai', () => ({
+  gateProvider: async (_supabase: unknown, provider: unknown) => provider,
+  manifestForDocuments: async () => ({ entries: [] }),
+  manifestForProject: async () => ({ entries: [] }),
+  manifestForWorkstream: async () => ({ entries: [] }),
+  manifestForArtifact: async () => ({ entries: [] }),
+  manifestForWikiVersion: async () => ({ entries: [] }),
   getActiveEmbeddingProvider: (...args: unknown[]) => getActiveEmbeddingProviderMock(...args),
   getActiveStructuredOutputProvider: (...args: unknown[]) => getActiveStructuredOutputProviderMock(...args),
 }))

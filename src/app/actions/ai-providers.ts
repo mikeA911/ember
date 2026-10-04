@@ -27,6 +27,13 @@ export async function updateProviderEnabledAction(providerId: string, enabled: b
   revalidatePath('/admin')
 }
 
+export async function setProviderSelfHostedAction(providerId: string, isSelfHosted: boolean) {
+  const ctx = await requireRole('admin')
+  await workbench.setProviderSelfHosted(ctx, providerId, isSelfHosted)
+  revalidatePath(`/admin/providers/${providerId}`)
+  revalidatePath('/admin')
+}
+
 export async function setProviderMaxSensitivityAction(providerId: string, maxSensitivity: InformationSensitivity) {
   const ctx = await requireRole('admin')
   await workbench.setProviderMaxSensitivity(ctx, providerId, maxSensitivity)

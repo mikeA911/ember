@@ -2,6 +2,7 @@ import 'server-only'
 import { z } from 'zod'
 import type { ToolSpec } from '@/lib/ai'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
+import { aiHostingForProject } from '@/lib/ai'
 import { suggestProjectOntology, applyProjectOntologySuggestion, type ProjectOntologySuggestion } from '@/lib/workbench/project-ontology-suggestions'
 
 // Builder Ontology, Part A's own "Ask Ember to suggest" existed only as a
@@ -77,7 +78,11 @@ export async function runSuggestProjectOntology(
 
   const objective = (project.objective ?? '') + (input.focusHint ? `\n\nFocus especially on: ${input.focusHint}` : '')
 
-  const suggestion = await suggestProjectOntology(ctx, { projectType: project.project_type, objective, details })
+  const suggestion = await suggestProjectOntology(
+    ctx,
+    { projectType: project.project_type, objective, details },
+    { selfHostedOnly: (await aiHostingForProject(projectId)) === 'self_hosted_only' }
+  )
   return { ...suggestion, existingObjectNames, existingWorkstreamNames }
 }
 

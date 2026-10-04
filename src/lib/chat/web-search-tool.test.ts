@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const tavilyApiKeyMock = vi.fn()
 vi.mock('@/lib/env', () => ({ env: { tavilyApiKey: () => tavilyApiKeyMock() } }))
 
-const { runSearchWeb } = await import('./web-search-tool')
+const { runSearchWeb, SEARCH_WEB_TOOL, WEB_QUERY_RULE, WebSearchRequestError } = await import('./web-search-tool')
 
 const fetchMock = vi.fn()
 
@@ -32,6 +32,7 @@ describe('runSearchWeb', () => {
       { title: 'Acme Corp — About', url: 'https://acme.example/about', content: 'Acme makes widgets.', score: 0.92, publishedDate: '2026-08-01' },
     ])
     expect(result.answer).toBeNull()
+    expect(result.query).toBe('Acme Corp')
   })
 
   it('applies input defaults and omits timeRange from the request body when not provided', async () => {
@@ -51,10 +52,41 @@ describe('runSearchWeb', () => {
     await expect(runSearchWeb({ query: 'Acme Corp' })).rejects.toThrow(/401/)
   })
 
+  it('reports the sent query on a failure after the request went out', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => 'server error' })
+
+    const err = await runSearchWeb({ query: 'Acme Corp' }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(WebSearchRequestError)
+    expect((err as InstanceType<typeof WebSearchRequestError>).query).toBe('Acme Corp')
+  })
+
+  it('reports the sent query when the network request itself fails', async () => {
+    fetchMock.mockRejectedValue(new Error('ECONNRESET'))
+
+    const err = await runSearchWeb({ query: 'Acme Corp' }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(WebSearchRequestError)
+    expect((err as InstanceType<typeof WebSearchRequestError>).query).toBe('Acme Corp')
+    expect((err as Error).message).toMatch(/ECONNRESET/)
+  })
+
+  it('rejects invalid input without calling fetch, so nothing is reported as sent', async () => {
+    const err = await runSearchWeb({}).catch((e: unknown) => e)
+    expect(err).not.toBeInstanceOf(WebSearchRequestError)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('throws without calling fetch when TAVILY_API_KEY is unset', async () => {
     tavilyApiKeyMock.mockReturnValue(undefined)
 
     await expect(runSearchWeb({ query: 'Acme Corp' })).rejects.toThrow(/not configured/)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('SEARCH_WEB_TOOL', () => {
+  it('tells the model to keep project-internal details out of every query', () => {
+    expect(SEARCH_WEB_TOOL.description).toContain(WEB_QUERY_RULE)
+    expect(WEB_QUERY_RULE).toMatch(/only public names and topics/)
+    expect(WEB_QUERY_RULE).toMatch(/Never put project-internal details in a query/)
   })
 })

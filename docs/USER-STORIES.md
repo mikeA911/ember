@@ -763,6 +763,17 @@ As a Builder, I want to submit an accepted client proposal for promotion with my
 - My workspace Project is never exposed to the client.
 - I cannot approve my own promotion.
 
+**BLD-B-09 — Use any AI while it's presales**
+As a Builder, I want to use any approved model (or my own LLM) in my workspace and in a client Project until it goes Live, so that I can work fast during discovery and specification.
+- Counted against my allowance, as before.
+
+**BLD-B-10 — Live client Projects use Sandz-hosted AI** *(branch `ccr-8b20ec22-local-llm-readiness`)*
+As a Builder, I want Ember to switch to Sandz-hosted AI automatically once my client Project is Live, so that the client's live work never reaches an external model.
+- Applies to chat, summaries, Wiki drafts, presentations and ontology suggestions; not to document enrichment, embeddings or web search.
+- The model picker offers only Sandz-hosted models and the chat header shows "Live: Sandz-hosted AI only"; my own LLM isn't used there.
+- If none is available, Ember says so instead of calling any model.
+- Internal and foundation Projects are never restricted, Live or not.
+
 ### Agency
 
 **BLD-A-01 — See my builders**
@@ -797,6 +808,9 @@ As the Platform owner, I want a Builder Operations view of every builder's share
 As the Platform owner, I want to set a builder's monthly AI allowance, warning threshold and hard stop, and grant one-off credit with a reason, so that usage matches the programme's budget.
 - The service layer also permits curators, but the controls are only on `/admin`, which is admin-only. Exposing them on `/agency` would let agencies manage their own builders.
 
+
+**BLD-P-06 — Mark a provider as Sandz-hosted** *(branch `ccr-8b20ec22-local-llm-readiness`)*
+As the Platform owner, I want to mark a provider as Sandz-hosted in Admin → AI Config, so that Live client Projects can use it and only it.
 ### Client
 
 **BLD-C-01 — Follow my engagement**

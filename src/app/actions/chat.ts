@@ -5,7 +5,7 @@ import { requireUser, AuthError } from '@/lib/auth'
 import { runAssistantTurn, type ModelSelection } from '@/lib/chat/loop'
 import { getLatestActivityLabel, listRecentConversations, listMessages, toDisplayMessages } from '@/lib/chat/conversations'
 import { getProjectContext, describeProjectKnowledgeScope } from '@/lib/chat/project-context'
-import { listChatCapableModels, listProviders, listModels } from '@/lib/ai'
+import { aiHostingForProject, listChatCapableModels, listProviders, listModels } from '@/lib/ai'
 import { getAssistantDescriptor } from '@/lib/workbench/assistant-descriptor'
 import { createWorkingKnowledgeItem } from '@/lib/projects/working-knowledge'
 import { ProjectValidationError } from '@/lib/projects/errors'
@@ -226,7 +226,10 @@ export async function getProjectContextAction(projectId: string) {
   const ctx = await requireUser()
   const context = await getProjectContext(ctx, projectId)
   if (!context) return null
-  return { ...context, knowledgeScope: describeProjectKnowledgeScope(context) }
+  // 'self_hosted_only' for a Live client Project in Builder mode -- the chat
+  // panel then offers only Sandz-hosted models and shows a badge; the loop
+  // enforces it regardless (src/lib/ai/hosting-policy.ts).
+  return { ...context, knowledgeScope: describeProjectKnowledgeScope(context), aiHosting: await aiHostingForProject(projectId) }
 }
 
 // RLS scopes listMessages to the caller's own conversation -- a

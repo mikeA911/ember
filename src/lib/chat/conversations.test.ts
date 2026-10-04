@@ -115,6 +115,36 @@ describe('toDisplayMessages', () => {
     ])
   })
 
+  it('shows the queries a reply sent to the web, skipping refused calls and older results without one', async () => {
+    const rows = [
+      row({ id: 'm1', role: 'user', content: 'Research Acme' }),
+      row({
+        id: 'm2',
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'c1', name: 'search_web', arguments: { query: 'Acme Corp' } },
+          { id: 'c2', name: 'search_web', arguments: { query: 'Acme Corp news' } },
+          { id: 'c3', name: 'search_web', arguments: { query: 'Acme third' } },
+        ],
+      }),
+      row({ id: 'm3', role: 'tool', content: JSON.stringify({ query: 'Acme Corp', results: [], answer: null }), tool_call_id: 'c1', tool_name: 'search_web' }),
+      row({ id: 'm4', role: 'tool', content: JSON.stringify({ query: 'Acme Corp news', error: 'Tavily search failed (500)' }), tool_call_id: 'c2', tool_name: 'search_web' }),
+      row({ id: 'm5', role: 'tool', content: JSON.stringify({ error: 'search_web has already been called 2 times this turn.' }), tool_call_id: 'c3', tool_name: 'search_web' }),
+      row({ id: 'm6', role: 'assistant', content: 'Here is what I found.', provider: 'groq', model: 'openai/gpt-oss-20b' }),
+      row({ id: 'm7', role: 'user', content: 'And earlier?' }),
+      row({ id: 'm8', role: 'assistant', content: '', tool_calls: [{ id: 'c4', name: 'search_web', arguments: { query: 'old' } }] }),
+      row({ id: 'm9', role: 'tool', content: JSON.stringify({ results: [], answer: null }), tool_call_id: 'c4', tool_name: 'search_web' }),
+      row({ id: 'm10', role: 'assistant', content: 'Nothing new.', provider: 'groq', model: 'openai/gpt-oss-20b' }),
+    ]
+
+    const result = await toDisplayMessages(rows, new Map(), fakeCtx)
+
+    expect(result[1]).toMatchObject({ content: 'Here is what I found.', webSearchQueries: ['Acme Corp', 'Acme Corp news'] })
+    expect(result[3]).toMatchObject({ content: 'Nothing new.' })
+    expect((result[3] as { webSearchQueries?: string[] }).webSearchQueries).toBeUndefined()
+  })
+
   it('falls back to the raw provider/model identifiers when a model has since been renamed or removed', async () => {
     const rows = [row({ role: 'assistant', content: 'ok', provider: 'deepseek', model: 'deepseek-v4-flash' })]
 

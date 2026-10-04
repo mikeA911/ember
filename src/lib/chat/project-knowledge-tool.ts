@@ -1,7 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import type { ToolSpec } from '@/lib/ai'
-import { getActiveEmbeddingProvider } from '@/lib/ai'
+import { gateProvider, getActiveEmbeddingProvider, manifestForProject } from '@/lib/ai'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 import type { Database } from '@/types/database'
 
@@ -78,7 +78,14 @@ export async function runSearchProjectKnowledge(
   rawInput: unknown
 ): Promise<{ results: ProjectKnowledgeHit[] }> {
   const input = InputSchema.parse(rawInput)
-  const embeddingProvider = await getActiveEmbeddingProvider(ctx.supabase, { requestedBy: ctx.user.id })
+  // Foundational (search indexing): ungated unless EMBER_GATE_FOUNDATIONAL_AI
+  // is on, in which case the question carries the Project's classification.
+  const embeddingProvider = await gateProvider(
+    ctx.supabase,
+    await getActiveEmbeddingProvider(ctx.supabase, { requestedBy: ctx.user.id }),
+    () => manifestForProject(projectId),
+    'foundational'
+  )
   const { embedding } = await embeddingProvider.embed({ text: input.query })
 
   const { kbIds: projectKbIds, articleIds: projectArticleIds } = await getProjectKnowledgeScopeIds(ctx.supabase, projectId)

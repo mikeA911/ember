@@ -37,7 +37,7 @@ import {
   type ChatAttachment,
 } from '@/lib/chat/attachments'
 import { defaultNoteTitle } from '@/lib/chat/transcript'
-import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, SuggestedPrompts } from './StructuredResponse'
+import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, WebSearchQueries, SuggestedPrompts } from './StructuredResponse'
 import { GatewayInvocationCard } from './GatewayInvocationCard'
 
 // Owner Roadmap and Ember Feedback Board, Phase 1. Only the three initial
@@ -468,7 +468,13 @@ export function ChatSession({
     return () => clearInterval(interval)
   }, [isPending, conversationId])
 
-  const selectedModel = models.find((m) => modelKey(m) === selectedKey)
+  // A Live client Project may use only Sandz-hosted AI (src/lib/ai/
+  // hosting-policy.ts). The loop enforces it either way; the picker just
+  // doesn't offer what would be switched away from. An unqualified
+  // selection is sent as "no selection", so the server picks.
+  const selfHostedOnly = !!projectId && projectContext?.aiHosting === 'self_hosted_only'
+  const pickerModels = selfHostedOnly ? models.filter((m) => m.isSelfHosted) : models
+  const selectedModel = pickerModels.find((m) => modelKey(m) === selectedKey)
 
   // Shared by send() (which has already pushed the user bubble) and retry()
   // (which must not push a second one for the same failed turn).
@@ -520,6 +526,7 @@ export function ChatSession({
           providerDisplayName: result.providerDisplayName,
           modelDisplayName: result.modelDisplayName,
           toolsUsed: result.toolsUsed,
+          webSearchQueries: result.webSearchQueries.length > 0 ? result.webSearchQueries : undefined,
           embeddingModelDisplayName: result.embeddingModelDisplayName,
           structured: result.structured ?? undefined,
           createdRecords: result.createdRecords.length > 0 ? result.createdRecords : undefined,
@@ -1000,6 +1007,15 @@ export function ChatSession({
         {headerExpanded && projectId && projectContext && !feedbackCategory && !showFeedbackChooser && (
           <p className="mt-0.5 text-xs text-zinc-500">Knowledge scope: {projectContext.knowledgeScope}</p>
         )}
+        {selfHostedOnly && !feedbackCategory && !showFeedbackChooser && (
+          <p
+            className="mt-0.5 inline-flex items-center gap-1.5 rounded bg-slate-900 py-0.5 pl-0.5 pr-2 text-xs text-slate-100"
+            title="This client project is live: Ember uses only Sandz-hosted AI here."
+          >
+            <Image src="/images/shadow-ai-badge.png" alt="" width={20} height={20} className="rounded-sm" />
+            Live: Sandz-hosted AI only
+          </p>
+        )}
         {feedbackCategory && (
           <div className="mt-0.5 flex items-center justify-between">
             <p className="text-xs text-amber-700">Filing feedback -- this is a separate conversation from ordinary chat.</p>
@@ -1008,14 +1024,18 @@ export function ChatSession({
             </button>
           </div>
         )}
-        {headerExpanded && models.length > 0 && (
+        {headerExpanded && selfHostedOnly && models.length > 0 && pickerModels.length === 0 && (
+          <p className="mt-0.5 text-xs text-amber-700">No Sandz-hosted model is available yet. Ask an admin to enable one.</p>
+        )}
+        {headerExpanded && pickerModels.length > 0 && (
           <select
-            value={selectedKey ?? ''}
+            value={selectedModel ? (selectedKey ?? '') : ''}
             onChange={(e) => setSelectedKey(e.target.value)}
             disabled={isPending}
             className="mt-1 w-full rounded border border-zinc-200 bg-zinc-50 px-1 py-0.5 text-xs text-zinc-600"
           >
-            {models.map((m) => (
+            {!selectedModel && <option value="">{selfHostedOnly ? 'Sandz-hosted (automatic)' : 'Choose a model'}</option>}
+            {pickerModels.map((m) => (
               <option key={modelKey(m)} value={modelKey(m)}>
                 {m.providerDisplayName} · {m.modelDisplayName}
                 {m.isDefault ? ' (default)' : ''}
@@ -1394,6 +1414,7 @@ export function ChatSession({
                 <DocumentsList documents={m.structured?.documents} />
                 <CitationsList citations={m.structured?.citations} />
                 <KnowledgeUsedSummary citations={m.structured?.citations} />
+                <WebSearchQueries queries={m.webSearchQueries} />
                 <NextStepsList nextSteps={m.structured?.nextSteps} />
                 <SuggestedPrompts prompts={m.structured?.suggestedPrompts} onSelect={setInput} />
               </div>

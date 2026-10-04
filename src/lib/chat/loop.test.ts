@@ -17,6 +17,7 @@ const buildPersistedEnvelopeMock = vi.fn()
 const resolveEnvelopeForDisplayMock = vi.fn()
 const resolveCreatedRecordMock = vi.fn()
 const runSearchWebMock = vi.fn()
+const aiHostingForProjectMock = vi.fn<(projectId: string) => Promise<string>>(async () => 'any')
 const tavilyApiKeyMock = vi.fn()
 const runSearchMyWorkingKnowledgeMock = vi.fn()
 const runSearchSharedWorkingKnowledgeMock = vi.fn()
@@ -25,6 +26,15 @@ const runSaveWorkingKnowledgeMock = vi.fn()
 vi.mock('./web-search-tool', () => ({
   SEARCH_WEB_TOOL: { name: 'search_web', description: '', parameters: {} },
   SEARCH_WEB_TOOL_NAME: 'search_web',
+  WEB_QUERY_RULE: 'WEB_QUERY_RULE_TEXT',
+  WebSearchRequestError: class WebSearchRequestError extends Error {
+    constructor(
+      message: string,
+      readonly query: string
+    ) {
+      super(message)
+    }
+  },
   runSearchWeb: (...args: unknown[]) => runSearchWebMock(...args),
 }))
 vi.mock('./working-knowledge-tool', () => ({
@@ -68,6 +78,8 @@ vi.mock('@/lib/ai', async () => {
     // instantiateProvider are deliberately left out -- they're only ever
     // called from the builder-mode-only branch these tests never take.
     BuilderAllowanceError: actual.BuilderAllowanceError,
+    SelfHostedAIUnavailableError: actual.SelfHostedAIUnavailableError,
+    aiHostingForProject: (projectId: string) => aiHostingForProjectMock(projectId),
   }
 })
 vi.mock('@/lib/mcp/tools', () => ({
@@ -227,6 +239,7 @@ describe('runAssistantTurn', () => {
       conversationId: 'conv-1',
       reply: 'KB Sandbox is a knowledge platform.',
       toolsUsed: [],
+      webSearchQueries: [],
       structured: null,
       createdRecords: [],
       pendingGatewayInvocations: [],
@@ -243,8 +256,9 @@ describe('runAssistantTurn', () => {
     // summary yet -- not even looked up.
     expect(getConversationSummaryMock).not.toHaveBeenCalled()
     // Refreshed after a successful reply, with the turn's truncation status
-    // and (for this non-project conversation) an undefined projectSensitivity.
-    expect(maybeRefreshSummaryMock).toHaveBeenCalledWith(expect.anything(), 'conv-1', false, undefined)
+    // and (for this non-project conversation) an undefined projectSensitivity
+    // and no Sandz-hosted-only requirement.
+    expect(maybeRefreshSummaryMock).toHaveBeenCalledWith(expect.anything(), 'conv-1', false, undefined, false)
   })
 
   it('passes an explicit model selection straight through to resolveChatProvider', async () => {
@@ -255,7 +269,8 @@ describe('runAssistantTurn', () => {
     expect(resolveChatProviderMock).toHaveBeenCalledWith(
       expect.anything(),
       { providerName: 'gemini', modelId: 'gemini-2.5-flash' },
-      expect.anything()
+      expect.anything(),
+      { selfHostedOnly: false }
     )
   })
 
@@ -829,12 +844,17 @@ describe('runAssistantTurn -- search_web', () => {
         model: 'test-model',
         usage: { inputTokens: 1, outputTokens: 1 },
       })
-    runSearchWebMock.mockResolvedValue({ results: [{ title: 'Acme Corp', url: 'https://acme.example', content: 'About Acme.', score: 0.9, publishedDate: null }], answer: null })
+    runSearchWebMock.mockResolvedValue({
+      query: 'Acme Corp',
+      results: [{ title: 'Acme Corp', url: 'https://acme.example', content: 'About Acme.', score: 0.9, publishedDate: null }],
+      answer: null,
+    })
 
     const result = await runAssistantTurn(projectBoundCtx(), null, 'Research Acme Corp for me', undefined, 'proj-1')
 
     expect(result.reply).toBe('Found some background on Acme Corp.')
     expect(result.toolsUsed).toContain('search_web')
+    expect(result.webSearchQueries).toEqual(['Acme Corp'])
     expect(runSearchWebMock).toHaveBeenCalledWith({ query: 'Acme Corp' })
     const toolAppend = appendMessageMock.mock.calls.find(([, arg]) => arg.toolCallId === 'call-1')
     expect(JSON.parse(toolAppend?.[1].content)).toMatchObject({ results: [{ title: 'Acme Corp' }] })
@@ -863,12 +883,14 @@ describe('runAssistantTurn -- search_web', () => {
         model: 'test-model',
         usage: { inputTokens: 1, outputTokens: 1 },
       })
-    runSearchWebMock.mockResolvedValue({ results: [], answer: null })
+    runSearchWebMock.mockImplementation(async (input: { query: string }) => ({ query: input.query, results: [], answer: null }))
 
     const result = await runAssistantTurn(projectBoundCtx(), null, 'Research this thoroughly', undefined, 'proj-1')
 
     expect(result.reply).toBe('Answering with what I found.')
     expect(runSearchWebMock).toHaveBeenCalledTimes(2)
+    // The refused 3rd call never reached Tavily, so it isn't reported as sent.
+    expect(result.webSearchQueries).toEqual(['first', 'second'])
     const refusalMessage = appendMessageMock.mock.calls.map(([, args]) => args).find((args) => args.toolCallId === 'call-3')
     expect(refusalMessage.content).toContain('already been called 2 times')
   })
@@ -893,6 +915,45 @@ describe('runAssistantTurn -- search_web', () => {
     expect(result.reply).toBe('Web research is unavailable right now.')
     const toolAppend = appendMessageMock.mock.calls.find(([, arg]) => arg.toolCallId === 'call-1')
     expect(JSON.parse(toolAppend?.[1].content)).toEqual({ error: 'Tavily search failed (500): server error' })
+    expect(result.webSearchQueries).toEqual([])
+  })
+
+  it('still reports and persists the query when the search fails after the request went out', async () => {
+    tavilyApiKeyMock.mockReturnValue('fake-tavily-key')
+    generateChatMock
+      .mockResolvedValueOnce({
+        message: { role: 'assistant', content: '', toolCalls: [{ id: 'call-1', name: 'search_web', arguments: { query: 'Acme Corp' } }] },
+        model: 'test-model',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })
+      .mockResolvedValueOnce({
+        message: { role: 'assistant', content: 'Web research is unavailable right now.' },
+        model: 'test-model',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })
+    const { WebSearchRequestError } = await import('./web-search-tool')
+    runSearchWebMock.mockRejectedValue(new WebSearchRequestError('Tavily search failed (500): server error', 'Acme Corp'))
+
+    const result = await runAssistantTurn(projectBoundCtx(), null, 'Research Acme Corp for me', undefined, 'proj-1')
+
+    expect(result.webSearchQueries).toEqual(['Acme Corp'])
+    const toolAppend = appendMessageMock.mock.calls.find(([, arg]) => arg.toolCallId === 'call-1')
+    expect(JSON.parse(toolAppend?.[1].content)).toEqual({ query: 'Acme Corp', error: 'Tavily search failed (500): server error' })
+  })
+
+  it('puts the web-query rule in the system prompt whenever search_web is offered', async () => {
+    tavilyApiKeyMock.mockReturnValue('fake-tavily-key')
+    generateChatMock.mockResolvedValueOnce({
+      message: { role: 'assistant', content: 'Hello.' },
+      model: 'test-model',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    })
+
+    await runAssistantTurn(projectBoundCtx(), null, 'Hi', undefined, 'proj-1')
+
+    const system = (generateChatMock.mock.calls[0][0] as { system: string }).system
+    expect(system).toContain('WEB_QUERY_RULE_TEXT')
+    expect(system).toMatch(/project's own name, goal and objective count as project-internal/)
   })
 })
 
@@ -1067,5 +1128,76 @@ describe('exported runtime constants', () => {
   it('keeps MAX_TOOL_ITERATIONS and SEARCH_WIKI_LIMIT at their current values', () => {
     expect(MAX_TOOL_ITERATIONS).toBe(8)
     expect(SEARCH_WIKI_LIMIT).toBe(2)
+  })
+})
+
+// Builder mode: a Live client Project may use only Sandz-hosted AI
+// (src/lib/ai/hosting-policy.ts). aiHostingForProject is mocked; the rule
+// itself is covered by hosting-policy.test.ts.
+describe('runAssistantTurn -- Live client Project (Sandz-hosted AI only)', () => {
+  function projectBoundCtx(): WorkbenchCallerContext {
+    const ctx = fakeCtx()
+    const originalFrom = ctx.supabase.from.bind(ctx.supabase)
+    ctx.supabase.from = ((table: string) => {
+      if (table === 'projects') {
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: async () => ({ data: { id: 'proj-1', name: 'Client Project', goal: null, information_sensitivity: null }, error: null }) }),
+          }),
+        }
+      }
+      if (table === 'project_knowledge_bases' || table === 'project_wiki_articles') {
+        return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
+      }
+      return originalFrom(table)
+    }) as unknown as typeof ctx.supabase.from
+    createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
+    return ctx
+  }
+
+  it('asks for a Sandz-hosted chat model and summarizes with one too', async () => {
+    aiHostingForProjectMock.mockResolvedValueOnce('self_hosted_only')
+    generateChatMock.mockResolvedValueOnce({
+      message: { role: 'assistant', content: 'Hello from the Sandz model.' },
+      model: 'test-model',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    })
+
+    const result = await runAssistantTurn(projectBoundCtx(), null, 'Hi', { providerName: 'openai', modelId: 'gpt-x' }, 'proj-1')
+
+    expect(result.reply).toBe('Hello from the Sandz model.')
+    expect(aiHostingForProjectMock).toHaveBeenCalledWith('proj-1')
+    expect(resolveChatProviderMock).toHaveBeenCalledWith(
+      expect.anything(),
+      { providerName: 'openai', modelId: 'gpt-x' },
+      expect.anything(),
+      { selfHostedOnly: true }
+    )
+    expect(maybeRefreshSummaryMock).toHaveBeenCalledWith(expect.anything(), 'conv-1', false, null, true)
+  })
+
+  it('explains, without calling any model, when no Sandz-hosted model is available', async () => {
+    aiHostingForProjectMock.mockResolvedValueOnce('self_hosted_only')
+    const { SelfHostedAIUnavailableError } = await import('@/lib/ai')
+    resolveChatProviderMock.mockRejectedValueOnce(new SelfHostedAIUnavailableError('tools'))
+
+    const result = await runAssistantTurn(projectBoundCtx(), null, 'Hi', undefined, 'proj-1')
+
+    expect(result.isProviderError).toBe(true)
+    expect(result.reply).toMatch(/This project is live, so it can only use Sandz-hosted AI/)
+    expect(generateChatMock).not.toHaveBeenCalled()
+  })
+
+  it('leaves a presales or internal Project unrestricted', async () => {
+    aiHostingForProjectMock.mockResolvedValueOnce('any')
+    generateChatMock.mockResolvedValueOnce({
+      message: { role: 'assistant', content: 'Hello.' },
+      model: 'test-model',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    })
+
+    await runAssistantTurn(projectBoundCtx(), null, 'Hi', undefined, 'proj-1')
+
+    expect(resolveChatProviderMock).toHaveBeenCalledWith(expect.anything(), undefined, expect.anything(), { selfHostedOnly: false })
   })
 })

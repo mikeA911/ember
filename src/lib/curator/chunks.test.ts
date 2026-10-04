@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { approveChunk, rejectChunk } from './chunks'
+import { approveChunk, enrichDocumentChunks, rejectChunk } from './chunks'
+import { AISensitivityError } from '@/lib/ai/sensitivity'
 import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 import type { AIProvider } from '@/lib/ai/provider'
 
@@ -88,5 +89,33 @@ describe('rejectChunk', () => {
     // (the RAG search RPC) would keep surfacing "rejected" content to Ember.
     const vectorDelete = typedSupabase._calls.find((c) => c.table === 'kb_vectors' && c.method === 'delete')
     expect(vectorDelete).toBeDefined()
+  })
+})
+
+describe('enrichDocumentChunks', () => {
+  it('stops at a policy block and records it with its own code, leaving the rest pending', async () => {
+    const supabase = createFakeSupabase({
+      document_chunks: [
+        { data: [{ id: 'chunk-1', chunk_text: 'a' }, { id: 'chunk-2', chunk_text: 'b' }], error: null },
+        { data: null, error: null }, // chunk-1 -> enriching
+        { data: null, error: null }, // chunk-1 -> failed
+      ],
+    })
+    let calls = 0
+    const blockedProvider: AIProvider = {
+      ...fakeProvider,
+      async generateStructured() {
+        calls++
+        throw new AISensitivityError('This project contains Restricted information and cannot be processed by this model.')
+      },
+    }
+
+    const result = await enrichDocumentChunks(supabase as never, blockedProvider, 'doc-1', 'kb-1')
+
+    expect(result).toEqual({ enriched: 0, failed: 1 })
+    expect(calls).toBe(1)
+    const updates = supabase._calls.filter((c) => c.table === 'document_chunks' && c.method === 'update')
+    expect(updates).toHaveLength(2)
+    expect(updates[1].args).toMatchObject({ review_status: 'failed', enrichment_error: { code: 'ai_policy_blocked' } })
   })
 })

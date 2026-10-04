@@ -15,6 +15,51 @@ export class AIConfigError extends Error {
   }
 }
 
+// A Live client Project (src/lib/ai/hosting-policy.ts) needs a Sandz-hosted
+// model and none is enabled with the required capability. The message is
+// written for the person in the chat or on the page.
+export class SelfHostedAIUnavailableError extends AIConfigError {
+  constructor(need: 'tools' | 'structured_output') {
+    super(
+      need === 'tools'
+        ? 'This project is live, so it can only use Sandz-hosted AI, and no Sandz-hosted chat model is available right now. Ask an admin to enable one under Admin -> AI Config.'
+        : 'This project is live, so it can only use Sandz-hosted AI, and no Sandz-hosted model with structured output is available right now. Ask an admin to enable one under Admin -> AI Config.'
+    )
+    this.name = 'SelfHostedAIUnavailableError'
+  }
+}
+
+export interface ProviderResolutionOptions {
+  // Restrict to providers with is_self_hosted (a Live client Project). The
+  // caller's selection or the platform default is kept when it already
+  // qualifies; otherwise Ember switches to a qualifying model automatically.
+  selfHostedOnly?: boolean
+}
+
+// Picks a Sandz-hosted generation model with the needed capability, in
+// order: the caller's selection, the platform default for that role, then
+// the first by display name. Throws SelfHostedAIUnavailableError when none.
+export async function pickSelfHostedModel(
+  supabase: SupabaseClient<Database>,
+  need: 'tools' | 'structured_output',
+  preferred?: { providerName: string; modelId: string }
+): Promise<{ provider: AIProviderRow; model: AIModelRow }> {
+  const [providers, models] = await Promise.all([
+    listProviders(supabase, { enabledOnly: true }),
+    listModels(supabase, { modelType: 'generation', enabledOnly: true }),
+  ])
+  const selfHosted = new Map(providers.filter((p) => p.is_self_hosted).map((p) => [p.id, p]))
+  const candidates = models.filter(
+    (m) => selfHosted.has(m.provider_id) && (need === 'tools' ? m.supports_tools : m.supports_structured_output)
+  )
+  const pick =
+    (preferred && candidates.find((m) => m.model_id === preferred.modelId && selfHosted.get(m.provider_id)?.name === preferred.providerName)) ||
+    candidates.find((m) => (need === 'tools' ? m.is_default : m.is_default_structured_output)) ||
+    candidates[0]
+  if (!pick) throw new SelfHostedAIUnavailableError(need)
+  return { provider: selfHosted.get(pick.provider_id)!, model: pick }
+}
+
 // Pure, synchronous shaping helper -- no query of its own, since the two
 // admin pages that need this (AdminPage, the provider detail page) already
 // have the full providers/models arrays loaded for other reasons. Used to
@@ -145,7 +190,9 @@ export function instantiateProvider(
   apiKey: string,
   baseUrl: string | null,
   defaultTextModel?: string,
-  defaultEmbedModel?: string
+  defaultEmbedModel?: string,
+  // openai_compatible only -- see OpenAICompatibleProvider's constructor.
+  embedDimensions?: number
 ): AIProvider {
   switch (providerType) {
     case 'openai':
@@ -159,17 +206,17 @@ export function instantiateProvider(
     case 'groq':
     case 'openai_compatible': {
       if (!baseUrl) throw new AIConfigError(`Provider "${name}" has no base_url configured`)
-      return new OpenAICompatibleProvider(name, apiKey, baseUrl, defaultTextModel)
+      return new OpenAICompatibleProvider(name, apiKey, baseUrl, defaultTextModel, defaultEmbedModel, embedDimensions)
     }
   }
 }
 
-function buildProviderClient(provider: AIProviderRow, defaultTextModel?: string, defaultEmbedModel?: string): AIProvider {
+function buildProviderClient(provider: AIProviderRow, defaultTextModel?: string, defaultEmbedModel?: string, embedDimensions?: number): AIProvider {
   const apiKey = resolveApiKey(provider)
   if (!apiKey) {
     throw new AIConfigError(`Provider "${provider.name}" is enabled but ${provider.api_key_env_var} is not set`)
   }
-  return instantiateProvider(provider.provider_type, provider.name, apiKey, provider.base_url, defaultTextModel, defaultEmbedModel)
+  return instantiateProvider(provider.provider_type, provider.name, apiKey, provider.base_url, defaultTextModel, defaultEmbedModel, embedDimensions)
 }
 
 // The one place evaluation (and everything else) resolves a provider by
@@ -213,7 +260,7 @@ export async function getActiveEmbeddingProvider(
   logContext: LogContext = {}
 ): Promise<AIProvider> {
   const { provider, model } = await getDefaultModel(supabase, 'embedding')
-  return withLogging(buildProviderClient(provider, undefined, model.model_id), logContext)
+  return withLogging(buildProviderClient(provider, undefined, model.model_id, model.embedding_dimensions ?? undefined), logContext)
 }
 
 // The structured-output counterpart to getActiveProvider/getActiveEmbeddingProvider.
@@ -247,9 +294,12 @@ export async function getDefaultStructuredOutputModel(
 
 export async function getActiveStructuredOutputProvider(
   supabase: SupabaseClient<Database>,
-  logContext: LogContext = {}
+  logContext: LogContext = {},
+  options: ProviderResolutionOptions = {}
 ): Promise<AIProvider> {
-  const { provider, model } = await getDefaultStructuredOutputModel(supabase)
+  const { provider, model } = options.selfHostedOnly
+    ? await pickSelfHostedModel(supabase, 'structured_output')
+    : await getDefaultStructuredOutputModel(supabase)
   return withLogging(buildProviderClient(provider, model.model_id), logContext)
 }
 
@@ -274,11 +324,14 @@ export interface ChatProviderInfo {
 export async function resolveChatProvider(
   supabase: SupabaseClient<Database>,
   selection?: { providerName: string; modelId: string },
-  logContext: LogContext = {}
+  logContext: LogContext = {},
+  options: ProviderResolutionOptions = {}
 ): Promise<ChatProviderInfo> {
-  const { provider, model } = selection
-    ? await resolveModel(supabase, selection.providerName, selection.modelId)
-    : await getDefaultModel(supabase, 'generation')
+  const { provider, model } = options.selfHostedOnly
+    ? await pickSelfHostedModel(supabase, 'tools', selection)
+    : selection
+      ? await resolveModel(supabase, selection.providerName, selection.modelId)
+      : await getDefaultModel(supabase, 'generation')
   assertModelCapability(model, 'tools')
   return {
     provider: withLogging(buildProviderClient(provider, model.model_id), logContext),
@@ -308,6 +361,9 @@ export interface ChatModelOption {
   modelDisplayName: string
   modelDbId: string
   isDefault: boolean
+  // ai_providers.is_self_hosted -- lets the chat picker offer only Sandz-
+  // hosted models in a Live client Project (src/lib/ai/hosting-policy.ts).
+  isSelfHosted: boolean
 }
 
 export async function listChatCapableModels(supabase: SupabaseClient<Database>): Promise<ChatModelOption[]> {
@@ -325,6 +381,7 @@ export async function listChatCapableModels(supabase: SupabaseClient<Database>):
       providerName: provider.name,
       providerDisplayName: provider.display_name,
       providerDbId: provider.id,
+      isSelfHosted: provider.is_self_hosted,
       modelId: model.model_id,
       modelDisplayName: model.display_name,
       modelDbId: model.id,
@@ -355,6 +412,7 @@ export async function listEmbeddingCapableModels(supabase: SupabaseClient<Databa
       providerName: provider.name,
       providerDisplayName: provider.display_name,
       providerDbId: provider.id,
+      isSelfHosted: provider.is_self_hosted,
       modelId: model.model_id,
       modelDisplayName: model.display_name,
       modelDbId: model.id,
@@ -383,6 +441,7 @@ export async function listStructuredOutputCapableModels(supabase: SupabaseClient
       providerName: provider.name,
       providerDisplayName: provider.display_name,
       providerDbId: provider.id,
+      isSelfHosted: provider.is_self_hosted,
       modelId: model.model_id,
       modelDisplayName: model.display_name,
       modelDbId: model.id,

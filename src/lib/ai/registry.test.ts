@@ -8,6 +8,8 @@ import {
   listStructuredOutputCapableModels,
   listEmbeddingCapableModels,
   AIConfigError,
+  pickSelfHostedModel,
+  SelfHostedAIUnavailableError,
 } from './registry'
 import type { AIModelRow, AIProviderRow } from '@/types/database'
 
@@ -21,6 +23,7 @@ function provider(overrides: Partial<AIProviderRow> = {}): AIProviderRow {
     api_key_env_var: 'GROQ_API_KEY',
     enabled: true,
     supports_model_discovery: false,
+    is_self_hosted: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -136,6 +139,7 @@ describe('listChatCapableModels', () => {
         providerName: 'groq',
         providerDisplayName: 'Groq',
         providerDbId: 'groq-provider',
+        isSelfHosted: false,
         modelId: 'openai/gpt-oss-20b',
         modelDisplayName: 'GPT-4o mini',
         modelDbId: 'm1',
@@ -168,6 +172,7 @@ describe('listStructuredOutputCapableModels', () => {
         providerName: 'groq',
         providerDisplayName: 'Groq',
         providerDbId: 'groq-provider',
+        isSelfHosted: false,
         modelId: 'openai/gpt-oss-120b',
         modelDisplayName: 'GPT-4o mini',
         modelDbId: 'm1',
@@ -199,6 +204,7 @@ describe('listEmbeddingCapableModels', () => {
         providerName: 'openai',
         providerDisplayName: 'OpenAI',
         providerDbId: 'openai-provider',
+        isSelfHosted: false,
         modelId: 'text-embedding-3-small',
         modelDisplayName: 'text-embedding-3-small',
         modelDbId: 'e1',
@@ -233,5 +239,54 @@ describe('assertModelCapability', () => {
     const generationModel = model({ model_type: 'generation', enabled: true, supports_structured_output: true })
     expect(() => assertModelCapability(generationModel, 'generation')).not.toThrow()
     expect(() => assertModelCapability(generationModel, 'structured_output')).not.toThrow()
+  })
+})
+
+describe('pickSelfHostedModel', () => {
+  const cloud = provider({ id: 'openai-provider', name: 'openai', is_self_hosted: false })
+  const sandz = provider({ id: 'sandz-provider', name: 'sandz-llm', is_self_hosted: true, provider_type: 'openai_compatible' })
+
+  function fake(models: AIModelRow[]) {
+    return createFakeSupabase({
+      ai_providers: [{ data: [cloud, sandz], error: null }],
+      ai_models: [{ data: models, error: null }],
+    }) as never
+  }
+
+  it("keeps the user's selection when it is already Sandz-hosted", async () => {
+    const supabase = fake([
+      model({ id: 'a', provider_id: 'sandz-provider', model_id: 'qwen-a', supports_tools: true, is_default: false }),
+      model({ id: 'b', provider_id: 'sandz-provider', model_id: 'qwen-b', supports_tools: true, is_default: true }),
+    ])
+    const { model: picked } = await pickSelfHostedModel(supabase, 'tools', { providerName: 'sandz-llm', modelId: 'qwen-a' })
+    expect(picked.model_id).toBe('qwen-a')
+  })
+
+  it('switches away from a cloud selection to the Sandz-hosted default', async () => {
+    const supabase = fake([
+      model({ id: 'c', provider_id: 'openai-provider', model_id: 'gpt-x', supports_tools: true, is_default: true }),
+      model({ id: 'a', provider_id: 'sandz-provider', model_id: 'qwen-a', supports_tools: true, is_default: false }),
+    ])
+    const { provider: p, model: picked } = await pickSelfHostedModel(supabase, 'tools', { providerName: 'openai', modelId: 'gpt-x' })
+    expect(p.name).toBe('sandz-llm')
+    expect(picked.model_id).toBe('qwen-a')
+  })
+
+  it('uses the structured-output default and capability for structured output', async () => {
+    const supabase = fake([
+      model({ id: 'a', provider_id: 'sandz-provider', model_id: 'qwen-tools-only', supports_tools: true, supports_structured_output: false }),
+      model({ id: 'b', provider_id: 'sandz-provider', model_id: 'qwen-json', supports_structured_output: true, is_default_structured_output: true }),
+    ])
+    const { model: picked } = await pickSelfHostedModel(supabase, 'structured_output')
+    expect(picked.model_id).toBe('qwen-json')
+  })
+
+  it('fails clearly when no Sandz-hosted model has the capability', async () => {
+    const supabase = fake([model({ id: 'c', provider_id: 'openai-provider', model_id: 'gpt-x', supports_tools: true })])
+    await expect(pickSelfHostedModel(supabase, 'tools')).rejects.toBeInstanceOf(SelfHostedAIUnavailableError)
+  })
+
+  it('is an AIConfigError, so existing config-error handling still applies', () => {
+    expect(new SelfHostedAIUnavailableError('tools')).toBeInstanceOf(AIConfigError)
   })
 })

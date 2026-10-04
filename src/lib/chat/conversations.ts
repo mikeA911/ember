@@ -6,6 +6,7 @@ import { PersistedAssistantEnvelopeSchema, type PersistedAssistantEnvelope, type
 import { resolveEnvelopeForDisplay } from './envelope-resolution'
 import { extractCreatedRecordRef, resolveCreatedRecord, type CreatedRecordRef, type ResolvedCreatedRecord } from './created-records'
 import { GATEWAY_TOOL_PREFIX } from '@/lib/mcp-gateway/discovery'
+import { SEARCH_WEB_TOOL_NAME } from './web-search-tool'
 import { resolvePendingInvocation, type PendingGatewayInvocation } from '@/lib/mcp-gateway/execute'
 
 // projectId binds this conversation to a project at creation time. Only ever
@@ -62,6 +63,9 @@ export interface DisplayMessage {
   providerDisplayName?: string
   modelDisplayName?: string
   toolsUsed?: string[]
+  // Queries sent to Tavily while producing this reply -- see loop.ts's
+  // AssistantTurnResult.webSearchQueries.
+  webSearchQueries?: string[]
   structured?: VerifiedAssistantEnvelope
   createdRecords?: ResolvedCreatedRecord[]
   pendingGatewayInvocations?: PendingGatewayInvocation[]
@@ -85,6 +89,7 @@ export async function toDisplayMessages(
   let pendingTools = new Set<string>()
   let pendingCreatedRefs: CreatedRecordRef[] = []
   let pendingInvocationIds: string[] = []
+  let pendingWebQueries: string[] = []
 
   for (const row of rows) {
     if (row.role === 'user') {
@@ -95,6 +100,10 @@ export async function toDisplayMessages(
     if (row.role === 'tool') {
       if (row.tool_name && row.content) {
         pendingCreatedRefs.push(...extractCreatedRecordRef(row.tool_name, row.content))
+        if (row.tool_name === SEARCH_WEB_TOOL_NAME) {
+          const query = sentWebSearchQuery(row.content)
+          if (query) pendingWebQueries.push(query)
+        }
         if (row.tool_name.startsWith(GATEWAY_TOOL_PREFIX)) {
           try {
             const parsed = JSON.parse(row.content) as { status?: string; invocationId?: string }
@@ -141,6 +150,7 @@ export async function toDisplayMessages(
       providerDisplayName: names?.providerDisplayName ?? row.provider ?? undefined,
       modelDisplayName: names?.modelDisplayName ?? row.model ?? undefined,
       toolsUsed: pendingTools.size > 0 ? [...pendingTools] : undefined,
+      webSearchQueries: pendingWebQueries.length > 0 ? pendingWebQueries : undefined,
       structured,
       createdRecords: resolvedCreatedRecords.length > 0 ? resolvedCreatedRecords : undefined,
       pendingGatewayInvocations: resolvedPendingInvocations.length > 0 ? resolvedPendingInvocations : undefined,
@@ -148,9 +158,23 @@ export async function toDisplayMessages(
     pendingTools = new Set()
     pendingCreatedRefs = []
     pendingInvocationIds = []
+    pendingWebQueries = []
   }
 
   return out
+}
+
+// A search_web tool result records `query` only when the request actually
+// went to Tavily (success, or a failure after sending) -- refused calls and
+// invalid input carry no query. Results persisted before queries were
+// recorded have none either, so older conversations simply show nothing.
+function sentWebSearchQuery(content: string): string | null {
+  try {
+    const parsed = JSON.parse(content) as { query?: unknown }
+    return typeof parsed.query === 'string' && parsed.query.trim() ? parsed.query : null
+  } catch {
+    return null
+  }
 }
 
 export async function listMessages(supabase: SupabaseClient<Database>, conversationId: string): Promise<ChatMessageRow[]> {

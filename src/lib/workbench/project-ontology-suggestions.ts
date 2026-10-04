@@ -49,9 +49,12 @@ function buildPrompt(projectType: ProjectType, objective: string, details: Recor
 
 export async function suggestProjectOntology(
   ctx: WorkbenchCallerContext,
-  input: { projectType: ProjectType; objective: string; details: Record<string, string> }
+  input: { projectType: ProjectType; objective: string; details: Record<string, string> },
+  // Set by the chat tool for a Live client Project (src/lib/ai/hosting-
+  // policy.ts); the new-project wizard never needs it, a new Project isn't Live.
+  options: { selfHostedOnly?: boolean } = {}
 ): Promise<ProjectOntologySuggestion> {
-  const provider = await getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id })
+  const provider = await getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id }, options)
   const { data } = await provider.generateStructured({
     system: 'You help an Ember builder sketch a starting domain-object ontology and workstream set for a new project.',
     prompt: buildPrompt(input.projectType, input.objective, input.details),

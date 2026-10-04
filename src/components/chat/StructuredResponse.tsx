@@ -187,6 +187,26 @@ export function KnowledgeUsedSummary({
   )
 }
 
+// Exactly what left Ember for Tavily while producing this reply (search_web,
+// src/lib/chat/web-search-tool.ts). Always visible, not tucked into Details:
+// web search is outside the information-sensitivity gate, so the user is
+// the check on what the model put in a query.
+export function WebSearchQueries({ queries }: { queries?: string[] }) {
+  if (!queries?.length) return null
+  return (
+    <div className="mt-1.5 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-500">
+      <span className="font-medium text-zinc-600">Searched the web for</span>
+      <ul className="mt-0.5 flex flex-col gap-0.5">
+        {queries.map((q, i) => (
+          <li key={i} className="break-words">
+            “{q}”
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function SuggestedPrompts({ prompts, onSelect }: { prompts?: string[]; onSelect: (prompt: string) => void }) {
   if (!prompts?.length) return null
   return (

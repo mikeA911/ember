@@ -35,7 +35,15 @@ export class OpenAICompatibleProvider implements AIProvider {
     readonly name: string,
     apiKey: string,
     private baseURL: string,
-    private defaultTextModel?: string
+    private defaultTextModel?: string,
+    // Set only when this provider instance is resolved for an embedding
+    // model (registry.ts's getActiveEmbeddingProvider) -- a self-hosted
+    // vLLM/Ollama embedding server. embedDimensions is the registry's
+    // ai_models.embedding_dimensions: sent as the request's `dimensions`
+    // (for models with adjustable output size, e.g. to fit Ember's
+    // vector(1536) columns) and checked against what comes back.
+    private defaultEmbedModel?: string,
+    private embedDimensions?: number
   ) {
     // 60s per attempt -- the SDK default (10 minutes, retried up to 3x) let
     // a single stalled call hang silently for up to ~30 minutes with no
@@ -171,15 +179,41 @@ export class OpenAICompatibleProvider implements AIProvider {
     }
   }
 
-  // No OpenAI-compatible generation gateway covered here (Groq included)
-  // currently offers embeddings -- fails explicitly rather than silently
-  // returning nothing. Capability filtering in the Eval model picker (only
-  // model_type='embedding' rows are ever offered for the embedding slot)
-  // means this should never actually be reached in normal use; it's the
-  // provider-level backstop.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by the AIProvider interface even though this implementation always throws
+  // Self-hosted embedding servers (vLLM, Ollama, LM Studio) expose the same
+  // POST /v1/embeddings as OpenAI. A provider with no embedding model
+  // configured (Groq, or any generation-only gateway) still fails
+  // explicitly rather than calling an endpoint that doesn't exist --
+  // capability filtering means that should never be reached in normal use.
   async embed(input: EmbedInput): Promise<EmbedResult> {
-    throw new AIProviderError(this.name, 'embed', `${this.name} does not support embeddings`, undefined, 'model_unavailable')
+    const model = input.model ?? this.defaultEmbedModel
+    if (!model) {
+      throw new AIProviderError(this.name, 'embed', `${this.name} does not support embeddings`, undefined, 'model_unavailable')
+    }
+    let embedding: number[]
+    let inputTokens: number | null
+    try {
+      const res = await this.client.embeddings.create({
+        model,
+        input: input.text,
+        ...(this.embedDimensions ? { dimensions: this.embedDimensions } : {}),
+      })
+      embedding = res.data[0]?.embedding ?? []
+      inputTokens = res.usage?.prompt_tokens ?? null
+    } catch (err) {
+      throw new AIProviderError(this.name, 'embed', `${this.name} embed failed: ${describeError(err)}`, err)
+    }
+    // A mismatch would otherwise surface later as an opaque pgvector
+    // dimension error on the kb_vectors/wiki_vectors insert.
+    if (this.embedDimensions && embedding.length !== this.embedDimensions) {
+      throw new AIProviderError(
+        this.name,
+        'embed',
+        `${this.name} returned a ${embedding.length}-dimension embedding for ${model}, but the model is registered with ${this.embedDimensions} dimensions`,
+        undefined,
+        'invalid_request'
+      )
+    }
+    return { embedding, model, dimensions: embedding.length, usage: { inputTokens, outputTokens: null } }
   }
 
   // Best-effort discovery for the admin "Refresh Models" action -- returns

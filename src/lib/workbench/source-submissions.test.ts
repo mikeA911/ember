@@ -18,7 +18,15 @@ const approveChunkMock = vi.fn()
 vi.mock('@/lib/curator/chunks', () => ({ approveChunk: (...args: unknown[]) => approveChunkMock(...args) }))
 
 const getActiveEmbeddingProviderMock = vi.fn().mockResolvedValue({})
-vi.mock('@/lib/ai', () => ({ getActiveEmbeddingProvider: (...args: unknown[]) => getActiveEmbeddingProviderMock(...args) }))
+vi.mock('@/lib/ai', () => ({
+  gateProvider: async (_supabase: unknown, provider: unknown) => provider,
+  manifestForDocuments: async () => ({ entries: [] }),
+  manifestForProject: async () => ({ entries: [] }),
+  manifestForWorkstream: async () => ({ entries: [] }),
+  manifestForArtifact: async () => ({ entries: [] }),
+  manifestForWikiVersion: async () => ({ entries: [] }),
+  getActiveEmbeddingProvider: (...args: unknown[]) => getActiveEmbeddingProviderMock(...args),
+}))
 
 const requireActiveKnowledgeBaseMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/lib/knowledge-bases', () => ({ requireActiveKnowledgeBase: (...args: unknown[]) => requireActiveKnowledgeBaseMock(...args) }))

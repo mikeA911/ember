@@ -28,6 +28,16 @@ vi.mock('@/lib/ai', async () => {
   const actual = await vi.importActual<typeof import('@/lib/ai')>('@/lib/ai')
   return {
     AIProviderError: actual.AIProviderError,
+    AISensitivityError: actual.AISensitivityError,
+    SelfHostedAIUnavailableError: actual.SelfHostedAIUnavailableError,
+    aiHostingForArtifact: async () => 'any',
+    aiHostingForDocuments: async () => 'any',
+    gateProvider: async (_supabase: unknown, provider: unknown) => provider,
+    manifestForDocuments: async () => ({ entries: [] }),
+    manifestForProject: async () => ({ entries: [] }),
+    manifestForWorkstream: async () => ({ entries: [] }),
+    manifestForArtifact: async () => ({ entries: [] }),
+    manifestForWikiVersion: async () => ({ entries: [] }),
     getActiveEmbeddingProvider: (...args: unknown[]) => getActiveEmbeddingProviderMock(...args),
     getActiveStructuredOutputProvider: (...args: unknown[]) => getActiveStructuredOutputProviderMock(...args),
   }
@@ -237,6 +247,23 @@ describe('createAIAssistedDraftAction — artifact-sourced (M6A Handbook path)',
 
     expect(result.ok).toBe(false)
     expect(!result.ok && result.error).toMatch(/AI-assisted draft generation failed \(groq: /)
+  })
+
+  it("reports an AI-processing policy block in its own words, not as a retryable provider failure", async () => {
+    const supabase = createFakeSupabase({
+      workstream_artifacts: [{ data: { id: 'artifact-5', title: 'NG911 notes', content: 'incident evidence' }, error: null }],
+    })
+    requireRoleMock.mockResolvedValue({ user: { id: 'curator-1' }, supabase })
+    const { AISensitivityError } = await import('@/lib/ai')
+    const generateStructured = vi.fn().mockRejectedValue(
+      new AISensitivityError('This project contains Restricted information and cannot be processed by this model.')
+    )
+    getActiveStructuredOutputProviderMock.mockResolvedValue({ name: 'test-provider', generateStructured })
+
+    const result = await createAIAssistedDraftAction({ topic: 'x', category: 'platform_handbook', workstreamArtifactId: 'artifact-5' })
+
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.error).toBe('This project contains Restricted information and cannot be processed by this model.')
   })
 
   it('refuses to synthesize from a restricted artifact, even though RLS already let this caller read it', async () => {

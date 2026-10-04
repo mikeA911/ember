@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import type { AIProvider } from '@/lib/ai/provider'
+import { AISensitivityError } from '@/lib/ai/sensitivity'
 import { enrichChunk } from './enrichment'
 import { buildEnrichmentError } from './failures'
 
@@ -44,11 +45,16 @@ export async function enrichDocumentChunks(
         .eq('id', chunk.id)
       results.enriched++
     } catch (err) {
+      const blocked = err instanceof AISensitivityError
       await supabase
         .from('document_chunks')
-        .update({ review_status: 'failed', enrichment_error: buildEnrichmentError(err) })
+        .update({ review_status: 'failed', enrichment_error: buildEnrichmentError(err, blocked ? 'ai_policy_blocked' : undefined) })
         .eq('id', chunk.id)
       results.failed++
+      // The same policy decision applies to every chunk of this document --
+      // stop rather than recording the identical block on each one. The rest
+      // stay pending, so they enrich once an eligible model is the default.
+      if (blocked) break
     }
   }
 

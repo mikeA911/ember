@@ -95,7 +95,11 @@ export async function maybeRefreshSummary(
   ctx: WorkbenchCallerContext,
   conversationId: string,
   wasTruncated: boolean,
-  projectSensitivity?: InformationSensitivity | null
+  projectSensitivity?: InformationSensitivity | null,
+  // A Live client Project (src/lib/ai/hosting-policy.ts): summarize with a
+  // Sandz-hosted model, or not at all -- SelfHostedAIUnavailableError lands
+  // in the catch-all below and the refresh is skipped.
+  selfHostedOnly = false
 ): Promise<void> {
   try {
     const { data: conversation, error } = await ctx.supabase
@@ -110,7 +114,7 @@ export async function maybeRefreshSummary(
     if (turnsSince < REFRESH_TURN_THRESHOLD && !wasTruncated) return
     if (rows.length === 0) return
 
-    const provider = await getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id })
+    const provider = await getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id }, { selfHostedOnly })
     // A separately-resolved provider than the live turn's chatProvider --
     // exactly why this needs its own gate rather than trusting the turn's
     // already-passed check (docs/design-notes/ai-policy-enforcement-service-

@@ -11,6 +11,8 @@ import {
   withAllowanceGate,
   getBuilderSpendSummary,
   BuilderAllowanceError,
+  aiHostingForProject,
+  SelfHostedAIUnavailableError,
 } from '@/lib/ai'
 import type { ChatMessage, ChatProviderInfo } from '@/lib/ai'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -43,7 +45,7 @@ import { SUBMIT_FEEDBACK_REPORT_TOOL, SUBMIT_FEEDBACK_REPORT_TOOL_NAME, runSubmi
 import { LIST_PROJECT_MEMBERS_TOOL, LIST_PROJECT_MEMBERS_TOOL_NAME, runListProjectMembers } from './project-members-tool'
 import { SEND_PROJECT_NOTE_TOOL, SEND_PROJECT_NOTE_TOOL_NAME, runSendProjectNote } from './project-note-tool'
 import { UPDATE_PROJECT_DESCRIPTION_TOOL, UPDATE_PROJECT_DESCRIPTION_TOOL_NAME, runUpdateProjectDescription } from './project-description-tool'
-import { SEARCH_WEB_TOOL, SEARCH_WEB_TOOL_NAME, runSearchWeb } from './web-search-tool'
+import { SEARCH_WEB_TOOL, SEARCH_WEB_TOOL_NAME, WEB_QUERY_RULE, WebSearchRequestError, runSearchWeb } from './web-search-tool'
 import { LIST_WORKSTREAMS_TOOL, LIST_WORKSTREAMS_TOOL_NAME, runListWorkstreams } from './workstream-list-tool'
 import {
   SUGGEST_PROJECT_ONTOLOGY_TOOL,
@@ -162,7 +164,7 @@ When the user wants to keep research or notes for later (most commonly after web
   // the tools array) -- describing a tool the model can't actually call
   // would just teach it to hallucinate the call.
   const webSearchAddendum = webSearchAvailable
-    ? `\n\nYou also have search_web, for public web research -- useful for pre-sales or competitive-intelligence questions about a prospective client or competitor that project knowledge and the Wiki can't answer (e.g. "what does this company publicly say about their current infrastructure"). You are allowed at most ${WEB_SEARCH_LIMIT} search_web calls per turn. A web result is NOT project knowledge and NOT a citation -- never cite it via present_assistant_response's citations field, and never tell the user something is "in the knowledge base" or "confirmed" based on a web search alone. If web research turns up something worth keeping, call save_working_knowledge (type 'research_notebook') with your synthesis and the source URLs/titles as its sources -- not attach_workstream_artifact, which isn't private-by-default the way Working Knowledge is. Tell the user it's saved privately, marked working/unverified, and that a curator only sees it if they later choose to submit it.`
+    ? `\n\nYou also have search_web, for public web research -- useful for pre-sales or competitive-intelligence questions about a prospective client or competitor that project knowledge and the Wiki can't answer (e.g. "what does this company publicly say about their current infrastructure"). You are allowed at most ${WEB_SEARCH_LIMIT} search_web calls per turn. A web result is NOT project knowledge and NOT a citation -- never cite it via present_assistant_response's citations field, and never tell the user something is "in the knowledge base" or "confirmed" based on a web search alone. If web research turns up something worth keeping, call save_working_knowledge (type 'research_notebook') with your synthesis and the source URLs/titles as its sources -- not attach_workstream_artifact, which isn't private-by-default the way Working Knowledge is. Tell the user it's saved privately, marked working/unverified, and that a curator only sees it if they later choose to submit it.\n\n${WEB_QUERY_RULE} This project's own name, goal and objective count as project-internal: search for the public organizations and topics involved, not for the project itself.`
     : ''
 
   return base + webSearchAddendum
@@ -292,6 +294,12 @@ export interface AssistantTurnResult {
   modelId: string
   modelDisplayName: string
   toolsUsed: string[]
+  // Every query this turn actually sent to Tavily (search_web), in order --
+  // shown under the reply as "Searched the web for: ..." so the user sees
+  // exactly what left Ember for an external service. Includes a search that
+  // failed after the request went out; excludes refused calls (over the
+  // per-turn limit, not project-bound) and invalid input, which sent nothing.
+  webSearchQueries: string[]
   embeddingModelDisplayName?: string
   structured: VerifiedAssistantEnvelope | null
   createdRecords: ResolvedCreatedRecord[]
@@ -409,7 +417,11 @@ export async function runAssistantTurn(
   // conversation on any other Project, is never metered or substituted.
   const isBuilderOwnProject =
     env.productMode() === 'builder' && resolvedProjectId ? await isOwnBuilderLabProject(ctx, resolvedProjectId) : false
-  const byoLlm = isBuilderOwnProject ? await resolveBuilderLlmProvider(ctx.user.id) : null
+  // A Live client Project may use only Sandz-hosted AI (src/lib/ai/
+  // hosting-policy.ts): no BYOLLM, and the chat model switches to a
+  // Sandz-hosted one if the selection or default isn't.
+  const selfHostedOnly = resolvedProjectId ? (await aiHostingForProject(resolvedProjectId)) === 'self_hosted_only' : false
+  const byoLlm = isBuilderOwnProject && !selfHostedOnly ? await resolveBuilderLlmProvider(ctx.user.id) : null
 
   let chatProvider: ChatProviderInfo
   // null for a BYOLLM turn -- there's no ai_providers row for a builder's
@@ -431,10 +443,33 @@ export async function runAssistantTurn(
       contextWindow: null,
     }
   } else {
-    chatProvider = await resolveChatProvider(ctx.supabase, modelSelection, {
-      requestedBy: ctx.user.id,
-      projectId: resolvedProjectId ?? undefined,
-    })
+    try {
+      chatProvider = await resolveChatProvider(
+        ctx.supabase,
+        modelSelection,
+        { requestedBy: ctx.user.id, projectId: resolvedProjectId ?? undefined },
+        { selfHostedOnly }
+      )
+    } catch (err) {
+      if (!(err instanceof SelfHostedAIUnavailableError)) throw err
+      // Same non-throwing, retryable shape as a provider failure (see
+      // isProviderError below): the user sees why, nothing reaches a model.
+      await ctx.supabase.from('conversations').update({ pending_turn_started_at: null }).eq('id', conversation.id)
+      return {
+        conversationId: conversation.id,
+        reply: err.message,
+        providerName: '',
+        providerDisplayName: '',
+        modelId: '',
+        modelDisplayName: '',
+        toolsUsed: [],
+        webSearchQueries: [],
+        structured: null,
+        createdRecords: [],
+        pendingGatewayInvocations: [],
+        isProviderError: true,
+      }
+    }
     // ChatProviderInfo.provider is the built client (has .generateChat(), not
     // .id) -- the eligibility check needs the ai_providers row id, resolved
     // once per turn since chatProvider.providerName is fixed for the turn.
@@ -501,6 +536,7 @@ export async function runAssistantTurn(
         ]
       : [...getToolSpecs(), PRESENT_RESPONSE_TOOL]
   const toolsUsed = new Set<string>()
+  const webSearchQueries: string[] = []
   try {
   // A model that ignores the prompt's "search no more than twice" instruction
   // (observed live: GPT-OSS 120B repeatedly re-searching when search_wiki
@@ -538,7 +574,7 @@ export async function runAssistantTurn(
   async function finishTurn(reply: string, structured: VerifiedAssistantEnvelope | null): Promise<AssistantTurnResult> {
     const usedEmbeddingRetrieval = toolsUsed.has('search_wiki') || toolsUsed.has(SEARCH_PROJECT_KNOWLEDGE_TOOL_NAME)
     const embeddingModelDisplayName = usedEmbeddingRetrieval ? (await getDefaultModel(ctx.supabase, 'embedding')).model.display_name : undefined
-    await maybeRefreshSummary(ctx, conversation.id, contextWasTruncated, projectContext ? projectContext.informationSensitivity : undefined)
+    await maybeRefreshSummary(ctx, conversation.id, contextWasTruncated, projectContext ? projectContext.informationSensitivity : undefined, selfHostedOnly)
     const resolvedCreatedRecords = (await Promise.all(createdRecordRefs.map((ref) => resolveCreatedRecord(ctx, ref)))).filter(
       (r): r is ResolvedCreatedRecord => r !== null
     )
@@ -550,6 +586,7 @@ export async function runAssistantTurn(
       modelId: chatProvider.modelId,
       modelDisplayName: chatProvider.modelDisplayName,
       toolsUsed: [...toolsUsed],
+      webSearchQueries: [...webSearchQueries],
       embeddingModelDisplayName,
       structured,
       createdRecords: resolvedCreatedRecords,
@@ -653,6 +690,7 @@ export async function runAssistantTurn(
           modelId: chatProvider.modelId,
           modelDisplayName: chatProvider.modelDisplayName,
           toolsUsed: [...toolsUsed],
+          webSearchQueries: [...webSearchQueries],
           structured: null,
           createdRecords: [],
           pendingGatewayInvocations: [],
@@ -674,6 +712,7 @@ export async function runAssistantTurn(
           modelId: chatProvider.modelId,
           modelDisplayName: chatProvider.modelDisplayName,
           toolsUsed: [...toolsUsed],
+          webSearchQueries: [...webSearchQueries],
           structured: null,
           createdRecords: [],
           pendingGatewayInvocations: [],
@@ -695,6 +734,7 @@ export async function runAssistantTurn(
         modelId: chatProvider.modelId,
         modelDisplayName: chatProvider.modelDisplayName,
         toolsUsed: [...toolsUsed],
+        webSearchQueries: [...webSearchQueries],
         structured: null,
         createdRecords: [],
         pendingGatewayInvocations: [],
@@ -951,9 +991,18 @@ export async function runAssistantTurn(
         } else {
           try {
             const output = await runSearchWeb(toolCall.arguments)
+            webSearchQueries.push(output.query)
             toolResultText = JSON.stringify(output)
           } catch (err) {
-            toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
+            // A failure after the request went out still sent the query to
+            // Tavily -- record it (and persist it in the tool result, which
+            // conversations.ts reads back) so the user sees it either way.
+            if (err instanceof WebSearchRequestError) {
+              webSearchQueries.push(err.query)
+              toolResultText = JSON.stringify({ query: err.query, error: toolErrorMessage(err) })
+            } else {
+              toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
+            }
           }
         }
       } else if (toolCall.name.startsWith(GATEWAY_TOOL_PREFIX)) {
@@ -1069,6 +1118,7 @@ export async function runAssistantTurn(
     modelId: chatProvider.modelId,
     modelDisplayName: chatProvider.modelDisplayName,
     toolsUsed: [...toolsUsed],
+    webSearchQueries: [...webSearchQueries],
     structured: null,
     createdRecords: [],
     pendingGatewayInvocations: [],
@@ -1093,6 +1143,7 @@ export async function runAssistantTurn(
       modelId: chatProvider.modelId,
       modelDisplayName: chatProvider.modelDisplayName,
       toolsUsed: [...toolsUsed],
+      webSearchQueries: [...webSearchQueries],
       structured: null,
       createdRecords: [],
       pendingGatewayInvocations: [],
