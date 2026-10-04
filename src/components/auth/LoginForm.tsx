@@ -29,7 +29,15 @@ export function LoginForm({ next }: { next?: string | null }) {
       return
     }
 
-    await ensureProfile()
+    // No profile means no account an admin set up -- self-registration is
+    // off (ensureProfile), so don't leave a half-signed-in session behind.
+    const profile = await ensureProfile()
+    if (!profile) {
+      await supabase.auth.signOut()
+      setError('This account hasn’t been set up yet. Ask your Ember administrator to create it for you.')
+      setSubmitting(false)
+      return
+    }
     router.push(next ?? '/dashboard')
     router.refresh()
   }

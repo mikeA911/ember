@@ -111,7 +111,7 @@ This is what makes "Chunks Only vs. Wiki Only vs. Wiki + Chunks" a real, run-con
 
 ## Auth & authorization
 
-Supabase Auth, session cookie refreshed by `src/proxy.ts` on every request. Actual enforcement happens twice, deliberately:
+Supabase Auth, session cookie refreshed by `src/proxy.ts` on every request. Accounts are created only by an admin (`createUserAction`), which writes the profile; self-registration is off, and a user who signs up straight against Supabase Auth gets no profile and cannot sign in (`20261009`). Actual enforcement happens twice, deliberately:
 
 1. **Server Actions/layouts** call `requireUser()`/`requireRole()` (`src/lib/auth.ts`) against the caller's own session before doing anything.
 2. **RLS** is the backstop that holds even if an action forgot to check — e.g. `wiki_versions` has no `UPDATE` policy for `authenticated` at all, so even a bug in a Server Action's role check couldn't let a non-admin set `approved_by`/`approved_at`; only the service-role client (used exclusively inside the admin-gated `approveArticleAction`) can write those columns.

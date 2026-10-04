@@ -92,7 +92,7 @@ The Viewer reads and converses. They cannot change shared Project content, run e
 
 **VWR-ACC-01 — Sign in**
 As a Viewer, I want to sign in with the account an admin created for me, so that I can reach the Projects I have been added to.
-- There is no self-service registration; `/register` redirects to `/login`.
+- There is no self-service registration; `/register` redirects to `/login`. An account signed up straight against Supabase Auth gets no profile and cannot sign in: only an admin creates accounts.
 - Password reset is available from `/forgot-password`.
 - A deactivated account is refused by every workspace action (`Account is deactivated`).
 

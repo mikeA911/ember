@@ -1,0 +1,12 @@
+-- Self-registration off (2026-10-04, Mike). /register already redirects to
+-- /login and accounts are created by an admin (createUserAction), which
+-- writes the profile itself. But a sign-up made straight against Supabase
+-- Auth (the anon key is public) could still give itself a consultant
+-- profile on first login through this policy -- a builder account with
+-- Ember access nobody approved. Drop it, so the only way to a non-anonymous
+-- profile is the service role. Re-add a reviewed path when self-registration
+-- is ready (e.g. as 'member', pending an agency's acceptance).
+--
+-- profiles_insert_self_anonymous stays: it only ever yields the dormant
+-- 'anonymous' role.
+drop policy if exists "profiles_insert_self_consultant" on profiles;

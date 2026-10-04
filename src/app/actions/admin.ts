@@ -104,9 +104,9 @@ export async function assignKBsToCurator(userId: string, kbIds: string[]) {
 // this environment has no email delivery configured.
 //
 // No DB trigger creates a profiles row on auth.users insert -- that only
-// happens lazily on first login via ensureProfile() (src/app/actions/auth.ts),
-// which would default role to 'consultant' regardless of what's picked here.
-// So the profile is inserted directly, not left for ensureProfile to create.
+// happens here, and ensureProfile() (src/app/actions/auth.ts) never creates
+// one for a real account -- self-registration is off. So the profile is
+// inserted directly, with the role picked here.
 export async function createUserAction(input: { email: string; password: string; role: 'member' | 'consultant' | 'curator' | 'admin' }) {
   await requireRole('admin')
   if (input.password.length < 8) throw new Error('Password must be at least 8 characters')
