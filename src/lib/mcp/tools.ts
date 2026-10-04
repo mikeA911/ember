@@ -203,7 +203,7 @@ const tools: Record<string, ToolDefinition<any, any>> = {
       ),
     }),
     handler: async (ctx, input: { query: string; limit: number }) => {
-      const embeddingProvider = await getActiveEmbeddingProvider(ctx.supabase, { requestedBy: ctx.user.id })
+      const embeddingProvider = await getActiveEmbeddingProvider(ctx.supabase, { task: 'mcp_search', requestedBy: ctx.user.id })
       const { embedding } = await embeddingProvider.embed({ text: input.query })
       const { data, error } = await ctx.supabase.rpc('match_wiki_vectors', {
         query_embedding: embedding,

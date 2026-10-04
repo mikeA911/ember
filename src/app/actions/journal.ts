@@ -39,7 +39,7 @@ export async function previewJournalAction(input: unknown): Promise<JournalPrevi
 
   const [{ provider: providerRow, model: modelRow }, provider] = await Promise.all([
     getDefaultStructuredOutputModel(ctx.supabase),
-    getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id }),
+    getActiveStructuredOutputProvider(ctx.supabase, { task: 'journal', requestedBy: ctx.user.id }),
   ])
 
   const result = await generateJournal(ctx, provider, options)

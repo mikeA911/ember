@@ -9,6 +9,7 @@ import type {
   GenerateStructuredInput,
   GenerateTextInput,
 } from './provider'
+import type { AITask } from './tasks'
 
 // Every provider's own catch block already classifies its cause (see
 // classifyProviderError in provider.ts) -- reuse that instead of losing it
@@ -19,6 +20,9 @@ function errorCodeOf(err: unknown): string | null {
 }
 
 export interface LogContext {
+  // Required, so every call site says what its AI calls are for -- the
+  // basis of cost reporting per task (src/lib/ai/tasks.ts).
+  task: AITask
   documentId?: string
   chunkId?: string
   requestedBy?: string
@@ -49,13 +53,13 @@ export interface LogContext {
 // call site having to remember to log. Logging itself always uses the
 // service-role client (this is infrastructure bookkeeping, not user data;
 // see the ai_operation_logs RLS policy, which has no client insert path).
-export function withLogging(provider: AIProvider, context: LogContext = {}): AIProvider {
+export function withLogging(provider: AIProvider, context: LogContext): AIProvider {
   const record = async (
     operation: 'generate_text' | 'generate_structured' | 'generate_chat' | 'embed',
     model: string,
     startedAt: number,
     outcome:
-      | { success: true; inputTokens: number | null; outputTokens: number | null }
+      | { success: true; inputTokens: number | null; outputTokens: number | null; cachedInputTokens?: number | null }
       | { success: false; error: string; errorCode: string | null }
   ) => {
     const admin = createAdminClient()
@@ -66,6 +70,7 @@ export function withLogging(provider: AIProvider, context: LogContext = {}): AIP
       .from('ai_operation_logs')
       .insert({
         operation,
+        task: context.task,
         provider: provider.name,
         model,
         document_id: context.documentId ?? null,
@@ -81,6 +86,7 @@ export function withLogging(provider: AIProvider, context: LogContext = {}): AIP
         latency_ms: Date.now() - startedAt,
         input_tokens: outcome.success ? outcome.inputTokens : null,
         output_tokens: outcome.success ? outcome.outputTokens : null,
+        cached_input_tokens: outcome.success ? (outcome.cachedInputTokens ?? null) : null,
         success: outcome.success,
         error_message: outcome.success ? null : outcome.error,
         error_code: outcome.success ? null : outcome.errorCode,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyProviderError, AIProviderError } from './provider'
+import { classifyProviderError, AIProviderError, openAIUsage } from './provider'
 
 describe('classifyProviderError', () => {
   it('classifies a 404 as model_unavailable', () => {
@@ -53,5 +53,24 @@ describe('AIProviderError', () => {
   it('lets a caller override the classified errorCode explicitly', () => {
     const err = new AIProviderError('groq', 'embed', 'Groq does not support embeddings', undefined, 'model_unavailable')
     expect(err.errorCode).toBe('model_unavailable')
+  })
+})
+
+describe('openAIUsage', () => {
+  it('reads OpenAI/Groq/xAI cached prompt tokens', () => {
+    expect(openAIUsage({ prompt_tokens: 3000, completion_tokens: 50, prompt_tokens_details: { cached_tokens: 2048 } })).toEqual({
+      inputTokens: 3000,
+      outputTokens: 50,
+      cachedInputTokens: 2048,
+    })
+  })
+
+  it("reads DeepSeek's prompt cache hits", () => {
+    expect(openAIUsage({ prompt_tokens: 3000, completion_tokens: 50, prompt_cache_hit_tokens: 1024 }).cachedInputTokens).toBe(1024)
+  })
+
+  it('reports null when no cache figure or usage is given', () => {
+    expect(openAIUsage({ prompt_tokens: 10, completion_tokens: 2 }).cachedInputTokens).toBeNull()
+    expect(openAIUsage(undefined)).toEqual({ inputTokens: null, outputTokens: null, cachedInputTokens: null })
   })
 })

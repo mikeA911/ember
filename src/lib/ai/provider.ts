@@ -11,6 +11,32 @@ import type { z } from 'zod'
 export interface TokenUsage {
   inputTokens: number | null
   outputTokens: number | null
+  // The part of inputTokens the provider served from its prompt cache, when
+  // it reports one -- providers cache repeated prompt openings automatically
+  // and bill those tokens at a discount. null when not reported. Optional so
+  // results that never involve a cache (embeddings) can leave it out.
+  cachedInputTokens?: number | null
+}
+
+// OpenAI and OpenAI-compatible chat usage: OpenAI, Groq and xAI report
+// prompt_tokens_details.cached_tokens; DeepSeek reports
+// prompt_cache_hit_tokens instead.
+export function openAIUsage(
+  usage:
+    | {
+        prompt_tokens?: number | null
+        completion_tokens?: number | null
+        prompt_tokens_details?: { cached_tokens?: number | null } | null
+        prompt_cache_hit_tokens?: number | null
+      }
+    | null
+    | undefined
+): TokenUsage {
+  return {
+    inputTokens: usage?.prompt_tokens ?? null,
+    outputTokens: usage?.completion_tokens ?? null,
+    cachedInputTokens: usage?.prompt_tokens_details?.cached_tokens ?? usage?.prompt_cache_hit_tokens ?? null,
+  }
 }
 
 export interface GenerateTextInput {

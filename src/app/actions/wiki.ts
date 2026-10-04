@@ -205,7 +205,7 @@ async function createAIAssistedDraftInner(
     supabase,
     await getActiveStructuredOutputProvider(
       supabase,
-      { requestedBy: user.id },
+      { task: 'wiki_draft', requestedBy: user.id },
       { selfHostedOnly: (await aiHostingForDocuments(documentIds)) === 'self_hosted_only' }
     ),
     await manifestForDocuments(documentIds)
@@ -283,7 +283,7 @@ async function createAIAssistedDraftFromArtifact(
     supabase,
     await getActiveStructuredOutputProvider(
       supabase,
-      { requestedBy: userId },
+      { task: 'wiki_draft', requestedBy: userId },
       { selfHostedOnly: (await aiHostingForArtifact(artifact.id)) === 'self_hosted_only' }
     ),
     await manifestForArtifact(artifact.id)
@@ -491,7 +491,7 @@ export async function approveArticleAction(articleId: string, versionId: string)
       // embedded until an eligible embedding model is the default.
       const provider = await gateProvider(
         admin,
-        await getActiveEmbeddingProvider(admin, { requestedBy: user.id }),
+        await getActiveEmbeddingProvider(admin, { task: 'wiki_embedding', requestedBy: user.id }),
         () => manifestForWikiVersion(versionId),
         'foundational'
       )

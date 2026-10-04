@@ -14,7 +14,7 @@ import type {
   ToolCall,
 } from './provider'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
-import { AIProviderError, describeError } from './provider'
+import { AIProviderError, describeError, openAIUsage } from './provider'
 import { extractJsonObject, parseToolArguments } from './json-extract'
 
 export class OpenAIProvider implements AIProvider {
@@ -47,10 +47,7 @@ export class OpenAIProvider implements AIProvider {
       return {
         text: res.choices[0]?.message?.content ?? '',
         model,
-        usage: {
-          inputTokens: res.usage?.prompt_tokens ?? null,
-          outputTokens: res.usage?.completion_tokens ?? null,
-        },
+        usage: openAIUsage(res.usage),
       }
     } catch (err) {
       throw new AIProviderError('openai', 'generate_text', `OpenAI generateText failed: ${describeError(err)}`, err)
@@ -75,10 +72,7 @@ export class OpenAIProvider implements AIProvider {
       return {
         data,
         model,
-        usage: {
-          inputTokens: res.usage?.prompt_tokens ?? null,
-          outputTokens: res.usage?.completion_tokens ?? null,
-        },
+        usage: openAIUsage(res.usage),
       }
     } catch (err) {
       throw new AIProviderError(
@@ -150,10 +144,7 @@ export class OpenAIProvider implements AIProvider {
       return {
         message,
         model,
-        usage: {
-          inputTokens: res.usage?.prompt_tokens ?? null,
-          outputTokens: res.usage?.completion_tokens ?? null,
-        },
+        usage: openAIUsage(res.usage),
       }
     } catch (err) {
       throw new AIProviderError('openai', 'generate_chat', `OpenAI generateChat failed: ${describeError(err)}`, err)

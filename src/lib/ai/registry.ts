@@ -225,7 +225,7 @@ function buildProviderClient(provider: AIProviderRow, defaultTextModel?: string,
 export async function getProviderByName(
   supabase: SupabaseClient<Database>,
   name: string,
-  logContext: LogContext = {}
+  logContext: LogContext
 ): Promise<AIProvider> {
   const { data: provider, error } = await supabase.from('ai_providers').select('*').eq('name', name).single()
   if (error || !provider) throw new AIConfigError(`Unknown AI provider: ${JSON.stringify(name)}`)
@@ -242,7 +242,7 @@ export async function getProviderByName(
 // embedding or structured-output tasks -- see the two siblings below.
 export async function getActiveProvider(
   supabase: SupabaseClient<Database>,
-  logContext: LogContext = {}
+  logContext: LogContext
 ): Promise<AIProvider> {
   const { provider, model } = await getDefaultModel(supabase, 'generation')
   return withLogging(buildProviderClient(provider, model.model_id), logContext)
@@ -257,7 +257,7 @@ export async function getActiveProvider(
 // throws (some, like Groq, don't support embeddings at all).
 export async function getActiveEmbeddingProvider(
   supabase: SupabaseClient<Database>,
-  logContext: LogContext = {}
+  logContext: LogContext
 ): Promise<AIProvider> {
   const { provider, model } = await getDefaultModel(supabase, 'embedding')
   return withLogging(buildProviderClient(provider, undefined, model.model_id, model.embedding_dimensions ?? undefined), logContext)
@@ -294,7 +294,7 @@ export async function getDefaultStructuredOutputModel(
 
 export async function getActiveStructuredOutputProvider(
   supabase: SupabaseClient<Database>,
-  logContext: LogContext = {},
+  logContext: LogContext,
   options: ProviderResolutionOptions = {}
 ): Promise<AIProvider> {
   const { provider, model } = options.selfHostedOnly
@@ -323,8 +323,8 @@ export interface ChatProviderInfo {
 
 export async function resolveChatProvider(
   supabase: SupabaseClient<Database>,
-  selection?: { providerName: string; modelId: string },
-  logContext: LogContext = {},
+  selection: { providerName: string; modelId: string } | undefined,
+  logContext: LogContext,
   options: ProviderResolutionOptions = {}
 ): Promise<ChatProviderInfo> {
   const { provider, model } = options.selfHostedOnly

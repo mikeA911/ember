@@ -132,6 +132,8 @@ Every field of an eval run's `generation`/`embedding`/`evaluator` config (`EvalR
 
 `ai_operation_logs` carries `eval_run_id`/`eval_case_id` columns (`LogContext`, `src/lib/ai/logging.ts`) so an AI call made during an eval run — embedding, generation, or judge — can be traced back to the specific run and case that triggered it, without building the full Runs/Tracing subsystem that's planned for a later milestone.
 
+Every call also records its `task` (what it was for: chat, conversation summary, chunk enrichment, Wiki draft and so on; the list is `src/lib/ai/tasks.ts`, and `LogContext.task` is required so no call site can skip it) and `cached_input_tokens`, the part of the input the provider served from its prompt cache (`20261010`). The kind of call stays in `operation`.
+
 The initial embedding profile is `vector(1536)`, recorded per-row via `embedding_model`/`embedding_dim` rather than assumed — see the column comment on `kb_vectors.embedding` in `supabase/migrations/20260808190006_kb_vectors.sql`. Changing the default embedding model later is an additive migration (new column + re-embed job), not a silent dimension mismatch; adding a new *generation* provider (as Groq's addition demonstrated) requires no schema change to the vector tables at all.
 
 ### What's explicitly not built yet (provider/model registry)
