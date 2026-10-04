@@ -88,6 +88,9 @@ for (const file of files) {
     } else if ((r = st.match(new RegExp(`^create table (?:if not exists )?(${QID})`, 'i')))) {
       const [s, t] = qname(r[1])
       add(m, 'table', s, null, t)
+    } else if ((r = st.match(new RegExp(`^create (?:or replace )?(?:materialized )?view (?:if not exists )?(${QID})`, 'i')))) {
+      const [s, v] = qname(r[1])
+      add(m, 'view', s, null, v)
     } else if ((r = st.match(new RegExp(`^create (?:or replace )?function (${QID})`, 'i')))) {
       const [s, f] = qname(r[1])
       add(m, 'function', s, null, f)
@@ -198,6 +201,8 @@ checked as (
       when 'extension' then exists (select 1 from pg_extension x where x.extname = e.object_name)
       when 'table' then exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
                                 where n.nspname = e.schema_name and c.relname = e.object_name and c.relkind in ('r', 'p', 'v', 'm'))
+      when 'view' then exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                               where n.nspname = e.schema_name and c.relname = e.object_name and c.relkind in ('v', 'm'))
       when 'column' then exists (select 1 from information_schema.columns ic
                                  where ic.table_schema = e.schema_name and ic.table_name = e.table_name and ic.column_name = e.object_name)
       when 'function' then exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
