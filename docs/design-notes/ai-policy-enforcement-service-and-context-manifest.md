@@ -183,17 +183,19 @@ The dev request lists eight open decisions. Phase 2 can start with these provisi
 | --- | --- | --- |
 | Ember turn loop | Retrieved evidence + Project | Gated (Phase 1) |
 | Conversation summary | Transcript's retrieved resources + Project | Gated (Phase 2, increment 1) |
-| Chunk enrichment on upload / "enrich more" | Document's knowledge source + inherited floor | **Gated** |
-| Chunk embedding (approve, approve remaining, submission auto-approve) | Same | **Gated** |
-| Project knowledge search query embedding (Ember and external MCP) | Project | **Gated** |
+| Chunk enrichment on upload / "enrich more" | Document's knowledge source + inherited floor | Foundational: any model by default; **gated** with `EMBER_GATE_FOUNDATIONAL_AI=true` |
+| Chunk embedding (approve, approve remaining, submission auto-approve) | Same | Foundational (as above) |
+| Project knowledge search query embedding (Ember and external MCP) | Project | Foundational (as above) |
 | Wiki AI draft from chunks / from an artifact | Source documents / artifact + its Project | **Gated** |
-| Wiki approval embedding | Article + everything it was written from | **Gated** (a block skips embedding; the approval stands) |
+| Wiki approval embedding | Article + everything it was written from | Foundational (as above; when gated, a block skips embedding and the approval stands) |
 | Presentation generation and comment triage | Project + every artifact on the Workstream | **Gated** |
 | `eval/judge.ts`, `eval/generation.ts`, `eval/retrieval.ts` | — | Not yet |
 | `graph/nodes.ts` (RAG Answer Agent) | — | Not yet |
 | `journal/generate.ts` | — | Not yet |
 | `search_wiki` query embedding (platform Wiki; no Project in the tool's context) | — | Not yet |
 | Blog Word import | — | Not gated by design: authored for public release, no classified resource involved |
+
+**Foundational vs. content calls (`AICallPurpose`).** Sandz policy (October 2026): the document pipeline and search indexing -- chunk enrichment and every embedding -- may use any model, so they are `'foundational'` and pass through `gateProvider` unchecked. Chunking itself never calls a model. Everything that writes or reasons over content for a person (chat, summaries, Wiki drafts, presentations) is `'content'` and always gated. A deployment whose client forbids document text reaching a cloud model sets `EMBER_GATE_FOUNDATIONAL_AI=true`, and foundational calls are then gated with the manifests below.
 
 **Inherited floor (`ContextManifest.minimumSensitivity`).** A document is enriched as soon as it's uploaded, before anyone can classify its new knowledge source, so the source would read as unclassified (`internal`). The floor closes that window: a document carries at least the highest classification of any Project that uses its knowledge base, whether the base is attached to the Project, attached to one of its Workstreams, or owned by it.
 

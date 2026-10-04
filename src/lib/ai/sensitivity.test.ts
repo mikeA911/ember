@@ -6,6 +6,8 @@ import { createFakeSupabase as createBaseFake } from '@/lib/test-support/fake-su
 // resource_access_policies rows in one place.
 let adminFake: unknown
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => adminFake }))
+let gateFoundational = false
+vi.mock('@/lib/env', () => ({ env: { gateFoundationalAi: () => gateFoundational } }))
 function createFakeSupabase(...args: Parameters<typeof createBaseFake>) {
   const fake = createBaseFake(...args)
   adminFake = fake
@@ -366,5 +368,60 @@ describe('gateProvider', () => {
   it('refuses to run unchecked when the provider is not registered', async () => {
     const fakeSupabase = createFakeSupabase({ ai_providers: [{ data: null, error: null }] })
     await expect(gateProvider(fakeSupabase as never, fakeProvider(), { entries: [] })).rejects.toThrow(/not registered/)
+  })
+})
+
+describe('gateProvider -- foundational calls', () => {
+  function fakeProvider(): AIProvider {
+    return {
+      name: 'openai',
+      generateText: vi.fn(),
+      generateStructured: vi.fn().mockResolvedValue({ data: {}, model: 'm', usage: {} }),
+      generateChat: vi.fn(),
+      embed: vi.fn().mockResolvedValue({ embedding: [], model: 'm', dimensions: 0, usage: {} }),
+    } as unknown as AIProvider
+  }
+
+  it('passes foundational calls through unchecked by default, without building the manifest', async () => {
+    gateFoundational = false
+    const fakeSupabase = createFakeSupabase({})
+    const provider = fakeProvider()
+    const buildManifest = vi.fn()
+
+    const gated = await gateProvider(fakeSupabase as never, provider, buildManifest, 'foundational')
+
+    expect(gated).toBe(provider)
+    expect(buildManifest).not.toHaveBeenCalled()
+  })
+
+  it('gates foundational calls when the deployment turns it on', async () => {
+    gateFoundational = true
+    try {
+      const fakeSupabase = createFakeSupabase({
+        ai_providers: [{ data: { id: 'provider-openai' }, error: null }],
+        ai_provider_sensitivity_eligibility: [{ data: { max_sensitivity: 'internal' }, error: null }],
+      })
+      const provider = fakeProvider()
+
+      const gated = await gateProvider(fakeSupabase as never, provider, async () => ({ entries: [], minimumSensitivity: 'restricted' }), 'foundational')
+
+      await expect(gated.embed({ text: 'x' })).rejects.toThrow(AISensitivityError)
+      expect(provider.embed).not.toHaveBeenCalled()
+    } finally {
+      gateFoundational = false
+    }
+  })
+
+  it('always gates content calls, whatever the setting', async () => {
+    gateFoundational = false
+    const fakeSupabase = createFakeSupabase({
+      ai_providers: [{ data: { id: 'provider-openai' }, error: null }],
+      ai_provider_sensitivity_eligibility: [{ data: { max_sensitivity: 'internal' }, error: null }],
+    })
+    const provider = fakeProvider()
+
+    const gated = await gateProvider(fakeSupabase as never, provider, { entries: [], projectSensitivity: 'restricted' }, 'content')
+
+    await expect(gated.generateStructured({ prompt: 'x', schema: {} as never })).rejects.toThrow(AISensitivityError)
   })
 })

@@ -51,9 +51,14 @@ async function autoApproveAllChunks(ctx: WorkbenchCallerContext, documentId: str
   const { data: chunks, error } = await admin.from('document_chunks').select('id').eq('document_id', documentId)
   if (error) throw error
 
-  const manifest = await manifestForDocuments([documentId])
+  const manifest = () => manifestForDocuments([documentId])
   for (const chunk of chunks ?? []) {
-    const provider = await gateProvider(admin, await getActiveEmbeddingProvider(admin, { documentId, chunkId: chunk.id, requestedBy: decidedBy }), manifest)
+    const provider = await gateProvider(
+      admin,
+      await getActiveEmbeddingProvider(admin, { documentId, chunkId: chunk.id, requestedBy: decidedBy }),
+      manifest,
+      'foundational'
+    )
     await approveChunk(admin, provider, {
       chunkId: chunk.id,
       curatorNotes: 'Auto-approved on source submission approval -- eligible for re-review.',

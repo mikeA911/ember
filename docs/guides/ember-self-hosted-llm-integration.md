@@ -109,7 +109,11 @@ Not yet recorded:
 The guide says prompts and documents "never leave our infrastructure". With Ember on Vercel, that is not yet true:
 
 1. **Every prompt passes through Vercel** (region `hkg1`) on its way to the model. That already applies to all Ember data, including Project content.
-2. **Other AI calls besides chat** use the platform's default models, which are cloud providers today. Document enrichment on upload, embeddings, presentation generation and Wiki AI drafts did not check sensitivity at all. Branch `ccr-8b20ec22-local-llm-readiness` adds the check to them, so Confidential or Restricted material is **blocked** from cloud models instead of sent. It does not yet **route** those calls to the local model; for that, make the local models the deployment's defaults.
+2. **Other AI calls besides chat** use the platform's default models, which are cloud providers today. Branch `ccr-8b20ec22-local-llm-readiness` splits them in two:
+   - **Content calls** (presentation generation and Wiki AI drafts) now check sensitivity, so Confidential or Restricted material is **blocked** from cloud models instead of sent.
+   - **Foundational calls** (document enrichment on upload and all embeddings) may use **any model** by Sandz policy. Document text from a Restricted Project still goes to the default enrichment and embedding models. To keep it on Zadara, either make the local models those defaults, or set `EMBER_GATE_FOUNDATIONAL_AI=true` on the deployment so these calls are checked too.
+
+   Nothing is **routed** to the local model automatically yet; a blocked call fails with the policy message.
 3. **Web search** (Tavily) stays available in every Project. The model may put only public names and topics in a query, and each query is shown under the reply.
 
 For internal lab material, (1) is acceptable. For client data such as NG911 incident records, decide before loading data:
@@ -150,7 +154,8 @@ Also time **a full Ember turn that uses tools**, not just single completions. Tu
 - ☐ A Project chat on `sandz-llm` completes a knowledge-search question (tool calling through the relay)
 - ☐ Served model name includes the version
 - ☐ Step 5 dataset run in Ember against cloud and `sandz-llm`; cloud run marked baseline
-- ☐ (when merged) branch `ccr-8b20ec22-local-llm-readiness`: a Restricted Project's document upload is **blocked** from a cloud enrichment model, and succeeds when the local model is the default
+- ☐ (when merged) branch `ccr-8b20ec22-local-llm-readiness`: a Wiki AI draft or presentation for a Restricted Project is **blocked** on a cloud model and succeeds on `sandz-llm`
+- ☐ Decision recorded per deployment: `EMBER_GATE_FOUNDATIONAL_AI` on or off (off = document enrichment and embeddings may use any model)
 - ☐ (when embeddings move) local embedding model is the default and everything has been re-embedded
 
 ## Open questions to add

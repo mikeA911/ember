@@ -40,6 +40,7 @@ export {
   gateProvider,
   mergeManifests,
 } from './sensitivity'
+export type { AICallPurpose } from './sensitivity'
 export {
   manifestForDocuments,
   manifestForProject,

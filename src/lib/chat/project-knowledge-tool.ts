@@ -78,13 +78,13 @@ export async function runSearchProjectKnowledge(
   rawInput: unknown
 ): Promise<{ results: ProjectKnowledgeHit[] }> {
   const input = InputSchema.parse(rawInput)
-  // The question is written in this Project's context (Ember chat, or the
-  // external MCP server's search_project_knowledge), so it carries the
-  // Project's classification to the embedding provider.
+  // Foundational (search indexing): ungated unless EMBER_GATE_FOUNDATIONAL_AI
+  // is on, in which case the question carries the Project's classification.
   const embeddingProvider = await gateProvider(
     ctx.supabase,
     await getActiveEmbeddingProvider(ctx.supabase, { requestedBy: ctx.user.id }),
-    await manifestForProject(projectId)
+    () => manifestForProject(projectId),
+    'foundational'
   )
   const { embedding } = await embeddingProvider.embed({ text: input.query })
 

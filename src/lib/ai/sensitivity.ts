@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database, EvidenceResourceType, InformationSensitivity } from '@/types/database'
+import { env } from '@/lib/env'
 import type { AIProvider, EmbedInput, GenerateChatInput, GenerateStructuredInput, GenerateTextInput } from './provider'
 
 // Information Sensitivity Classification (Shadow AI blog, 2026-08-28):
@@ -263,15 +264,34 @@ export function withPolicyGate(supabase: SupabaseClient<Database>, provider: AIP
   }
 }
 
+// What an AI call is for, which decides whether the gate applies:
+// - 'foundational': the document pipeline and search indexing -- chunk
+//   enrichment and every embedding (chunks, Wiki versions, search
+//   questions). May use any model by default (Sandz policy, October 2026);
+//   gated only when the deployment sets EMBER_GATE_FOUNDATIONAL_AI=true.
+// - 'content': anything that writes or reasons over content for a person --
+//   chat, summaries, Wiki drafts, presentations. Always gated.
+export type AICallPurpose = 'foundational' | 'content'
+
 // withPolicyGate for the common single-shot case where the caller holds a
 // resolved provider (getActiveStructuredOutputProvider/
 // getActiveEmbeddingProvider) but not its ai_providers row id -- looked up
 // by name through the caller's own client, the same way chat/summary.ts
 // does (ai_providers is readable by any active, non-anonymous session). The
 // service-role client stays reserved for tier reads in this file.
-export async function gateProvider(supabase: SupabaseClient<Database>, provider: AIProvider, manifest: ContextManifest): Promise<AIProvider> {
+//
+// `manifest` may be a function, so an ungated foundational call skips
+// building it (manifest builders read the database).
+export async function gateProvider(
+  supabase: SupabaseClient<Database>,
+  provider: AIProvider,
+  manifest: ContextManifest | (() => Promise<ContextManifest>),
+  purpose: AICallPurpose = 'content'
+): Promise<AIProvider> {
+  if (purpose === 'foundational' && !env.gateFoundationalAi()) return provider
+  const resolvedManifest = typeof manifest === 'function' ? await manifest() : manifest
   const { data, error } = await supabase.from('ai_providers').select('id').eq('name', provider.name).maybeSingle()
   if (error) throw error
   if (!data) throw new Error(`AI provider "${provider.name}" is not registered, so its eligibility can't be checked`)
-  return withPolicyGate(supabase, provider, manifest, { providerId: data.id })
+  return withPolicyGate(supabase, provider, resolvedManifest, { providerId: data.id })
 }

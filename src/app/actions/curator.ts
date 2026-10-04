@@ -27,13 +27,15 @@ export async function uploadAndProcessDocument(formData: FormData) {
 
   await processDocument(supabase, doc.id)
 
-  // Gated on the document's sensitivity, including the floor inherited from
-  // Projects that use this knowledge base -- the source is brand new and
-  // unclassified at this point (src/lib/ai/policy-manifests.ts).
+  // Foundational: ungated unless EMBER_GATE_FOUNDATIONAL_AI is on. When it
+  // is, the manifest includes the floor inherited from Projects that use
+  // this knowledge base -- the source is brand new and unclassified here
+  // (src/lib/ai/policy-manifests.ts).
   const provider = await gateProvider(
     supabase,
     await getActiveStructuredOutputProvider(supabase, { documentId: doc.id, requestedBy: user.id }),
-    await manifestForDocuments([doc.id])
+    () => manifestForDocuments([doc.id]),
+    'foundational'
   )
   await enrichDocumentChunks(supabase, provider, doc.id, docType, 10)
 
@@ -62,7 +64,8 @@ export async function enrichMoreChunks(
     const provider = await gateProvider(
       supabase,
       await getActiveStructuredOutputProvider(supabase, { documentId, requestedBy: user.id }),
-      await manifestForDocuments([documentId])
+      () => manifestForDocuments([documentId]),
+      'foundational'
     )
     const result = await enrichDocumentChunks(supabase, provider, documentId, docType, 10)
     return { ok: true, ...result }
@@ -79,7 +82,8 @@ export async function approveChunkAction(chunkId: string, documentId: string, cu
     const provider = await gateProvider(
       supabase,
       await getActiveEmbeddingProvider(supabase, { documentId, chunkId, requestedBy: user.id }),
-      await manifestForDocuments([documentId])
+      () => manifestForDocuments([documentId]),
+      'foundational'
     )
     await approveChunk(supabase, provider, { chunkId, curatorNotes, reviewedBy: user.id })
     return { ok: true }
@@ -118,7 +122,8 @@ export async function approveRemainingChunksAction(
     const provider = await gateProvider(
       supabase,
       await getActiveEmbeddingProvider(supabase, { documentId, requestedBy: user.id }),
-      await manifestForDocuments([documentId])
+      () => manifestForDocuments([documentId]),
+      'foundational'
     )
     for (const chunk of chunks) {
       await approveChunk(supabase, provider, { chunkId: chunk.id, curatorNotes: null, reviewedBy: user.id })

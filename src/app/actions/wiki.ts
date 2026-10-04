@@ -473,10 +473,16 @@ export async function approveArticleAction(articleId: string, versionId: string)
   try {
     const { data: version } = await admin.from('wiki_versions').select('content').eq('id', versionId).single()
     if (version) {
-      // A block (AISensitivityError) lands in the catch below like any other
+      // Foundational (search indexing). If EMBER_GATE_FOUNDATIONAL_AI is on,
+      // a block (AISensitivityError) lands in the catch below like any other
       // embedding failure: the approval stands, the version just isn't
       // embedded until an eligible embedding model is the default.
-      const provider = await gateProvider(admin, await getActiveEmbeddingProvider(admin, { requestedBy: user.id }), await manifestForWikiVersion(versionId))
+      const provider = await gateProvider(
+        admin,
+        await getActiveEmbeddingProvider(admin, { requestedBy: user.id }),
+        () => manifestForWikiVersion(versionId),
+        'foundational'
+      )
       await embedApprovedVersion(admin, provider, versionId, version.content)
     }
   } catch (err) {

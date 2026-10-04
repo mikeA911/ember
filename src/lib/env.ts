@@ -27,6 +27,12 @@ export const env = {
   // is simply omitted from Ember's tool list when this is unset -- see
   // src/lib/chat/loop.ts's tools-array assembly.
   tavilyApiKey: () => optional('TAVILY_API_KEY'),
+  // Whether "foundational" AI calls -- chunk enrichment and embeddings
+  // (src/lib/ai/sensitivity.ts's AICallPurpose) -- go through the
+  // information-sensitivity gate. Off by default: Sandz policy lets the
+  // document pipeline use any model. A deployment whose client forbids any
+  // document text reaching a cloud model sets this to exactly 'true'.
+  gateFoundationalAi: () => optional('EMBER_GATE_FOUNDATIONAL_AI') === 'true',
   // Generic lookup for openai_compatible provider rows, whose env var name
   // is admin-configured (ai_providers.api_key_env_var) rather than known at
   // build time.
