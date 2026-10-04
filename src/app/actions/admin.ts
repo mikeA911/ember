@@ -5,7 +5,6 @@ import { requireRole } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireActiveKnowledgeBase } from '@/lib/knowledge-bases'
 import { enrollInOrganizationHome, provisionBuilderProject } from '@/lib/workbench/projects'
-import { env } from '@/lib/env'
 
 // Every action here requires admin first (using the caller's own RLS-scoped
 // session), then switches to the service-role client for the actual write --
@@ -131,12 +130,12 @@ export async function createUserAction(input: { email: string; password: string;
   if (profileError) throw profileError
 
   await enrollInOrganizationHome(admin, created.user.id)
-  // KB Sandbox Builder: a new consultant-role account is a builder -- give
-  // them their one Project immediately, so there's nothing to set up before
-  // they can start working. Enterprise mode, or any other platform role,
-  // gets no such project (an ordinary member's home is the Organization
-  // Home Project alone; curator/admin are operator staff, not builders).
-  if (env.productMode() === 'builder' && input.role === 'consultant') {
+  // A new consultant-role account is a builder -- give them a workspace
+  // Project immediately, so there's nothing to set up before they can start
+  // working. Any other platform role gets no such project (an ordinary
+  // member's home is the Organization Home Project alone; curator/admin are
+  // the agency's own staff, not builders).
+  if (input.role === 'consultant') {
     await provisionBuilderProject(admin, created.user.id, input.email)
   }
 

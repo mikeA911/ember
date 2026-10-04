@@ -21,10 +21,8 @@ import type { MemberProjectOption } from '@/lib/projects/queries'
 // exactly the kind of duplicated Ember-access logic this redesign removes.
 export function EmberHome({
   projects,
-  productMode = 'enterprise',
 }: {
   projects: MemberProjectOption[]
-  productMode?: 'enterprise' | 'builder'
 }) {
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined)
 
@@ -33,9 +31,7 @@ export function EmberHome({
       <div>
         <h1 className="text-xl font-semibold">Ember</h1>
         <p className="mt-1 text-sm text-zinc-600">
-          {productMode === 'builder'
-            ? 'Discover, specify and verify what your customer needs — build it in your own tools.'
-            : 'Your organization’s trusted AI workspace.'}
+          Discover, specify and verify what your customer needs — build it in your own tools.
         </p>
       </div>
       <ChatSession
@@ -44,7 +40,6 @@ export function EmberHome({
         projects={projects}
         onSelectProject={setSelectedProjectId}
         className="flex h-[70vh] w-full flex-col rounded border border-zinc-200 bg-white shadow sm:h-[32rem]"
-        productMode={productMode}
       />
     </div>
   )

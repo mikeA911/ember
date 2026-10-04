@@ -112,7 +112,7 @@ export function ProviderDetail({
             <span>{configured ? 'Configured ✓' : `Missing (set ${provider.api_key_env_var})`}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-zinc-500" title="Builder mode: a Live client Project may use only Sandz-hosted providers for chat, summaries, Wiki drafts and presentations.">
+            <span className="text-zinc-500" title="A Live client Project may use only Sandz-hosted providers for chat, summaries, Wiki drafts and presentations.">
               Sandz-hosted
             </span>
             <label className="flex items-center gap-2">

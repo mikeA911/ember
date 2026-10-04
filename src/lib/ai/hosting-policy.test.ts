@@ -1,18 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 
 let adminFake: unknown
-let productMode: 'enterprise' | 'builder' = 'builder'
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => adminFake }))
-vi.mock('@/lib/env', () => ({ env: { productMode: () => productMode } }))
 
 const { aiHostingForProject, aiHostingForProjects, aiHostingForWorkstream, aiHostingForDocuments } = await import('./hosting-policy')
-
-beforeEach(() => {
-  productMode = 'builder'
-})
 
 describe('aiHostingForProject', () => {
   it('requires Sandz-hosted AI for a Live client Project (has a client fee record)', async () => {
@@ -34,13 +28,6 @@ describe('aiHostingForProject', () => {
       client_project_fees: [{ data: [], error: null }],
     })
     expect(await aiHostingForProject('p-supabase-stack')).toBe('any')
-  })
-
-  it('never restricts in Enterprise mode (on hold), without querying', async () => {
-    productMode = 'enterprise'
-    adminFake = createFakeSupabase({})
-    expect(await aiHostingForProject('p-client')).toBe('any')
-    expect((adminFake as { _calls: unknown[] })._calls).toHaveLength(0)
   })
 
   it('filters on Live status', async () => {

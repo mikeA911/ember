@@ -226,7 +226,7 @@ export async function getProjectContextAction(projectId: string) {
   const ctx = await requireUser()
   const context = await getProjectContext(ctx, projectId)
   if (!context) return null
-  // 'self_hosted_only' for a Live client Project in Builder mode -- the chat
+  // 'self_hosted_only' for a Live client Project -- the chat
   // panel then offers only Sandz-hosted models and shows a badge; the loop
   // enforces it regardless (src/lib/ai/hosting-policy.ts).
   return { ...context, knowledgeScope: describeProjectKnowledgeScope(context), aiHosting: await aiHostingForProject(projectId) }

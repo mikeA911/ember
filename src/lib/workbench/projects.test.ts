@@ -2,8 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 
 vi.mock('@/lib/knowledge-bases', () => ({ requireActiveKnowledgeBase: vi.fn() }))
-const productModeMock = vi.fn().mockReturnValue('enterprise')
-vi.mock('@/lib/env', () => ({ env: { productMode: () => productModeMock() } }))
 const createUserMock = vi.fn().mockResolvedValue({ data: { user: { id: 'new-user-1' } }, error: null })
 const adminInsertMock = vi.fn().mockResolvedValue({ data: null, error: null })
 const adminUpdateMock = vi.fn()
@@ -111,54 +109,22 @@ describe('createProject -- Governance & Approvals staging (Stage 1)', () => {
   })
 })
 
-// KB Sandbox Builder: a builder (consultant role) gets exactly one
-// Project (see provisionBuilderProject in this same file) -- new clients
-// are Workstreams on it, not new Projects.
-describe('createProject -- KB Sandbox Builder one-project limit', () => {
-  beforeEach(() => {
-    productModeMock.mockReturnValue('enterprise')
-  })
-
-  const input = {
-    name: 'Another Project',
-    projectType: 'consulting' as const,
-    objective: '',
-    details: {},
-    knowledgeBaseId: null,
-    evalDatasetId: null,
-    members: [],
-  }
-
-  it('rejects a second Project for a consultant (builder) who already owns one, in builder mode', async () => {
-    productModeMock.mockReturnValue('builder')
-    const supabase = createFakeSupabase({ projects: [{ data: { id: 'existing-project-1' }, error: null }] })
-
-    await expect(createProject(ctxWith(supabase), input)).rejects.toThrow('Builders work from one Project')
-  })
-
-  it('allows a consultant\'s first Project in builder mode', async () => {
-    productModeMock.mockReturnValue('builder')
-    const supabase = createFakeSupabase({
-      projects: [
-        { data: null, error: null }, // no existing owned project
-        { data: { id: 'new-project-1' }, error: null }, // the actual insert
-      ],
-    })
-
-    await expect(createProject(ctxWith(supabase), input)).resolves.toBeDefined()
-  })
-
-  it('never applies the one-project limit outside builder mode, even with an existing Project', async () => {
-    const supabase = createFakeSupabase({ projects: [{ data: { id: 'new-project-1' }, error: null }] })
-    await expect(createProject(ctxWith(supabase), input)).resolves.toBeDefined()
-  })
-
-  it('never applies the one-project limit to curator/admin, even in builder mode', async () => {
-    productModeMock.mockReturnValue('builder')
-    const supabase = createFakeSupabase({ projects: [{ data: { id: 'new-project-1' }, error: null }] })
-    const curatorCtx = { user: { id: 'user-1', email: 'owner@example.com' }, profile: { role: 'curator' }, supabase } as never
-
-    await expect(createProject(curatorCtx, input)).resolves.toBeDefined()
+// Builders aren't confined to their workspace Project -- an agency may give
+// them several.
+describe('createProject -- builders may own several Projects', () => {
+  it('creates another Project for a consultant (builder) who already owns one', async () => {
+    const supabase = createFakeSupabase({ projects: [{ data: { id: 'new-project-2' }, error: null }] })
+    await expect(
+      createProject(ctxWith(supabase), {
+        name: 'Another Project',
+        projectType: 'consulting',
+        objective: '',
+        details: {},
+        knowledgeBaseId: null,
+        evalDatasetId: null,
+        members: [],
+      })
+    ).resolves.toBeDefined()
   })
 })
 
@@ -315,10 +281,6 @@ describe('createAndAddProjectMember', () => {
 // client-generated tempId, not a real DB id -- insertStagedTree resolves
 // them level by level (parents before children).
 describe('createProject -- Builder Ontology staged trees (insertStagedTree)', () => {
-  beforeEach(() => {
-    productModeMock.mockReturnValue('enterprise')
-  })
-
   it('inserts project_objects parent-before-child, resolving a child parent_object_id to the parent\'s real returned id, not its tempId', async () => {
     const supabase = createFakeSupabase({
       projects: [{ data: { id: 'project-1' }, error: null }],

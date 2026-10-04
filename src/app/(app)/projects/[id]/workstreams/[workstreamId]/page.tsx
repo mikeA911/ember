@@ -29,7 +29,6 @@ import { Markdown } from '@/components/shared/Markdown'
 import { WorkstreamArtifactList } from '@/components/projects/WorkstreamArtifactList'
 import { artifactCountLabel, artifactPreview, countArtifacts, sortArtifactsForReview } from '@/lib/projects/artifact-summary'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { env } from '@/lib/env'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 
 const ARTIFACT_TYPE_LABELS: Record<ArtifactType, string> = {
@@ -95,8 +94,8 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   // Offer promotion only when it would actually be accepted by
   // submitWorkstreamForPromotion -- an active member, completed, at least
   // one approved artifact, and nothing already in flight for it. Works the
-  // same in Builder mode (the solo builder) or an ordinary Enterprise team
-  // Project (any member, not just its owner/curator).
+  // same on a builder's own workspace or a team Project (any member, not
+  // just its owner/curator).
   let canOfferPromotion = false
   if (isActiveMember && workstream.status === 'completed' && artifacts.some((a) => a.status === 'approved')) {
     const { data: existingPromotion } = await supabase
@@ -108,9 +107,8 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
     canOfferPromotion = !existingPromotion
   }
 
-  // Builder Operations: only meaningful in builder-mode deployments, and
-  // only for this workstream's own Project owner.
-  const canOfferBuilderUpdate = env.productMode() === 'builder' && isProjectOwner
+  // Builder Operations: only for this workstream's own Project owner.
+  const canOfferBuilderUpdate = isProjectOwner
   let existingBuilderUpdate: ExistingBuilderUpdate | null = null
   if (canOfferBuilderUpdate) {
     const { data } = await supabase

@@ -1,6 +1,5 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { env } from '@/lib/env'
 import { knowledgeBaseIdsForDocuments, projectIdsUsingKnowledgeBases } from './policy-manifests'
 
 // Where a content AI call for a Project may run (Sandz policy, October 2026):
@@ -17,8 +16,7 @@ import { knowledgeBaseIdsForDocuments, projectIdsUsingKnowledgeBases } from './p
 // "Contracted client Project" = it has a client_project_fees row, which only
 // the accepted-proposal promotion creates (workstream-promotions.ts) -- not
 // portfolio_category, which owners and curators edit freely, so recategorizing
-// a client Project can't loosen the rule. Builder mode only: Enterprise mode
-// is on hold and always 'any' here. Foundational calls (enrichment,
+// a client Project can't loosen the rule. Foundational calls (enrichment,
 // embeddings) are never affected (src/lib/ai/sensitivity.ts AICallPurpose).
 //
 // Reads ids, statuses and fee-row existence only, with the service-role
@@ -26,7 +24,6 @@ import { knowledgeBaseIdsForDocuments, projectIdsUsingKnowledgeBases } from './p
 export type AIHostingRequirement = 'any' | 'self_hosted_only'
 
 export async function aiHostingForProjects(projectIds: string[]): Promise<AIHostingRequirement> {
-  if (env.productMode() !== 'builder') return 'any'
   const ids = [...new Set(projectIds.filter(Boolean))]
   if (ids.length === 0) return 'any'
   const admin = createAdminClient()
@@ -44,14 +41,12 @@ export async function aiHostingForProject(projectId: string): Promise<AIHostingR
 }
 
 export async function aiHostingForWorkstream(workstreamId: string): Promise<AIHostingRequirement> {
-  if (env.productMode() !== 'builder') return 'any'
   const { data, error } = await createAdminClient().from('project_workstreams').select('project_id').eq('id', workstreamId).maybeSingle()
   if (error) throw error
   return data ? aiHostingForProject(data.project_id) : 'any'
 }
 
 export async function aiHostingForArtifact(artifactId: string): Promise<AIHostingRequirement> {
-  if (env.productMode() !== 'builder') return 'any'
   const { data, error } = await createAdminClient().from('workstream_artifacts').select('workstream_id').eq('id', artifactId).maybeSingle()
   if (error) throw error
   return data ? aiHostingForWorkstream(data.workstream_id) : 'any'
@@ -60,6 +55,5 @@ export async function aiHostingForArtifact(artifactId: string): Promise<AIHostin
 // Source documents (a Wiki draft synthesized from chunks): the strictest
 // requirement of any Project whose knowledge bases hold them.
 export async function aiHostingForDocuments(documentIds: string[]): Promise<AIHostingRequirement> {
-  if (env.productMode() !== 'builder') return 'any'
   return aiHostingForProjects(await projectIdsUsingKnowledgeBases(await knowledgeBaseIdsForDocuments(documentIds)))
 }

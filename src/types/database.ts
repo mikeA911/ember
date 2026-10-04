@@ -1792,7 +1792,7 @@ export interface AIProviderRow {
   enabled: boolean
   supports_model_discovery: boolean
   // Runs on Sandz infrastructure (20261006100001_ai_provider_self_hosted.sql).
-  // Live client Projects in Builder mode may use only these for content calls.
+  // Live client Projects may use only these for content calls.
   is_self_hosted: boolean
   created_at: string
   updated_at: string

@@ -14,7 +14,6 @@ import { getNeedsAttention } from '@/lib/dashboard/needs-attention'
 import { listUpcomingScheduledPresentations } from '@/lib/workbench/presentations'
 import { ScheduledPresentationsWidget } from '@/components/dashboard/ScheduledPresentationsWidget'
 import { hasRequiredRole } from '@/lib/auth'
-import { env } from '@/lib/env'
 import { listMemberProjectOptions, listActiveProjectsForDashboard } from '@/lib/projects/queries'
 import { listRecentConversations } from '@/lib/chat/conversations'
 import { EmberHome } from '@/components/dashboard/EmberHome'
@@ -143,7 +142,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <ProjectsAwaitingApprovalWidget projects={projectsAwaitingApproval} />
 
       {isEmberFirst ? (
-        <EmberHome projects={emberProjects} productMode={env.productMode()} />
+        <EmberHome projects={emberProjects} />
       ) : (
         <>
           <div className="flex items-center justify-between">

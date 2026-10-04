@@ -6,7 +6,7 @@ import { AuthError } from '@/lib/auth'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 
 // Builder AI Usage Metering (docs/dev-request-kb-sandbox-builder-product.md,
-// "Credits and metering"): every builder-mode Ember call against the
+// "Credits and metering"): every builder Ember call against the
 // platform's own provider budget is priced and counted against a monthly
 // allowance plus any manually-granted credit top-ups. Deliberately NOT the
 // doc's 5-milestone-triggered automatic credit awards -- the milestones

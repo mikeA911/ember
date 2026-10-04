@@ -20,7 +20,7 @@ import { CATEGORY_ORDER } from '@/lib/projects/portfolio-categories'
 
 // Builder agency dashboard (/agency, 2026-10-01, Mike): the platform owner
 // is the admin, each builder agency is a curator, each builder is a
-// consultant. A builder works from one workspace Project; each client
+// consultant. A builder works from a workspace Project; each client
 // proposal is a Workstream on it. When a client accepts, the builder
 // requests promotion and the agency (or admin) approves it, which creates
 // the client Project (workstream-promotions.ts). A curator sees their own

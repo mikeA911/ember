@@ -105,40 +105,22 @@ function detectProjectIdFromPath(pathname: string, projects: MemberProjectOption
   return candidate && projects.some((p) => p.id === candidate) ? candidate : undefined
 }
 
-// docs/dev-request-assistant-first-use-onboarding-and-history.md's own
-// suggested copy -- shown as a client-only bubble, never sent to the server,
-// never persisted, so it has no model cost or provenance (Acceptance
-// criteria #1-2).
+// Empty-state copy, framed around the builder's actual question
+// (docs/dev-request-kb-sandbox-builder-product.md). Shown as a client-only
+// bubble, never sent to the server, never persisted, so it has no model
+// cost or provenance. A new customer starts as a Workstream on the
+// builder's workspace Project (provisionBuilderProject in projects.ts).
 const ONBOARDING_GREETING =
-  "Hi! I’m Ember, your Workbench Assistant, and I’m excited to explore the platform with you. We can investigate what you’re trying to accomplish, find the right Workbench method, check what information you already have, search approved platform guidance, and help you create projects or workstreams.\n\nYour conversations with me are saved to your account, so you can return to them in future sessions. What would you like to explore first?"
-
-const STARTER_PROMPTS = [
-  'Help me choose the right Workbench method.',
-  'Show me what Ember can do.',
-  'Help me turn an idea into a project.',
-  'Explain what information I need to get started.',
-]
-
-const SHORT_WELCOME = "Welcome back — would you like to continue where we left off or start something new?"
-
-// KB Sandbox Builder (docs/dev-request-kb-sandbox-builder-product.md) --
-// the same three empty-state copy slots as above, framed around the
-// builder's actual question rather than general platform exploration. Each
-// builder has exactly one Project (auto-provisioned at account creation,
-// see provisionBuilderProject in projects.ts); a new client is a Workstream
-// on that Project, not a new Project -- Ember should point there, never
-// suggest "starting a new project."
-const ONBOARDING_GREETING_BUILDER =
   "Hi! I’m Ember. Let’s figure out what you’re trying to help this customer accomplish — I can help you discover the workflow, research the context, pick the right Method, and prepare architecture and specs. Start a new workstream to keep each customer's work separate, or tell me what you're working on now.\n\nYour conversations and saved notes are private to you. What are you trying to help this customer accomplish?"
 
-const STARTER_PROMPTS_BUILDER = [
+const STARTER_PROMPTS = [
   'What are you trying to help this customer accomplish?',
   'Help me pick the right Method for this problem.',
   'Help me start a new workstream for a customer.',
   'Show me what Ember Builder can do.',
 ]
 
-const SHORT_WELCOME_BUILDER = "Welcome back — continue an existing workstream, or start a new one?"
+const SHORT_WELCOME = "Welcome back — continue an existing workstream, or start a new one?"
 
 // A resumed conversation whose pending_turn_started_at is older than this is
 // treated as abandoned (the tab that started it is long gone), not polled
@@ -169,7 +151,6 @@ export function ChatSession({
   currentPageProjectId,
   onClose,
   className,
-  productMode = 'enterprise',
 }: {
   projectId?: string
   projects: MemberProjectOption[]
@@ -177,11 +158,7 @@ export function ChatSession({
   currentPageProjectId?: string
   onClose?: () => void
   className?: string
-  productMode?: 'enterprise' | 'builder'
 }) {
-  const onboardingGreeting = productMode === 'builder' ? ONBOARDING_GREETING_BUILDER : ONBOARDING_GREETING
-  const starterPrompts = productMode === 'builder' ? STARTER_PROMPTS_BUILDER : STARTER_PROMPTS
-  const shortWelcome = productMode === 'builder' ? SHORT_WELCOME_BUILDER : SHORT_WELCOME
   const pathname = usePathname()
   // Owner Roadmap and Ember Feedback Board, Phase 1. showFeedbackChooser is
   // the three-choice screen; feedbackCategory non-null means an actual
@@ -1358,11 +1335,11 @@ export function ChatSession({
           <div className="space-y-2">
             <div className="text-sm">
               <span className="inline-block max-w-[95%] whitespace-pre-wrap rounded bg-zinc-100 px-2 py-1 text-zinc-800">
-                {onboardingGreeting}
+                {ONBOARDING_GREETING}
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {starterPrompts.map((prompt) => (
+              {STARTER_PROMPTS.map((prompt) => (
                 <button
                   key={prompt}
                   type="button"
@@ -1379,7 +1356,7 @@ export function ChatSession({
         )}
         {!showFeedbackChooser && showShortWelcome && messages.length === 0 && (
           <div className="flex flex-col gap-2">
-            <p className="text-sm text-zinc-500">{shortWelcome}</p>
+            <p className="text-sm text-zinc-500">{SHORT_WELCOME}</p>
             {projectStarterPromptChip}
           </div>
         )}
@@ -1389,12 +1366,8 @@ export function ChatSession({
               {feedbackCategory
                 ? 'Tell Ember about it below.'
                 : projectId
-                  ? productMode === 'builder'
-                    ? `Ask about a customer's workstream, your saved notes, or what you're trying to help them accomplish.`
-                    : `Ask about ${projectContext?.name ?? 'this project'}'s own knowledge first, or general platform guidance.`
-                  : productMode === 'builder'
-                    ? 'What are you trying to help this customer accomplish? Or ask me to start a new workstream.'
-                    : 'Ask about the platform, search the Wiki, or ask me to create a project or workstream.'}
+                  ? `Ask about a customer's workstream, your saved notes, or what you're trying to help them accomplish.`
+                  : 'What are you trying to help this customer accomplish? Or ask me to start a new workstream.'}
             </p>
             {projectStarterPromptChip}
           </div>
@@ -1646,11 +1619,9 @@ function UserMessageBubble({ content }: { content: string }) {
 export function ChatPanel({
   projects,
   role,
-  productMode = 'enterprise',
 }: {
   projects: MemberProjectOption[]
   role: string
-  productMode?: 'enterprise' | 'builder'
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -1672,7 +1643,6 @@ export function ChatPanel({
           onSelectProject={setSelectedProjectId}
           currentPageProjectId={currentPageProjectId}
           onClose={() => setOpen(false)}
-          productMode={productMode}
         />
       ) : (
         <button

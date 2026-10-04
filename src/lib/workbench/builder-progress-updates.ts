@@ -103,9 +103,7 @@ export interface BuilderOperationsRow {
 // curator/admin only. Scoped to Projects tagged portfolio_category =
 // 'builder_lab' (the tag on every Project a builder owns -- their
 // provisioned workspace and each client Project, src/lib/workbench/
-// projects.ts), one row per builder -- a precise signal
-// independent of deployment mode, though the UI only ever surfaces this
-// tab in builder mode. Admin client throughout: a platform curator/admin
+// projects.ts), one row per builder -- a precise signal. Admin client throughout: a platform curator/admin
 // reviewing this is deliberately NOT expected to be a member of any
 // individual Builder's private Project -- same "safe metadata query"
 // posture as listPendingWorkstreamPromotions. `spend` (allowance/credits/

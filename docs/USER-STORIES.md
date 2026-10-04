@@ -32,7 +32,7 @@ Notes on the mapping:
 - **Project owner** abilities (publishing, approval policies, authority assignments, deciding restricted-evidence requests) are listed under **Curator** and marked *(owner)*. A platform admin can always perform them.
 - A **platform curator who is not a member** of a Project sees only safe portfolio metadata for it and must request membership before opening the workspace. A **platform admin** can open any Project.
 - **Public visitors** (no session) have their own section, [5. Public Visitor](#5-public-visitor).
-- The **Builder/Agency** deployment mode (`KB_SANDBOX_PRODUCT_MODE=builder`) gives the same four roles different meanings. Sections 1–4 describe the default **Enterprise** mode; [6. Builder Mode](#6-builder-mode) covers what changes.
+- Every deployment also runs the **builder and agency** programme, which gives the same roles additional meanings; [6. Builders and Agencies](#6-builders-and-agencies) covers it. An enterprise customer gets its own deployment and acts as the agency.
 
 ### Modules
 
@@ -86,7 +86,7 @@ Notes on the mapping:
 
 ## 1. Viewer
 
-The Viewer reads and converses. They cannot change shared Project content, run evaluations or attach evidence. Their default shell is **Ember-first**: the header shows only the Ember link, with a "Switch to classic workspace" toggle.
+The Viewer reads and converses. They cannot change shared Project content, run evaluations or attach evidence. Their default shell is the **builder shell**: the header shows Ember, Projects, Wiki and Blog.
 
 ### ACC — Accounts, profile and journal
 
@@ -713,15 +713,15 @@ As a Public Visitor, I want to read a published Project's curated profile and, w
 
 ---
 
-## 6. Builder Mode
+## 6. Builders and Agencies
 
-When a deployment sets `KB_SANDBOX_PRODUCT_MODE=builder`, Ember becomes a programme for individual builders who discover and specify customer AI capabilities, build them in their own tools, and hand them over. The platform roles keep their names but take on these meanings:
+Every deployment is a programme for builders who discover and specify customer AI capabilities, build them in their own tools, and hand them over. The platform roles keep their names but take on these meanings:
 
-| Builder-mode persona | Platform role | What they do |
+| Persona | Platform role | What they do |
 |---|---|---|
 | **Platform owner** | `admin` | Runs the programme: assigns builders to agencies, sets allowances and the platform rate, sees every agency and builder. |
 | **Agency** | `curator` | Supervises its own builders: approves their Projects and promotions, records client fees. |
-| **Builder** | `consultant` | Works alone in one private workspace Project; each client proposal is a Workstream. |
+| **Builder** | `consultant` | Works in a private workspace Project, where each client proposal is a Workstream, and on any other Projects they create or their agency adds them to. |
 | **Client** | Project `viewer` | Is added as a viewer to the client Project created when a proposal is accepted. |
 
 Everything in sections 1–4 still applies unless a story below changes it. Agency and platform-owner views are **consent-based and metadata only**: names, statuses, counts, dates, completion percentages and progress updates the builder chose to share. They never show a builder's notebooks, conversations, artifacts, slides, goals or deliverable labels. Code prefix: `BLD-<persona>`.
@@ -730,15 +730,15 @@ Everything in sections 1–4 still applies unless a story below changes it. Agen
 
 **BLD-B-01 — Start working straight away**
 As a Builder, I want my workspace Project to exist when my account is created, so that I can start without any setup.
-- An admin creating a `consultant` account in Builder mode provisions `<name> — Builder Workspace` (category `builder_lab`).
+- An admin creating a `consultant` account provisions `<name> — Builder Workspace` (category `builder_lab`).
 
-**BLD-B-02 — One Project, one Workstream per client**
-As a Builder, I want each client proposal to be a Workstream in my workspace, so that my work stays in one place.
-- Trying to create a second Project is refused with guidance to start a new Workstream instead.
+**BLD-B-02 — One Workstream per client, more Projects when needed**
+As a Builder, I want each client proposal to be a Workstream in my workspace, and to be able to work on other Projects my agency gives me, so that I'm not confined to a single Project.
+- I can create further Projects; like any Project created below curator, they wait for approval.
 
 **BLD-B-03 — A Builder-focused shell**
 As a Builder, I want navigation focused on Ember, my Projects, the Wiki and the Blog, so that enterprise administration does not get in my way.
-- Trending, Explore and the classic-workspace toggle are hidden.
+- Trending and Explore are hidden.
 
 **BLD-B-04 — See my AI spend**
 As a Builder, I want my profile to show my monthly allowance, credits, spend and what remains, so that I can manage my usage.
@@ -782,7 +782,7 @@ As an Agency, I want a dashboard of my assigned builders, their Projects, Workst
 
 **BLD-A-02 — Approve my builders' Projects and promotions**
 As an Agency, I want to approve or reject Projects and promotions submitted by my own builders, so that client engagements start with oversight.
-- In Builder mode, a curator may decide only for builders on their own roster; the platform owner may decide for anyone.
+- A curator may decide only for builders on their own roster (or for creators on no roster); the platform owner may decide for anyone.
 
 **BLD-A-03 — Record client fees**
 As an Agency, I want to record the maintenance fee for each of my builders' client Projects, so that invoicing figures are available.
@@ -802,7 +802,7 @@ As the Platform owner, I want to set the platform's percentage share of client f
 
 **BLD-P-04 — Review Builder Operations**
 As the Platform owner, I want a Builder Operations view of every builder's shared progress updates and AI spend, so that I know who needs help.
-- Shown on `/admin` in Builder mode only.
+- Shown on `/admin`.
 
 **BLD-P-05 — Set allowances and grant credit**
 As the Platform owner, I want to set a builder's monthly AI allowance, warning threshold and hard stop, and grant one-off credit with a reason, so that usage matches the programme's budget.
@@ -829,7 +829,7 @@ These appear in `docs/ROADMAP.md` but have no implemented behavior to describe. 
 - AI system inventory, risk tiers, control definitions and evaluation gates (M7).
 - Reviewed report types and executive reports (M8).
 - Role-based consultant learning paths (M9).
-- Builder mode: the private Builder Notebook, opportunity states, the five programme milestones and milestone-triggered credit awards (`docs/dev-request-kb-sandbox-builder-product.md`).
+- Builders: the private Builder Notebook, opportunity states, the five programme milestones and milestone-triggered credit awards (`docs/dev-request-kb-sandbox-builder-product.md`).
 
 ## Maintenance
 

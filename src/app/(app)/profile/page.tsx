@@ -32,9 +32,8 @@ export default async function ProfilePage() {
   const profile = profileRow as Profile
 
   // Builder AI Usage Metering + BYOLLM: only ever relevant to a builder
-  // (consultant role, builder-mode deployment) -- an Enterprise account or
-  // platform staff never sees either card.
-  const isBuilder = env.productMode() === 'builder' && profile.role === 'consultant'
+  // (consultant role) -- a member or platform staff never sees either card.
+  const isBuilder = profile.role === 'consultant'
   let spendSummary: Awaited<ReturnType<typeof getBuilderSpendSummary>> | null = null
   let llmCredentialStatus: Awaited<ReturnType<typeof getBuilderLlmCredentialStatus>> = null
   if (isBuilder) {
