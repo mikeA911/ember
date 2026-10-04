@@ -175,7 +175,7 @@ The dev request lists eight open decisions. Phase 2 can start with these provisi
 - Does not touch `chat/summary.ts` or any other ungated call site from §2.3 — flagging them is this note's job; closing them is Phase 2's.
 - Does not resolve decision 7 (retention) or 8 (Sandz environment) beyond naming them as blocked on non-technical/external input.
 
-## 5a. Coverage status (October 2026, branch `ccr-8b20ec22-local-llm-readiness`)
+## 5a. Coverage status (October 2026, PR #33)
 
 §2.3's inventory, updated. "Gated" means the call goes through `withPolicyGate`/`gateProvider` with a manifest built in `src/lib/ai/policy-manifests.ts`, and is blocked (`AISensitivityError`) when the manifest's effective sensitivity is above the provider's ceiling.
 
