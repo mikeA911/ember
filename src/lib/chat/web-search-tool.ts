@@ -20,6 +20,14 @@ import { env } from '@/lib/env'
 
 export const SEARCH_WEB_TOOL_NAME = 'search_web'
 
+// The one rule for what a query may contain -- shared by the tool
+// description (seen on every turn the tool is offered) and loop.ts's
+// project prompt addendum, so the two can't drift. Tavily is an external
+// service outside Ember's information-sensitivity gate, and the model
+// writes the query with the project's own context in front of it.
+export const WEB_QUERY_RULE =
+  'Write every search_web query using only public names and topics (company, product, technology or industry names). Never put project-internal details in a query: no names of people, addresses, incident or case details, internal figures, or wording taken from project knowledge, working knowledge, notes or documents. Queries are sent to an external search service (Tavily) and shown to the user.'
+
 const InputSchema = z.object({
   query: z.string(),
   maxResults: z.number().int().min(1).max(10).default(5),
@@ -36,7 +44,8 @@ const InputSchema = z.object({
 export const SEARCH_WEB_TOOL: ToolSpec = {
   name: SEARCH_WEB_TOOL_NAME,
   description:
-    "Search the public web via Tavily. Use for pre-sales/competitive research about a prospective client or competitor -- something NOT already covered by search_project_knowledge or search_wiki. Results are NOT vetted Ember evidence: never present them as facts about the platform's own data, never cite them via present_assistant_response's citations field (that's reserved for verified internal retrieval), and never claim anything found here is 'in the knowledge base' -- it becomes real project knowledge only after you propose it as a research_dossier artifact via attach_workstream_artifact and a curator approves it.",
+    "Search the public web via Tavily. Use for pre-sales/competitive research about a prospective client or competitor -- something NOT already covered by search_project_knowledge or search_wiki. Results are NOT vetted Ember evidence: never present them as facts about the platform's own data, never cite them via present_assistant_response's citations field (that's reserved for verified internal retrieval), and never claim anything found here is 'in the knowledge base' -- it becomes real project knowledge only after you propose it as a research_dossier artifact via attach_workstream_artifact and a curator approves it. " +
+    WEB_QUERY_RULE,
   parameters: z.toJSONSchema(InputSchema),
 }
 
@@ -61,24 +70,51 @@ interface TavilyResponse {
   answer?: string
 }
 
-export async function runSearchWeb(rawInput: unknown): Promise<{ results: WebSearchHit[]; answer: string | null }> {
+export interface WebSearchOutput {
+  // Exactly what was sent to Tavily -- echoed back so the persisted tool
+  // result records it, and so loop.ts/conversations.ts can show the user
+  // what left Ember ("Searched the web for: ...").
+  query: string
+  results: WebSearchHit[]
+  answer: string | null
+}
+
+// Thrown once the request has been sent (or attempted), so the caller can
+// still report the query to the user -- unlike an invalid-input or
+// not-configured failure, where nothing left Ember.
+export class WebSearchRequestError extends Error {
+  constructor(
+    message: string,
+    readonly query: string
+  ) {
+    super(message)
+    this.name = 'WebSearchRequestError'
+  }
+}
+
+export async function runSearchWeb(rawInput: unknown): Promise<WebSearchOutput> {
   const input = InputSchema.parse(rawInput)
   const apiKey = env.tavilyApiKey()
   if (!apiKey) throw new Error('Web research is not configured (TAVILY_API_KEY unset).')
 
-  const res = await fetch('https://api.tavily.com/search', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      query: input.query,
-      search_depth: input.searchDepth,
-      topic: input.topic,
-      time_range: input.timeRange,
-      max_results: input.maxResults,
-      include_answer: false,
-    }),
-  })
-  if (!res.ok) throw new Error(`Tavily search failed (${res.status}): ${await res.text()}`)
+  let res: Response
+  try {
+    res = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        query: input.query,
+        search_depth: input.searchDepth,
+        topic: input.topic,
+        time_range: input.timeRange,
+        max_results: input.maxResults,
+        include_answer: false,
+      }),
+    })
+  } catch (err) {
+    throw new WebSearchRequestError(`Tavily search failed: ${err instanceof Error ? err.message : String(err)}`, input.query)
+  }
+  if (!res.ok) throw new WebSearchRequestError(`Tavily search failed (${res.status}): ${await res.text()}`, input.query)
   const data = (await res.json()) as TavilyResponse
 
   const results: WebSearchHit[] = (data.results ?? []).map((r) => ({
@@ -88,5 +124,5 @@ export async function runSearchWeb(rawInput: unknown): Promise<{ results: WebSea
     score: r.score ?? 0,
     publishedDate: r.published_date ?? null,
   }))
-  return { results, answer: data.answer ?? null }
+  return { query: input.query, results, answer: data.answer ?? null }
 }
