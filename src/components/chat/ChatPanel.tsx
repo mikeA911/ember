@@ -37,7 +37,7 @@ import {
   type ChatAttachment,
 } from '@/lib/chat/attachments'
 import { defaultNoteTitle } from '@/lib/chat/transcript'
-import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, SuggestedPrompts } from './StructuredResponse'
+import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, WebSearchQueries, SuggestedPrompts } from './StructuredResponse'
 import { GatewayInvocationCard } from './GatewayInvocationCard'
 
 // Owner Roadmap and Ember Feedback Board, Phase 1. Only the three initial
@@ -526,6 +526,7 @@ export function ChatSession({
           providerDisplayName: result.providerDisplayName,
           modelDisplayName: result.modelDisplayName,
           toolsUsed: result.toolsUsed,
+          webSearchQueries: result.webSearchQueries.length > 0 ? result.webSearchQueries : undefined,
           embeddingModelDisplayName: result.embeddingModelDisplayName,
           structured: result.structured ?? undefined,
           createdRecords: result.createdRecords.length > 0 ? result.createdRecords : undefined,
@@ -1407,6 +1408,7 @@ export function ChatSession({
                 <DocumentsList documents={m.structured?.documents} />
                 <CitationsList citations={m.structured?.citations} />
                 <KnowledgeUsedSummary citations={m.structured?.citations} />
+                <WebSearchQueries queries={m.webSearchQueries} />
                 <NextStepsList nextSteps={m.structured?.nextSteps} />
                 <SuggestedPrompts prompts={m.structured?.suggestedPrompts} onSelect={setInput} />
               </div>

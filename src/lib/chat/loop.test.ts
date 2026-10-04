@@ -26,6 +26,15 @@ const runSaveWorkingKnowledgeMock = vi.fn()
 vi.mock('./web-search-tool', () => ({
   SEARCH_WEB_TOOL: { name: 'search_web', description: '', parameters: {} },
   SEARCH_WEB_TOOL_NAME: 'search_web',
+  WEB_QUERY_RULE: 'WEB_QUERY_RULE_TEXT',
+  WebSearchRequestError: class WebSearchRequestError extends Error {
+    constructor(
+      message: string,
+      readonly query: string
+    ) {
+      super(message)
+    }
+  },
   runSearchWeb: (...args: unknown[]) => runSearchWebMock(...args),
 }))
 vi.mock('./working-knowledge-tool', () => ({
@@ -230,6 +239,7 @@ describe('runAssistantTurn', () => {
       conversationId: 'conv-1',
       reply: 'KB Sandbox is a knowledge platform.',
       toolsUsed: [],
+      webSearchQueries: [],
       structured: null,
       createdRecords: [],
       pendingGatewayInvocations: [],
@@ -834,12 +844,17 @@ describe('runAssistantTurn -- search_web', () => {
         model: 'test-model',
         usage: { inputTokens: 1, outputTokens: 1 },
       })
-    runSearchWebMock.mockResolvedValue({ results: [{ title: 'Acme Corp', url: 'https://acme.example', content: 'About Acme.', score: 0.9, publishedDate: null }], answer: null })
+    runSearchWebMock.mockResolvedValue({
+      query: 'Acme Corp',
+      results: [{ title: 'Acme Corp', url: 'https://acme.example', content: 'About Acme.', score: 0.9, publishedDate: null }],
+      answer: null,
+    })
 
     const result = await runAssistantTurn(projectBoundCtx(), null, 'Research Acme Corp for me', undefined, 'proj-1')
 
     expect(result.reply).toBe('Found some background on Acme Corp.')
     expect(result.toolsUsed).toContain('search_web')
+    expect(result.webSearchQueries).toEqual(['Acme Corp'])
     expect(runSearchWebMock).toHaveBeenCalledWith({ query: 'Acme Corp' })
     const toolAppend = appendMessageMock.mock.calls.find(([, arg]) => arg.toolCallId === 'call-1')
     expect(JSON.parse(toolAppend?.[1].content)).toMatchObject({ results: [{ title: 'Acme Corp' }] })
@@ -868,12 +883,14 @@ describe('runAssistantTurn -- search_web', () => {
         model: 'test-model',
         usage: { inputTokens: 1, outputTokens: 1 },
       })
-    runSearchWebMock.mockResolvedValue({ results: [], answer: null })
+    runSearchWebMock.mockImplementation(async (input: { query: string }) => ({ query: input.query, results: [], answer: null }))
 
     const result = await runAssistantTurn(projectBoundCtx(), null, 'Research this thoroughly', undefined, 'proj-1')
 
     expect(result.reply).toBe('Answering with what I found.')
     expect(runSearchWebMock).toHaveBeenCalledTimes(2)
+    // The refused 3rd call never reached Tavily, so it isn't reported as sent.
+    expect(result.webSearchQueries).toEqual(['first', 'second'])
     const refusalMessage = appendMessageMock.mock.calls.map(([, args]) => args).find((args) => args.toolCallId === 'call-3')
     expect(refusalMessage.content).toContain('already been called 2 times')
   })
@@ -898,6 +915,45 @@ describe('runAssistantTurn -- search_web', () => {
     expect(result.reply).toBe('Web research is unavailable right now.')
     const toolAppend = appendMessageMock.mock.calls.find(([, arg]) => arg.toolCallId === 'call-1')
     expect(JSON.parse(toolAppend?.[1].content)).toEqual({ error: 'Tavily search failed (500): server error' })
+    expect(result.webSearchQueries).toEqual([])
+  })
+
+  it('still reports and persists the query when the search fails after the request went out', async () => {
+    tavilyApiKeyMock.mockReturnValue('fake-tavily-key')
+    generateChatMock
+      .mockResolvedValueOnce({
+        message: { role: 'assistant', content: '', toolCalls: [{ id: 'call-1', name: 'search_web', arguments: { query: 'Acme Corp' } }] },
+        model: 'test-model',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })
+      .mockResolvedValueOnce({
+        message: { role: 'assistant', content: 'Web research is unavailable right now.' },
+        model: 'test-model',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })
+    const { WebSearchRequestError } = await import('./web-search-tool')
+    runSearchWebMock.mockRejectedValue(new WebSearchRequestError('Tavily search failed (500): server error', 'Acme Corp'))
+
+    const result = await runAssistantTurn(projectBoundCtx(), null, 'Research Acme Corp for me', undefined, 'proj-1')
+
+    expect(result.webSearchQueries).toEqual(['Acme Corp'])
+    const toolAppend = appendMessageMock.mock.calls.find(([, arg]) => arg.toolCallId === 'call-1')
+    expect(JSON.parse(toolAppend?.[1].content)).toEqual({ query: 'Acme Corp', error: 'Tavily search failed (500): server error' })
+  })
+
+  it('puts the web-query rule in the system prompt whenever search_web is offered', async () => {
+    tavilyApiKeyMock.mockReturnValue('fake-tavily-key')
+    generateChatMock.mockResolvedValueOnce({
+      message: { role: 'assistant', content: 'Hello.' },
+      model: 'test-model',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    })
+
+    await runAssistantTurn(projectBoundCtx(), null, 'Hi', undefined, 'proj-1')
+
+    const system = (generateChatMock.mock.calls[0][0] as { system: string }).system
+    expect(system).toContain('WEB_QUERY_RULE_TEXT')
+    expect(system).toMatch(/project's own name, goal and objective count as project-internal/)
   })
 })
 
