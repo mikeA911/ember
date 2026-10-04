@@ -1,13 +1,15 @@
 # KB Sandbox Roadmap
 
 **Status:** Living internal roadmap; the public About page no longer mirrors it verbatim (see note below)  
-**Last updated:** 29 August 2026
+**Last updated:** 4 October 2026
 
 ## How to read this roadmap
 
 This document is the durable internal source of truth for the M1–M10 milestone structure -- names, order, and descriptions below are permanent regardless of what the public About page currently displays. Internal development labels such as M5A, M5F, M6D, and M6E describe implementation increments; they do not replace or renumber this roadmap.
 
 **2026-08-29:** The public About page's "Roadmap" section (the M1–M10 milestone table with Live/Planned status) was replaced with a "What makes KB Sandbox different" section -- twenty differentiators plus a positioning statement, aimed at a general/prospect audience rather than an internal build-status view. The About page is no longer the roadmap's public display surface; this document is now the primary place the M1–M10 structure and status are recorded. The "Public status" column below keeps its Live/Planned values as a record of each milestone's actual delivery state, not as a claim about what's shown publicly.
+
+**2026-10-04:** Added the work delivered between late August and early October 2026: Builder mode and agencies, Workstream promotion and presentations, Methods, the Builder Ontology, working knowledge, Project creation approval and the Live status, Project evidence access, the Agent Gateway and the read-only external MCP server. Dates in parentheses are when each item landed in the repository. The product is now presented as **Ember**; "KB Sandbox" remains the codebase and roadmap name.
 
 Each milestone can continue to gain capabilities after its core is live. Internal work is placed under the public milestone whose product outcome it advances, even when the work spans several technical layers.
 
@@ -51,6 +53,12 @@ Status terms used below:
 
 - Workstream artifacts can serve as first-class evidence alongside uploaded documents and document chunks.
 - The artifact model has expanded to cover structured engineering outputs, design notes, findings, evidence maps, and implementation handoffs.
+- Versioned knowledge sources, knowledge-base classification and a curator-review lifecycle for knowledge bases (24–28 Aug).
+- Project evidence access controls: access groups, per-resource classification and grants, member access requests decided by the Project owner, and an audit log of every change (25 Aug; requests 1 Sep).
+- Member-submitted knowledge sources: any Project member can submit a file, artifact or working-knowledge item to a Project knowledge base for owner/curator approval (3–5 Sep).
+- Knowledge bases can be attached to individual Workstreams as well as Projects (25 Sep).
+- Clearer chunk review: per-chunk decisions, approve-all, approving a whole source from the Project page, rollback and a visible reason when an approval fails, and a "searchable" indicator per source (28 Sep).
+- OpenAI `text-embedding-3-small` is the default embedding model (28 Sep).
 
 ### Next
 
@@ -82,10 +90,14 @@ Status terms used below:
 - Added dual-source Handbook authoring: manual methodology content and AI-assisted synthesis grounded in workstream artifacts.
 - Added the 18-method Workbench catalog plus cross-cutting guidance and requirements sections to Assistant knowledge.
 - Taught the Assistant to find a matching method, inspect its requirements, and identify prerequisite methods when required evidence is missing.
+- Project-scoped Wiki articles, Project knowledge-base attach and detach, and a Product Handbook category (24–28 Aug).
+- Project-bound Ember retrieval over a Project's attached knowledge, applying both membership and resource-level access before evidence reaches the model (24 Aug onward).
+- Working Knowledge and research notebooks: private, Project-scoped notes a member can share with named teammates, and that Ember can save to and search (6 Sep).
+- Builder Ontology: a per-Project tree of domain-object types, shown as an Ontology Map with SVG/PNG export; Ember can suggest or create it, or import an attached Turtle file (25–29 Sep).
 
 ### Next
 
-- Implement project-scoped knowledge retrieval. The intended order inside a project is:
+- Complete project-scoped knowledge retrieval. Retrieval over a Project's attached knowledge bases is live; the remaining work is the full intended order inside a project:
   1. approved Project Knowledge;
   2. approved project evidence, artifacts, and findings where permitted;
   3. approved platform Handbook/Wiki knowledge;
@@ -152,6 +164,8 @@ Status terms used below:
 - Server Actions and internal AI tools call the same services and authorization rules.
 - Added an in-process MCP-style tool contract with six tools: Wiki search, project-note listing, project creation, project approval, workstream creation, and artifact attachment.
 - Added the bounded Assistant tool-calling loop and raised its iteration allowance to support legitimate multi-step requirement reasoning.
+- Agent Gateway Milestone 1: Ember can call a registered external MCP server. Read-only calls run immediately and are audited; other calls are proposed and run only after the user confirms. This is the first code-level propose-confirm-execute boundary (31 Aug).
+- Expanded Ember's tools: Project knowledge search, working-knowledge save and search, Project notes, member listing, Project description updates, ontology suggestion, creation and import, feedback reports and web search (Sep).
 
 ### Next
 
@@ -162,7 +176,7 @@ Status terms used below:
 ### Future
 
 - Add reusable orchestration patterns for implemented Wizards without hard-coding 18 separate flows.
-- Consider external MCP transport only when a real external consumer and authorization design justify it.
+- ~~Consider external MCP transport only when a real external consumer and authorization design justify it.~~ Delivered as a read-only server for builders' AI chatbots (30 Sep; see M6). Write access through external transport remains undecided.
 
 ---
 
@@ -185,6 +199,12 @@ Status terms used below:
 - Added `implementation_handoff` as a first-class artifact type.
 - Established the document-first boundary: the Workbench investigates, compares, reviews, and produces implementation-ready artifacts; it does not default to modifying target repositories, committing code, opening pull requests, or deploying systems.
 - Added conversational method-fit and requirement reasoning over the 18-method Handbook catalog.
+- **Projects.** An Organization Home Project, a Project directory and join requests (4 Sep); Project curators manage their own team's membership (3 Sep); a per-Project Ember starter prompt (3 Sep); a `member` platform role below consultant (1 Sep); a Project status pipeline with history (28 Aug), a Live status and Reopen, and archive or delete (2 Oct); Project creation approval for Projects started below curator (2 Oct); a Project summary with a newcomer brief that can be viewed, copied or downloaded (30 Sep).
+- **Workstreams.** Artifact validation states (1 Sep); Workstream promotion, where an approved Workstream becomes a new Project without exposing the original (6 Sep); Project and Workstream cloning for comparison (25 Sep).
+- **Methods.** A reusable Method can be promoted from a Workstream that worked, published by a curator or admin, and instantiated as a new Workstream (25 Sep).
+- **Ember chat.** Attach any text file, several files or a zip; save attachments as findings; choose which messages to save as a Project note (29 Sep–2 Oct).
+- **External agents.** The External Agent Registry (27 Aug) was generalized into a Builder Registry with certification, capability evidence, capability evaluations and per-Project availability (31 Aug–6 Sep).
+- **Builder mode.** A second deployment mode (`KB_SANDBOX_PRODUCT_MODE=builder`) for individual builders. Each builder gets one workspace Project, and each client proposal is a Workstream (6 Sep). Agencies (curators) supervise their own builders through a metadata-only dashboard with completion tracking (1–3 Oct). Builders share progress updates by choice (6 Sep). Accepted proposals become client Projects through agency approval, with clients added as viewers (1 Oct). Client maintenance fees and the platform's share are recorded for invoicing (1 Oct). AI usage is metered against allowances, and builders can bring their own LLM (25 Sep).
 
 ### Validate
 
@@ -219,11 +239,17 @@ Status terms used below:
 - Cookie-based identity is live; bearer-token identity resolution is implemented and tested but intentionally unused until a non-cookie caller or external transport exists.
 - Internal tools are transport-independent and currently invoked in-process.
 
+### Recent internal development
+
+- Read-only external MCP server at `/api/mcp` for builders' AI chatbots (30 Sep). Sign-in uses Supabase Auth's OAuth 2.1 server with user consent. Admins allowlist both users and client apps, each app with a maximum sensitivity. The connection is read-only at the database level, limited to 30 calls per minute and 500 per day, and every call is audited.
+- Bring-your-own-LLM for builders: a hosted API key or a local OpenAI-compatible server such as Ollama or LM Studio (25 Sep).
+- Vercel deployment pinned to Node 22 and the Next.js preset, with a cron route for scheduled presentation reviews (26 Sep).
+
 ### Next
 
 - Define supported deployment profiles for hosted cloud, customer cloud, private network, local models, and hybrid configurations.
 - Document capability differences, data boundaries, identity paths, observability, secrets, and operational responsibilities for each profile.
-- Decide when bearer-token callers and external MCP transport are justified by a real deployment need.
+- ~~Decide when bearer-token callers and external MCP transport are justified by a real deployment need.~~ Resolved for read-only builder chatbots (30 Sep). Decide whether any write path is ever justified.
 
 ### Future
 
@@ -249,6 +275,9 @@ Status terms used below:
 - Enforced pre-inference in the Assistant's tool-calling loop: a blocked request never reaches the model, and Ember explains the block in plain language instead of failing silently. Closed a follow-up gap where project metadata embedded in the system prompt bypassed the check entirely.
 - Built a shared policy-enforcement service (`ContextManifest`/`evaluatePolicy`/`withPolicyGate`, mirroring the existing per-call operation-logging decorator) and used it to close the first concrete multi-path gap: the background conversation-summary refresh was resending full transcripts to a separately-resolved model with no eligibility check.
 - Added admin (max sensitivity a provider may receive) and project-owner (a resource's or project's own sensitivity) controls for the new axis.
+- Project governance: approval policies (one per approval type) and named authority assignments, owner-managed and visible to members, with unassigned required policies reported as gaps (24 Aug).
+- Project creation approval: a Project started by someone below curator stays pending until a curator, the builder's agency or an admin approves it, and nobody approves their own Project. The same no-self-approval rule applies to Workstream promotions and presentations (2 Oct).
+- Resource-level evidence access with an audit log (see M1), kept separate from AI-processing sensitivity.
 - Produced a phased design (`docs/dev-request-enterprise-shadow-ai-governance-later-phases.md`) and an architecture note (`docs/design-notes/ai-policy-enforcement-service-and-context-manifest.md`) covering the remaining AI-processing-boundary coverage, versioned org-level policy, and deterministic redact/route/approve outcomes -- paused after the first increment pending customer feedback before continuing.
 
 ### Next
@@ -277,6 +306,11 @@ Status terms used below:
 - Workstream artifacts, findings, evidence maps, assessments, project notes, public project examples, design notes, and implementation handoffs.
 - Provider/model and creation-path provenance for Assistant-generated records.
 
+### Recent internal development
+
+- Workstream Presentation & Review (26 Sep–1 Oct). A Project owner or curator generates slides from a Workstream and opens a review, either straight away or on a schedule, with a deadline. Members comment per slide, and comments are classified into tracked actions. The presentation then goes through builder revision and curator review to approval, with notifications at each step.
+- Project summary with a newcomer brief, and a client proposal summary for builders (30 Sep–1 Oct).
+
 ### Next
 
 - Define reviewed report types for technical findings, management briefs, comparison reports, decision records, and implementation handoffs.
@@ -303,6 +337,7 @@ Status terms used below:
 ### Recent internal development
 
 - The Assistant can map a stated objective to a documented method, identify missing required inputs, and point to a prerequisite method rather than pretending unavailable automation exists.
+- Methods can now be promoted from proven Workstreams and instantiated in new Projects (see M5), which gives future learning paths reusable, evidence-backed starting points.
 
 ### Next
 
@@ -359,6 +394,16 @@ Do not implement a simplified Ember-only UI on the strength of this entry alone 
 
 ---
 
+## Recent cross-cutting platform work
+
+Work that serves the whole product rather than one milestone:
+
+- **Rebrand to Ember** (27 Sep): site title, logo, icon and copy, with a new login page and loading screen (3 Oct).
+- **Role-directed shell.** Curators and admins keep the classic Workbench navigation; members, consultants and viewers get an Ember-first shell.
+- **Accounts.** Self-service registration was removed; admins create accounts, and new accounts join the Organization Home Project.
+- **Feedback board and roadmap register** (25 Aug). Users file feedback, including through Ember, and the platform owner triages it and maintains the register.
+- **Public Examples** are hidden until Ember has its own showcase Projects (27 Sep).
+
 ## Near-term cross-milestone priorities
 
 These priorities span the roadmap but should remain attached to the public milestone outcomes above:
@@ -390,3 +435,6 @@ These priorities span the roadmap but should remain attached to the public miles
 - Guided methods design: `docs/design-notes/guided-workbench-methods-design.md`
 - Shadow AI governance phased design: `docs/dev-request-enterprise-shadow-ai-governance-later-phases.md`
 - AI policy-enforcement service and context manifest architecture note: `docs/design-notes/ai-policy-enforcement-service-and-context-manifest.md`
+- User stories by role and module: `docs/USER-STORIES.md`
+- Builder product: `docs/dev-request-kb-sandbox-builder-product.md`
+- External MCP server: `docs/dev-request-ember-external-mcp-server.md`
