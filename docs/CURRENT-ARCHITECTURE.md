@@ -1,37 +1,37 @@
-# KB Sandbox — Current Architecture
+# Ember (KB Sandbox) — Current Architecture
 
-Living documentation of what's actually implemented, as of Milestone 4 (Controlled Graph Runtime). Where this differs from `KB Sandbox.md`'s original brief, that's called out explicitly with a reason — this file describes reality, not intent.
+Living documentation of what is actually implemented. **Last updated: 4 October 2026.** The product is presented to users as **Ember**; the codebase, database and many docs still use the original name **KB Sandbox**, and both names refer to the same application.
 
-## Milestone roadmap
+This file describes reality, not intent. `docs/ROADMAP.md` owns the public M1–M10 milestone names, order and status; this file explains how the delivered parts work. Where the two disagree, treat later code and migrations as authoritative and update whichever document is stale.
 
-The project follows a revised milestone sequence (superseding any earlier "Milestone 4/5..." numbering implied by the original brief). Everything through **M4 is built**; M5 onward is planned, not started.
+## Milestones
 
-| # | Milestone | Status |
-|---|-----------|--------|
-| M1 | Curator Foundation — auth, projects/KB basics, upload, parsing, chunking, enrichment, review, embeddings, pgvector, RLS, AI provider abstraction | Built |
-| M2 | LLM Wiki & Provenance — versioned Wiki lifecycle, AI-assisted synthesis, source provenance, Quick Help | Built |
-| M3 | Evaluation Engine — datasets/cases/runs/results, retrieval metrics, LLM judge, human review, baseline comparison | Built |
-| M3.5 | Multi-Provider / Multi-Model AI Registry — `ai_providers`/`ai_models`, Groq + generic OpenAI-compatible gateway, capability validation | Built |
-| M3.6 | Projects, Membership & Isolation — `project_members`, project roles, project-scoped RLS, client/training isolation | Built |
-| M3.7 | Public / Anonymous Experience — public About/Examples/Knowledge, explicit publish/unpublish, anon-safe RLS | Built |
-| M4 | Graph Runtime / Controlled Agent Loop — Retrieve → Generate → Evaluate → Retry/End, persistent state, graph versioning | Built |
-| M5A | Agent Templates (foundation slice) — `agent_templates`, "create a custom Agent from a Template," copy-not-inherit semantics | Built |
-| M5B | RAG Answer Agent — first formal Agent, executes through the M4 graph, no arbitrary tools | Built |
-| M5C | Guardrail Templates — versioned guardrail objects, policy generator, runtime enforcement | Planned |
-| M5D | Project Workstreams & External Artifacts — scope/goal/guardrail/deliverables for human-driven external work, evidence attachment (simplified from the original repository-intake concept) | Built |
-| M6 | Runs, Tracing & Experiments — full execution traces, experiment definitions, configuration leaderboard | Planned |
-| M7 | Governance Foundation — AI system inventory, risk tier, controls, evaluation gates, approval records, audit evidence | Planned |
-| M8 | Research & Knowledge-Maintenance Agents — bounded research agent, claim extraction, proposed Wiki updates with human approval | Planned |
-| M9 | Learning & Model Adaptation — structured corrections, validated training datasets, LoRA/QLoRA/DoRA experiments, governed promotion | Planned |
-| M10 | Training / Consultant Enablement Layer — guided learning projects, reusable templates, curated examples for junior consultants | Planned |
+The public roadmap has ten milestones. Internal labels (M3.5, M5A, M5F and so on) are implementation increments placed under the public milestone whose outcome they advance; they do not renumber it.
 
-The sections below describe M1–M4 as actually implemented. See each section heading for which milestone introduced it.
+| # | Public name | Status | Delivered here (internal increments) |
+|---|---|---|---|
+| M1 | Curate | Live | Curator pipeline: upload, parse, chunk, enrich, review, embed; knowledge bases; RLS; AI provider abstraction. Later: versioned knowledge sources, source submissions, Project-scoped evidence access |
+| M2 | Organize | Live | Versioned Wiki with provenance (M2); Workbench and Product Handbook categories; Project-scoped Wiki articles; working knowledge |
+| M3 | Evaluate | Live | Evaluation engine (M3); multi-provider model registry (M3.5); Projects, membership and isolation (M3.6); public/anonymous experience (M3.7) |
+| M4 | Orchestrate | Live | Graph runtime (M4); Workbench service layer and in-process tool contract (M5F); bounded Ember tool loop |
+| M5 | Apply | Live | Agent Templates and RAG Answer Agent (M5A/B); Workstreams and artifacts (M5D); Ember assistant; assessments; Methods; presentations; workstream promotion; external agent registry and gateway; Builder mode |
+| M6 | Deploy | Planned | Foundations only: model-neutral registry, bearer-token identity, and the read-only external MCP server |
+| M7 | Govern | Planned | Foundations only: information-sensitivity classification and pre-inference policy gate, approval policies and authorities, Project creation approval |
+| M8 | Communicate | Planned | Foundations only: artifacts, findings, presentations, public Project profiles |
+| M9 | Teach | Planned | Foundations only: Workbench Handbook and Method catalog |
+| M10 | Research | Planned | Foundations only: separate vector stores, graph orchestration, controlled tool calling |
+
+Guardrail Templates (originally M5C) remain planned and now sit under M7.
+
+The sections below follow the order in which capabilities were built. Each heading names the increment that introduced it.
 
 ## Stack
 
-Next.js 16 (App Router), TypeScript, Supabase (Postgres + pgvector, Auth, Storage). No Next.js `middleware.ts` — Next 16 renamed the convention to `proxy.ts`; ours only refreshes the session cookie, it does not gate routes (route protection lives in each layout/page and in RLS — see [Auth](#auth)). All AI provider calls and privileged writes happen server-side, in Server Actions under `src/app/actions/`.
+Next.js 16 (App Router), TypeScript, Supabase (Postgres + pgvector, Auth including its OAuth 2.1 server, Storage), `@langchain/langgraph` for graph orchestration, `@modelcontextprotocol/sdk` for the external MCP server, Vitest. Deployed on Vercel (`vercel.json`, including a cron route for scheduled presentation reviews). No Next.js `middleware.ts` — Next 16 renamed the convention to `proxy.ts`; ours only refreshes the session cookie, it does not gate routes (route protection lives in each layout/page and in RLS — see [Auth](#auth)). All AI provider calls and privileged writes happen server-side, in Server Actions under `src/app/actions/`.
 
-The original Vite SPA is preserved at `legacy-vite-app/` for reference and was not deleted; Milestone 1 was a full rebuild, not an in-place migration (see `KB Sandbox.md` for why).
+Milestone 1 was a full rebuild of an earlier Vite SPA, not an in-place migration.
+
+The deployment runs in one of two **product modes**, set server-side by `KB_SANDBOX_PRODUCT_MODE` (`enterprise`, the default, or `builder`); see [Builder mode](#builder-mode). One deployment currently serves one client organization; there is no native Organization record (see `docs/workbench-handbook-how-kb-sandbox-is-organized.md`).
 
 ## Data model
 
@@ -48,7 +48,7 @@ DOCUMENT CHUNKS   (document_chunks)  ──approve──▶  KB_VECTORS  (retrie
 WIKI ARTICLES     (wiki_articles / wiki_versions)  ──approve──▶  WIKI_VECTORS
         │
         ▼
-  (future: RAG Answer Agent, graph orchestration — not built yet)
+  RAG Answer Agent, graph runtime, Ember retrieval (see later sections)
 ```
 
 `kb_vectors` and `wiki_vectors` are separate tables on purpose: a source chunk and a curated Wiki synthesis of that chunk are different things with different provenance, and collapsing them would make it impossible to tell "this is raw evidence" from "this is reviewed synthesis" at retrieval time. Milestone 2 only built the write side plus simple title/category text search; Milestone 3 adds the actual read/retrieval path (`match_documents`, `match_wiki_vectors` — see [Evaluation engine](#evaluation-engine-milestone-3)), but only for evaluation runs. There is still no general-purpose `/search` UI.
@@ -136,7 +136,9 @@ The initial embedding profile is `vector(1536)`, recorded per-row via `embedding
 
 ### What's explicitly not built yet (provider/model registry)
 
-No quota/rate-limit header telemetry beyond the basic error-code classification above; no model discovery for Gemini (the `@google/genai` SDK isn't wired up for it — Gemini models stay manually configured, `supports_model_discovery=false`); no Project-level model allowlists or preferred-model settings; no Agent model configuration (no Agents exist yet). All four are explicitly deferred, not oversights.
+No quota/rate-limit header telemetry beyond the basic error-code classification above; no model discovery for Gemini (the `@google/genai` SDK isn't wired up for it — Gemini models stay manually configured, `supports_model_discovery=false`); no Project-level model allowlists or preferred-model settings. These remain deferred, not oversights.
+
+Since M3.5 the registry has gained DeepSeek and xAI Grok providers (both through `OpenAICompatibleProvider`), Gemini tool support, a separate default **structured-output** model, per-model pricing used by Builder metering, and a per-provider **maximum information sensitivity** (see [Information sensitivity](#information-sensitivity-and-the-ai-policy-gate-m7-foundation)). The default embedding model is OpenAI `text-embedding-3-small` (1536 dimensions, migration `20261002`). The legacy `updateAIProviderSetting` action still exists, but provider selection is driven by the registry.
 
 ## Projects, Membership & Isolation (Milestone 3.6)
 
@@ -144,7 +146,7 @@ A **project** (`projects`) scopes a piece of AI engineering work — one of five
 
 Authorization is deliberately **two-tier**, tracked as two entirely separate concepts:
 
-- **Platform role** (`profiles.role`: `anonymous`/`consultant`/`curator`/`admin`) — what someone can administer across KB Sandbox as a whole.
+- **Platform role** (`profiles.role`: `anonymous`/`member`/`consultant`/`curator`/`admin`) — what someone can administer across KB Sandbox as a whole. `member` (added 2026-08-31) is the least-privileged authenticated role, below `consultant`; it cannot start Projects.
 - **Project role** (`project_members.role`: `owner`/`curator`/`consultant`/`viewer`) — what they can do inside *one specific project*. Granting `consultant` on one project never implies access to another. A project's `owner_id` always has a matching `owner` membership row, enforced by an `after insert on projects` trigger (`create_owner_membership`), not by every call site remembering to insert one.
 
 Four `SECURITY DEFINER` SQL helpers (`supabase/migrations/20260810120001_project_members.sql`, same pattern as `is_admin`/`is_curator_or_admin`) back every project-scoped RLS policy, each with a **platform-admin bypass** built in so "admin sees/manages everything" never has to be repeated in a policy body: `is_project_member`, `can_manage_project` (owner-only — this is also the M3.7 publish gate), `can_curate_project` (owner/curator), `can_run_project_evals` (owner/curator/consultant, excludes `viewer`).
@@ -190,7 +192,7 @@ The original M5 design doc plus its amendment (Agent Templates/Custom Agents, a 
 - **Schema**: `agent_templates` (reusable defaults — **ordinary mutable table**, unlike every other versioned entity in this codebase, because a template has no runs of its own; it only supplies defaults at Agent *creation* time) → `agents` (stable identity, nullable `template_id`/`project_id`) → `agent_versions` (immutable — no UPDATE RLS policy, same mechanism as `graph_versions`/`wiki_versions`). A template's defaults are **copied, not dynamically referenced**, into the `agent_versions` row at creation time (`src/lib/agent/create.ts`'s `createAgentFromTemplate`) — this is what lets `agent_templates` stay safely mutable: editing a template later can never disturb an Agent already created from it, satisfying "template changes do not silently mutate existing Agent versions" without a second immutable-versioned table.
 - **Execution spine reuse**: `graph_runs` gains nullable `agent_id`/`agent_version_id` columns (added exactly how `eval_run_id`/`eval_case_id` were added in M4) — an Agent execution is a `graph_runs` row with those set, not a parallel `agent_runs` table. `src/lib/agent/rag-answer-agent.ts`'s `answerQuestion()` resolves an Agent version's models/graph version, builds a synthetic single-case state, and invokes the same `buildRagRetryGraph()` M4 already built — it deliberately **never inserts an `eval_results` row** (that table grades a case against a stored benchmark dataset; a live ad hoc question isn't one, and reusing it would corrupt benchmark comparison views).
 - **Eval integration**: `EvalRunConfig.execution` gains optional `agentId`/`agentVersionId` (both absent = today's exact graph-mode behavior). "Run evaluation suite" on an Agent's detail page reuses the existing `RunConfigForm`/`createAndRunEvalAction` path unchanged — no second eval-running code path — so an Agent's benchmark performance is directly comparable to any other graph-mode or single-pass run.
-- **No native tool-calling exists in this codebase** (`AIProvider` has only `generateText`/`generateStructured`/`embed`, no `tools` param, in any provider implementation) — a future tool-calling framework would need to be built as a `generateStructured`-based proposal step plus a real application-layer authorization boundary, never delegated to a provider SDK. Not built in this pass.
+- **Agents still do not call tools.** At the time of M5A/B, `AIProvider` had no tool support. Tool calling was later added for the Ember assistant only (`generateChat`, see [Ember assistant](#ember-assistant-m5)); Agents remain retrieval-and-answer only.
 - **UI**: `/agents` (list + `[slug]` detail — Purpose/Instructions/Models/Sources/Guardrails/Termination, which template it came from, "Ask a question," "Run evaluation suite," version history + `ActivateAgentVersionButton`), `/agents/templates` (read-only), `/agents/new` (deliberately minimal — template select, name, purpose/instructions/models all prefilled and editable, **not** the amendment's full repo-scope/knowledge/OpenAPI+MCP-target wizard, which has nothing to attach to until an Engineering-family template exists), `/agents/[slug]/run` (a plain question-in/answer-out form, not a generic graph runner).
 - **RLS**: `agents`/`agent_versions` mirror `graphs`/`graph_versions`' exact two-tier global-vs-project shape (owner-gated manage for project-scoped Agents, per the design brief's "admin/project owner" wording). `agent_templates` uses the `ai_providers`/`ai_models` bar (any authenticated non-anonymous session may read; staff manage). All helper functions reused by name from M3.6, never redefined.
 - **Permissions**: no anonymous/public execution of the RAG Answer Agent — M3.7's public-visitor pattern is a curated *static* view (hand-approved Wiki articles, hand-authored project profiles), never a live LLM invocation; extending that needs its own rate-limiting design, not a side effect of this milestone.
@@ -204,10 +206,107 @@ The original M5D ("External Engineering Workbench Integration") assumed KB Sandb
 - **UI**: reached through a project's own page (`/projects/[id]`, a new "Workstreams" section) — `/projects/[id]/workstreams/new`, `/projects/[id]/workstreams/[workstreamId]` (scope display + a deliverables checklist + an artifacts list/attach form). No Header nav change.
 - **Explicitly out of scope**: automated scoring of artifacts against expected capabilities (no eval-dataset integration), file upload, the `openapi-modernizer`/`mcp-modernizer` repo templates themselves (external), a real Guardrail Templates system (M5C), and converting a proven workstream into an executing Agent — a later, explicit decision once a workflow is proven reliable.
 
+## Ember assistant (M5)
+
+Ember is the conversational interface to the Workbench (`src/lib/chat/`, UI in `src/components/chat/`, persisted in `conversations`/`chat_messages`).
+
+- **Loop.** `src/lib/chat/loop.ts` runs a bounded tool-calling loop over `AIProvider.generateChat` (`MAX_TOOL_ITERATIONS = 8`). The model proposes; tool handlers call the same Workbench services as the Server Actions, so authorization is enforced once (`src/lib/mcp/tools.ts`: "one authorization model, enforced once").
+- **Tools.** Wiki and web search (`search_wiki`, `search_web`, each capped per turn), Project knowledge search, working-knowledge save/search, Project notes, Project creation/approval, Workstream creation and listing, artifact attachment, member listing, Project description and ontology (suggest, create, import a Turtle file deterministically), the navigation guide, feedback reports, and `present_assistant_response` for structured replies.
+- **Project binding.** A conversation can be bound to one Project. Project-scoped retrieval applies both access layers (membership and resource-level evidence access) before anything reaches the model, and retrieved resources are recorded per message (`chat_message_retrieved_resources`).
+- **Provenance.** Each assistant message stores a provider/model snapshot; the model can be switched for the next message without rewriting history. Records Ember creates (Projects, Workstreams, artifacts) carry creation-path provenance. Long conversations are summarised in the background, and that call passes the same policy gate.
+- **Activity.** A polling-based activity indicator reports the current tool.
+- **Role-directed shell.** Curators and admins get the classic Workbench navigation; members, consultants and viewers get an Ember-first shell with a "Switch to classic workspace" toggle (`src/components/Header.tsx`).
+
+## Projects: lifecycle, approval and structure (M3.6 onward)
+
+Beyond the M3.6 membership model:
+
+- **Creation approval** (`20261004`). A Project created by someone below curator starts `approval_status = 'pending'` (a database trigger enforces this) and its invited members are held until approval. A curator or admin decides; nobody can approve their own Project. Rejections can be resubmitted by the creator.
+- **Status pipeline** (`20260828`, `20261004`). `draft → active → review → completed → live`, plus `archived`, with every change in `project_status_history`. Only a platform admin can delete a Project.
+- **Framing fields.** Goal, objective, starter prompt (seeds Ember), portfolio category and discoverability, editable by the Project owner or curator.
+- **Directory, join and access requests.** Discoverable Projects are listed in a directory; users can request to join (`project_join_requests`, decided by owner/curator). Non-member curators see safe portfolio metadata and can request membership through a Project note.
+- **Ontology.** `project_objects` stores a per-Project tree of domain object *types*, editable by owner/curator or built by Ember.
+- **Cloning.** Projects and Workstreams can be cloned as starting points.
+- **Organization Home.** New accounts are enrolled in an Organization Home Project; self-service registration was removed (admins create accounts).
+
+## Knowledge sources, evidence access and governance (M1/M7 foundations)
+
+- **Knowledge sources** (`20260824`) give documents a versioned identity; knowledge bases carry a classification and curator-review lifecycle and can be attached to many Projects (`project_knowledge_bases`) and to individual Workstreams (`workstream_knowledge_bases`). Attaching never copies sources or overrides their restrictions.
+- **Source submissions** (`project_source_submissions`). Any active member can submit a file, a Workstream artifact or a working-knowledge item to a Project knowledge base; the Project owner/curator approves or rejects.
+- **Evidence access** (`20260825`). Project access groups, per-resource classifications and grants restrict sources, Wiki articles and artifacts *inside* a Project. `has_evidence_access()` is checked by RLS and by Ember retrieval. Members can request access to a restricted resource (`resource_access_requests`); the Project owner decides. Every change is written to `resource_access_audit_log`.
+- **Project governance** (`20260824`). `project_approval_policies` (one per approval type) and `project_authority_assignments` name who decides what. Both are owner-managed, visible to members, and a required policy with no active assignment is reported as a gap.
+
+## Information sensitivity and the AI policy gate (M7 foundation)
+
+Who may *see* something and which AI provider may *process* it are separate decisions.
+
+- Sources, Wiki articles, artifacts and a Project's own metadata carry an information sensitivity (`public`/`internal`/`confidential`/`restricted`); each provider has a maximum sensitivity set by an admin.
+- `src/lib/ai/sensitivity.ts` builds a `ContextManifest` of everything about to be sent, computes the effective sensitivity, and `evaluatePolicy`/`assertProviderEligible` block ineligible calls **before inference**. Ember explains a block in plain language.
+- Covered today: the Ember loop (including Project metadata in the system prompt), conversation summaries and ontology suggestions. Evaluation, journal generation, curator enrichment and embedding calls are not yet gated (see `docs/ROADMAP.md`, M7 Next).
+
+## Working knowledge and Project notes
+
+- **Working knowledge** (`20260905`) is a member's private, Project-scoped notebook. Only the owner edits an item; it can be shared with specific active members and revoked. Ember can save to it and search it. It is not retrievable as approved knowledge unless submitted and approved as a source.
+- **Project notes** (`20260814`) are messages from curators/admins to a member, the Project team, curators or admins, with replies and resolution. Ember can send them and save a conversation as a note.
+
+## Workstreams after M5D
+
+- **Artifact lifecycle.** Artifact types now include design notes, research dossiers and implementation handoffs, and artifacts have a review status set by the Project owner/curator (`20260831`). Artifacts remain insert-only.
+- **Structure.** Workstreams have summaries, deliverables, relationships to other Workstreams and their own attached knowledge bases.
+- **Promotion** (`workstream_promotions`, `20260906`). A member submits a completed Workstream; the Project owner/curator (or admin) decides, never the submitter. Approval creates a **new** Project so the original is never exposed to the new team. In Builder mode it also copies the artifacts, adds the agency as curator, records a client fee and adds client contacts as viewers.
+- **Presentations** (`20260930`). Owner/curator generates a slide presentation from a Workstream and runs a review: `draft → review_open → review_closed → builder_revision → curator_review → approved`. Reviews can be scheduled (a Vercel cron route opens them) and have deadlines. Any signed-in member can comment on slides; comments are classified into tracked actions. Nobody can approve a presentation they created. Owners and curators are notified through Project notes.
+
+## Assessments and Methods
+
+- **System assessments** (`20260816`). Owner/curator authors assessments with versioned question sets (`draft → active → retired`). Members other than viewers submit responses; the author or a Project curator can edit them. Completed responses can appear on a public full-detail Project.
+- **Methods** (`20260927`). Owner/curator promotes a Workstream that worked into a draft Method; a platform curator or admin publishes it; owner/curator instantiates a published Method as a new Workstream. The 18-method Handbook catalog is separate Wiki content that Ember uses for method-fit reasoning.
+
+## Publishing, blog, Trending and feedback
+
+- **Public Project profiles** (M3.7) are unchanged, with an admin-only "full detail" option (`20260817`) that exposes Workstreams, artifacts and completed assessments. The public `/examples` routes are currently disabled by `PUBLIC_EXAMPLES_ENABLED = false` (`src/lib/showcases/public-examples.ts`).
+- **Blog** (`20260821`–`20260823`). Curators draft (including Word import), illustrate, relate and submit posts; admins publish, unpublish or delete. Published posts are public at `/blog`.
+- **Trending** (`20260814`). Signed-in users share links and comment; curators review, archive, mark public or promote to a Wiki draft; admins remove inappropriate links.
+- **Feedback board and roadmap register** (`20260825`). Anyone signed in can file feedback, including through Ember; only the designated platform owner (`is_platform_owner`) triages reports or edits the roadmap register.
+
+## External agents and the MCP gateway (M5)
+
+- **External agent registry** (`/agent-registry`, `20260827`/`20260831`). Consultants and above register external agent integrations and versions; curators/admins set certification status and decide capability evaluations; integrations are made available per Project.
+- **Gateway invocations** (`src/lib/mcp-gateway/`). Ember can call a registered remote MCP server. Read-only calls run in the same turn and are audited. Gated calls are proposed first and reach the external server only after the user confirms (`confirmGatewayInvocationAction`). This is the codebase's first code-level propose-confirm-execute boundary.
+
+## External MCP server (M6 foundation)
+
+`/api/mcp` exposes Ember to outside AI apps over stateless Streamable HTTP (`src/lib/mcp/server.ts`, `20261005`), behind `env.mcpEnabled()`.
+
+- **Auth.** Supabase Auth acts as the OAuth 2.1 server; users approve or deny at `/oauth/consent` and can disconnect apps from their profile. The bearer token is an ordinary user JWT, so every query is RLS-scoped to that user. Restrictive policies keyed on the token's `client_id` make the connection read-only at the database level.
+- **Allowlists.** An admin controls which users may connect (`mcp_access_users`) and which client redirect URIs are approved, each with a maximum sensitivity.
+- **Tools (read-only).** `whoami`, `list_my_projects`, `get_project_summary`, `list_workstreams`, `search_project_knowledge`, `search_wiki`, `list_project_notes`, `get_navigation_guide`. Every result links back to Ember.
+- **Limits and audit.** 30 calls per minute and 500 per day per user; every call, including denials, is logged.
+
+## Builder mode
+
+With `KB_SANDBOX_PRODUCT_MODE=builder`, the deployment runs a builder programme on the same codebase. Platform roles take on new meanings: admin is the platform owner, a curator is an **agency**, a consultant is a **builder**.
+
+- **Workspace.** Creating a consultant account provisions one `builder_lab` Project; a builder cannot create a second Project. Each client proposal is a Workstream, and an accepted proposal becomes a client Project through promotion (see above).
+- **Agency supervision** (`agency_builders`, `/agency`). Admins assign builders to agencies. An agency sees and decides only for its own builders. Agency and Builder Operations views are metadata-only and consent-based: names, statuses, counts, completion percentages and progress updates the builder chose to share, never notebooks, conversations, artifacts or slides.
+- **Metering** (`src/lib/ai/metering.ts`, `20260907`). Ember calls on a builder's own workspace Project are priced from the registry and counted against a monthly allowance plus credit grants, with a warning threshold and optional hard stop enforced before the call. Unpriced calls are reported as unpriced.
+- **Bring your own LLM** (`builder-llm-credentials.ts`). A builder can store one encrypted credential for their own API key or local OpenAI-compatible server. Those calls are logged but never metered.
+- **Billing** (`client_project_fees`). Agencies record client maintenance fees; the admin sets the platform rate. Ember records figures for invoicing and never charges anyone.
+- Not yet built from `docs/dev-request-kb-sandbox-builder-product.md`: the dedicated Builder Notebook, opportunity states, the five programme milestones and milestone-triggered credits.
+
+## Other platform features
+
+- **Branding.** Admins upload the instance icon/logo (`branding` storage, public read).
+- **Work journal.** `/profile/journal` generates a reflective summary of a user's recent work, downloadable as `.docx`.
+
 ## What's explicitly not built yet
 
-Per Milestone 3's scope: no agents, no Agent Builder, no graph orchestration/loops, no automatic query rewriting, no autonomous research, no full Experiments subsystem (a run can be flagged as a baseline and compared to one other run — that's the whole of "comparison" for now), no governance approval workflows beyond the Wiki's own draft→review→approved gate, no training-dataset export, no LoRA/QLoRA/DoRA, no full Runs/Tracing subsystem (only the `eval_run_id`/`eval_case_id` linkage on `ai_operation_logs` described above). An evaluation result — including a `failed` one — never automatically modifies production knowledge, prompts, or models; every correction (score override, failure reclassification) is an explicit human action via `submitHumanReviewAction`.
+Taken from `docs/ROADMAP.md` (Next and Future items) and checked against the code. These are deliberate deferrals, not defects.
 
-There's still no general-purpose `/search` retrieval UI outside the evaluation pipeline — `match_documents`/`match_wiki_vectors` exist and are exercised by every eval run, but nothing else calls them yet.
-
-Through Milestone 5A/5B/5D, Agents exist as first-class versioned objects created from a Template, executing through the M4 graph, and Projects can define Workstreams with an attached evidence trail — but still no tool-calling/authorization framework (the registry's `supports_tools` flag exists but is unread; `tools`/`agent_tools`/`tool_calls` tables don't exist), no Guardrail Templates or runtime policy enforcement (M5C — a workstream's `guardrail` stays free text), no Interface Modernization Agent or any repository/codebase-intake capability, no OpenAPI/MCP generation or validation, no canonical capability registry, no coordinator/architect Agent, no automated scoring of workstream artifacts against expected capabilities, no visual Agent designer, no project-scoped Agent *instances* actually created yet (only the RLS mechanism), no human-approval workflow UI, no multi-agent collaboration, no autonomous research, no Runs/Tracing/Experiments subsystem beyond the baseline-vs-one-other-run comparison already in Milestone 3 plus the graph/Agent trace panels, no governance inventory/risk-tier/approval-record system, no training-dataset export or model fine-tuning, no guided-learning-project templates. Two external "Developer Tool" workbenches (`openapi-modernizer`/`mcp-modernizer`) are envisioned as standalone repo templates (a `CLAUDE.md`, a playbook, validation scripts) a consultant clones and drives with Claude Code, entirely outside KB Sandbox — they are not, and will not become, part of this codebase; if a workstream's workflow proves reliably automatable after repeated real use, *that* is the point at which it would become an actual executing Agent, not before. Real Supabase Auth anonymous sign-in sessions (`profiles.role='anonymous'`) also remain unbuilt/dormant — Milestone 3.7 solved "anonymous access" with a simpler no-session model instead (see above), not by finishing that older mechanism.
+- **Knowledge.** Reviewed "promote conversation to Project Knowledge"; knowledge-quality and freshness signals; a general-purpose `/search` UI.
+- **Methods.** Persisted per-Project Requirement Status; thin Wizards for 2–4 selected Methods; demand and outcome instrumentation.
+- **Evaluation.** A pre-beta Ember evaluation rubric; experiment definitions and leaderboards beyond baseline-vs-run comparison; a full Runs/Tracing subsystem.
+- **Agents.** Tool calling for Agents; Guardrail Templates with runtime enforcement (guardrails remain free text); multi-agent collaboration; autonomous research or code-writing.
+- **Governance (M7).** AI system and model inventory, risk tiers, control definitions, evaluation gates and approval records; policy-gate coverage of evaluation, journal, enrichment and embedding calls; model- and deployment-level eligibility; versioned organization-level AI policy; redact/route/approve outcomes; retention and privacy rules.
+- **Deployment (M6).** Defined cloud/customer-cloud/private/local/hybrid profiles, health checks and provider failover.
+- **Communicate and Teach (M8, M9).** Reviewed report types, executive reports and exports; role-based learning paths.
+- **Platform.** A native Organization record or multi-tenant boundary; Project hierarchy or membership inheritance; real anonymous sign-in sessions (`profiles.role = 'anonymous'` remains dormant); public Project examples (built, but switched off).

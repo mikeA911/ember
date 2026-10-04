@@ -31,18 +31,19 @@ Notes on the mapping:
 
 - **Project owner** abilities (publishing, approval policies, authority assignments, deciding restricted-evidence requests) are listed under **Curator** and marked *(owner)*. A platform admin can always perform them.
 - A **platform curator who is not a member** of a Project sees only safe portfolio metadata for it and must request membership before opening the workspace. A **platform admin** can open any Project.
-- **Public visitors** (no session) and the **Builder/Agency** product mode are out of scope here; see `docs/dev-request-kb-sandbox-builder-product.md` for the latter.
+- **Public visitors** (no session) have their own section, [5. Public Visitor](#5-public-visitor).
+- The **Builder/Agency** deployment mode (`KB_SANDBOX_PRODUCT_MODE=builder`) gives the same four roles different meanings. Sections 1–4 describe the default **Enterprise** mode; [6. Builder Mode](#6-builder-mode) covers what changes.
 
 ### Modules
 
 | Code | Module | Main routes |
 |---|---|---|
-| ACC | Accounts, profile and journal | `/login`, `/register`, `/profile`, `/profile/journal` |
+| ACC | Accounts, profile and journal | `/login`, `/forgot-password`, `/profile`, `/profile/journal` |
 | EMB | Ember assistant | `/dashboard`, `/agents/workbench-assistant` |
 | PRJ | Projects and membership | `/projects`, `/projects/new`, `/projects/portfolio`, `/projects/[id]`, `/projects/[id]/members` |
 | ACS | Evidence access and information sensitivity | `/projects/[id]/access` |
 | GOV | Project governance | `/projects/[id]/governance` |
-| CUR | Knowledge curation and knowledge bases | `/upload`, `/review/[docId]`, `/sources/[id]`, `/admin` |
+| CUR | Knowledge curation and knowledge bases | `/upload`, `/review/[docId]`, `/sources/[id]`, `/projects/[id]`, `/admin` |
 | WIK | Wiki | `/wiki`, `/wiki/new`, `/wiki/[slug]`, `/wiki/[slug]/edit` |
 | WKN | Working knowledge and Project notes | `/projects/[id]/working-knowledge`, `/projects/[id]/notes` |
 | WST | Workstreams, artifacts and presentations | `/projects/[id]/workstreams/...` |
@@ -89,8 +90,9 @@ The Viewer reads and converses. They cannot change shared Project content, run e
 
 ### ACC — Accounts, profile and journal
 
-**VWR-ACC-01 — Register and sign in**
-As a Viewer, I want to register and sign in with my email, so that I can reach the Projects I have been invited to.
+**VWR-ACC-01 — Sign in**
+As a Viewer, I want to sign in with the account an admin created for me, so that I can reach the Projects I have been added to.
+- There is no self-service registration; `/register` redirects to `/login`.
 - Password reset is available from `/forgot-password`.
 - A deactivated account is refused by every workspace action (`Account is deactivated`).
 
@@ -225,8 +227,9 @@ As a Viewer, I want to browse the published Method catalog, so that I can learn 
 
 ### PUB — Publishing, blog and trending
 
-**VWR-PUB-01 — Read the blog, public examples and public knowledge**
-As a Viewer, I want to read published blog posts, published Project examples and public Wiki articles, so that I can learn from material released for wider reading.
+**VWR-PUB-01 — Read the blog and public knowledge**
+As a Viewer, I want to read published blog posts and public Wiki articles, so that I can learn from material released for wider reading.
+- Signed-in users see the same public pages as visitors (see section 5).
 
 **VWR-PUB-02 — Share and discuss a trending item**
 As a Viewer, I want to submit a link to Trending, comment on items and link them to relevant Wiki articles, so that the team notices developments worth curating.
@@ -444,8 +447,8 @@ As a Curator, I want to submit a reviewed document for final approval, so that i
 As a Project Curator, I want to approve or reject sources my members submit, with a reason, so that only appropriate evidence enters the Project's knowledge bases.
 
 **CUR-CUR-05 — Create a knowledge base**
-As a Curator, I want to propose a new knowledge base and queue candidate URLs for curation, so that a new body of evidence can be built.
-- The knowledge base needs admin approval.
+As a Project Curator, I want to create a new knowledge base from my Project and attach it, so that a new body of evidence can be built.
+- The knowledge base starts as pending and needs admin approval.
 
 ### WIK — Wiki
 
@@ -561,6 +564,7 @@ As a Curator, I want to grant or revoke an integration's availability in a Proje
 **CUR-PUB-01 — Publish a Project example** *(owner)*
 As a Project owner, I want to write a public profile (summary, problem, approach, findings, conclusion, benchmark summary, related articles), save it as a draft and publish or unpublish it, so that we can share a curated account of the work without exposing the Project.
 - Editing never auto-publishes; unpublishing keeps the draft.
+- The public `/examples` routes are currently switched off (`PUBLIC_EXAMPLES_ENABLED = false`), so a published profile is not yet reachable by visitors.
 
 **CUR-PUB-02 — Write a blog post**
 As a Curator, I want to write, import from a Word document, illustrate and link blog posts, then submit them for review, so that we can publish articles.
@@ -658,12 +662,146 @@ As a Platform Admin, I want to approve client redirect URIs with a label and a m
 
 **ADM-ADM-01 — Create users**
 As a Platform Admin, I want to create accounts with an email, password and platform role, so that people can be onboarded directly.
+- This is the only way to create an account; there is no self-service registration.
+- Each new account is enrolled in the Organization Home Project.
 
 **ADM-ADM-02 — Change roles and deactivate users**
 As a Platform Admin, I want to change a user's platform role and deactivate or reactivate their account, so that access matches each person's responsibilities.
 
 **ADM-ADM-03 — Brand the instance**
 As a Platform Admin, I want to upload the instance's icon, so that the workspace carries the client's branding.
+
+---
+
+## 5. Public Visitor
+
+A Public Visitor has no session. They see only content that a human has explicitly published, through narrow read paths that never expose internal columns, members, evaluations or AI logs. Code prefix: `PUBV`.
+
+### Public site
+
+**PUBV-01 — Understand what Ember is**
+As a Public Visitor, I want a landing page and an About page that explain Ember and what makes it different, so that I can decide whether it is relevant to me.
+- A signed-in user who opens `/` is sent to `/dashboard` instead.
+
+**PUBV-02 — Read the blog**
+As a Public Visitor, I want to browse published blog posts and read each one, so that I can follow how Ember is built and used.
+- Only posts an admin has published appear; drafts and posts under review never do.
+- Each post has its own canonical link and social-sharing metadata.
+
+**PUBV-03 — Read public knowledge**
+As a Public Visitor, I want to browse and read Wiki articles marked public at `/knowledge`, so that I can learn from reviewed material without an account.
+- Only an article's current approved version is shown, and only when an admin has marked the article public.
+- Sources, related-article links and version history are not exposed.
+
+**PUBV-04 — Sign in or recover my password**
+As a Public Visitor who has been given an account, I want to sign in or reset my password, so that I can reach my workspace.
+- There is no self-service sign-up; accounts are created by an admin.
+
+**PUBV-05 — Have search engines index only public pages**
+As a Public Visitor arriving from a search engine, I want results to point only at public pages, so that I never land on a sign-in wall.
+- `robots.txt` allows `/`, `/about`, `/blog` and `/knowledge`, and `/examples` only when examples are switched on.
+
+**PUBV-06 — View a published Project example** *(currently switched off)*
+As a Public Visitor, I want to read a published Project's curated profile and, where an admin allowed full detail, its Workstreams, artifacts and completed assessments, so that I can see real examples of the method.
+- Gated by `PUBLIC_EXAMPLES_ENABLED`, which is `false` today; `/examples` returns *not found* until it is switched on.
+- Never shows draft assessment versions or in-progress responses.
+
+### What a Public Visitor can never do
+
+- Run Ember, an Agent or any other live AI call.
+- See Project members, evaluation data, AI operation logs, Wiki sources or any unpublished content.
+
+---
+
+## 6. Builder Mode
+
+When a deployment sets `KB_SANDBOX_PRODUCT_MODE=builder`, Ember becomes a programme for individual builders who discover and specify customer AI capabilities, build them in their own tools, and hand them over. The platform roles keep their names but take on these meanings:
+
+| Builder-mode persona | Platform role | What they do |
+|---|---|---|
+| **Platform owner** | `admin` | Runs the programme: assigns builders to agencies, sets allowances and the platform rate, sees every agency and builder. |
+| **Agency** | `curator` | Supervises its own builders: approves their Projects and promotions, records client fees. |
+| **Builder** | `consultant` | Works alone in one private workspace Project; each client proposal is a Workstream. |
+| **Client** | Project `viewer` | Is added as a viewer to the client Project created when a proposal is accepted. |
+
+Everything in sections 1–4 still applies unless a story below changes it. Agency and platform-owner views are **consent-based and metadata only**: names, statuses, counts, dates, completion percentages and progress updates the builder chose to share. They never show a builder's notebooks, conversations, artifacts, slides, goals or deliverable labels. Code prefix: `BLD-<persona>`.
+
+### Builder
+
+**BLD-B-01 — Start working straight away**
+As a Builder, I want my workspace Project to exist when my account is created, so that I can start without any setup.
+- An admin creating a `consultant` account in Builder mode provisions `<name> — Builder Workspace` (category `builder_lab`).
+
+**BLD-B-02 — One Project, one Workstream per client**
+As a Builder, I want each client proposal to be a Workstream in my workspace, so that my work stays in one place.
+- Trying to create a second Project is refused with guidance to start a new Workstream instead.
+
+**BLD-B-03 — A Builder-focused shell**
+As a Builder, I want navigation focused on Ember, my Projects, the Wiki and the Blog, so that enterprise administration does not get in my way.
+- Trending, Explore and the classic-workspace toggle are hidden.
+
+**BLD-B-04 — See my AI spend**
+As a Builder, I want my profile to show my monthly allowance, credits, spend and what remains, so that I can manage my usage.
+
+**BLD-B-05 — Be stopped before overspending**
+As a Builder, I want a warning near my limit and, if my agency set it, a hard stop at my allowance, so that costs stay within what was agreed.
+- Enforced on the server before the model call.
+- Only Ember conversations on my own workspace Project are metered; unpriced calls are reported as unpriced, never as free.
+
+**BLD-B-06 — Bring my own LLM**
+As a Builder, I want to configure my own LLM (a hosted API key, or a local OpenAI-compatible server such as Ollama or LM Studio) and clear it later, so that my conversations do not draw on the platform's allowance.
+- One active credential per builder.
+- Applies only to my own workspace Project; these calls are logged but never counted against my allowance.
+
+**BLD-B-07 — Share a progress update**
+As a Builder, I want to share a progress update on a client Workstream (progress, next step, confidence and any help needed), replace it, and withdraw it, so that my agency sees exactly what I choose to share.
+- Only the Workstream's Project owner can share.
+
+**BLD-B-08 — Promote an accepted proposal**
+As a Builder, I want to submit an accepted client proposal for promotion with my client contacts' email addresses, so that it becomes a client Project.
+- On approval, a new Project is created that I own; my agency (if I have one) joins as curator; the Workstream and its artifacts are copied; a fee record is created; and the client contacts are added as viewers.
+- My workspace Project is never exposed to the client.
+- I cannot approve my own promotion.
+
+### Agency
+
+**BLD-A-01 — See my builders**
+As an Agency, I want a dashboard of my assigned builders, their Projects, Workstreams, attached knowledge-base names and completion percentages, so that I can support them without reading their private work.
+- I see only builders on my roster.
+
+**BLD-A-02 — Approve my builders' Projects and promotions**
+As an Agency, I want to approve or reject Projects and promotions submitted by my own builders, so that client engagements start with oversight.
+- In Builder mode, a curator may decide only for builders on their own roster; the platform owner may decide for anyone.
+
+**BLD-A-03 — Record client fees**
+As an Agency, I want to record the maintenance fee for each of my builders' client Projects, so that invoicing figures are available.
+- Ember records figures only; it never charges anyone.
+- A new fee takes the current platform rate; correcting a fee keeps the rate it was recorded with.
+
+### Platform owner
+
+**BLD-P-01 — See every agency and unassigned builder**
+As the Platform owner, I want the agency dashboard to show every agency and every builder not yet assigned, so that nobody is left without supervision.
+
+**BLD-P-02 — Assign builders to agencies**
+As the Platform owner, I want to assign a builder to an agency or remove the assignment, so that each builder has the right supervisor.
+
+**BLD-P-03 — Set the platform rate**
+As the Platform owner, I want to set the platform's percentage share of client fees, so that billing reflects the programme's business model.
+
+**BLD-P-04 — Review Builder Operations**
+As the Platform owner, I want a Builder Operations view of every builder's shared progress updates and AI spend, so that I know who needs help.
+- Shown on `/admin` in Builder mode only.
+
+**BLD-P-05 — Set allowances and grant credit**
+As the Platform owner, I want to set a builder's monthly AI allowance, warning threshold and hard stop, and grant one-off credit with a reason, so that usage matches the programme's budget.
+- The service layer also permits curators, but the controls are only on `/admin`, which is admin-only. Exposing them on `/agency` would let agencies manage their own builders.
+
+### Client
+
+**BLD-C-01 — Follow my engagement**
+As a Client, I want to be added as a viewer of my client Project, so that I can follow the work, comment on presentations and talk to Ember about it.
+- All Viewer stories in section 1 apply.
 
 ---
 
@@ -677,6 +815,7 @@ These appear in `docs/ROADMAP.md` but have no implemented behavior to describe. 
 - AI system inventory, risk tiers, control definitions and evaluation gates (M7).
 - Reviewed report types and executive reports (M8).
 - Role-based consultant learning paths (M9).
+- Builder mode: the private Builder Notebook, opportunity states, the five programme milestones and milestone-triggered credit awards (`docs/dev-request-kb-sandbox-builder-product.md`).
 
 ## Maintenance
 
