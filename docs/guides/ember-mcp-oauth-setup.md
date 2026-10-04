@@ -6,6 +6,8 @@ Sign-in uses **OAuth 2.1**, with **Supabase Auth as the authorization server**. 
 
 Design and guardrails: [`docs/dev-request-ember-external-mcp-server.md`](../dev-request-ember-external-mcp-server.md).
 
+The steps below are for **Supabase cloud**. On a self-hosted stack, first follow section 6 of [`ember-on-self-hosted-supabase.md`](ember-on-self-hosted-supabase.md), then continue from step 3 here, using `https://<api-domain>` wherever this guide says `https://<project-ref>.supabase.co`.
+
 ---
 
 ## 1. Apply the database migration
