@@ -12,6 +12,26 @@ Browser ──HTTPS────────────────────�
 
 Ember reaches Supabase only through `supabase-js` over HTTPS. It never opens a direct Postgres connection from Vercel, so the pooler ports (5432/6543) stay closed exactly as the runbook says.
 
+## VM sizing for Ember
+
+The runbook's sizes fit Ember. Ember uses fewer Supabase services than a typical app (no Realtime, Edge Functions or `pg_cron`), and its files live in Zadara S3, so the VM disk only holds Postgres, the container images, logs and three days of local dumps.
+
+| | lab | prod |
+|---|---|---|
+| vCPU | 2 | 4 |
+| RAM | 4 GB | 8 GB |
+| Disk (SSD) | 60 GB | 100 GB |
+| OS | Ubuntu 24.04 LTS | Ubuntu 24.04 LTS |
+
+What drives the size:
+
+- **Idle stack:** the full Docker Compose stack takes roughly 2–3 GB of RAM before any load. A 4 GB lab is workable but tight; move lab to 8 GB if you turn on the optional log stack (`run.sh config add logs`, Logflare), which adds RAM.
+- **Vectors:** each approved chunk stores a 1536-dimension embedding, about 6 KB plus index. 100,000 chunks is roughly 1–1.5 GB including the index. Postgres is fastest when the vector index fits in memory, so **plan 16 GB for prod once `kb_vectors` passes about 500,000 rows**.
+- **Concurrency:** Ember's traffic is people using the app plus evaluation runs. Evaluation runs execute synchronously in a Vercel function and spend most of their time waiting on AI providers, not Postgres. 4 vCPU is ample for a team of tens of users.
+- **Disk:** Postgres plus vector indexes, the Supabase images (about 10–15 GB), logs, and the local dump copies kept by `backup.sh`. Alert at 80% as the runbook says, and grow the volume rather than the VM when it fills.
+
+Check prod at one month: `select pg_size_pretty(pg_database_size('postgres'));` and `free -h`. Resize from those numbers rather than estimates.
+
 ## What Ember needs from the stack
 
 | Need | Status in the runbook | Ember action |
@@ -61,6 +81,37 @@ Ember has **no self-service sign-up**. Admins create accounts with the email alr
 
 > ☐ Password-reset email arrives within 2 minutes in a Gmail and an Outlook inbox (not spam), with SPF and DKIM passing, and the link opens Ember's `/reset-password` page.
 
+### Choosing an SMTP provider
+
+Ember's volume is tiny: password resets only, a handful a week. Deliverability and simple setup matter more than price.
+
+**Recommendation for Sandz-internal stacks (Ember, sandz-pages): one transactional email provider account,** with a dedicated sending subdomain such as `mail.<sandz-domain>` and one sender address per app (`no-reply@mail.<sandz-domain>`). Using a subdomain keeps app email from affecting the reputation of people's own mailboxes.
+
+| Option | Good for | Watch out for |
+|---|---|---|
+| **Postmark** | Best-in-class deliverability for password resets; simple SMTP credentials | Paid beyond a small free tier; check current pricing |
+| **Resend** | Simple setup and a free tier that covers Ember's volume | Newer provider; check current limits |
+| **Amazon SES** (Singapore, `ap-southeast-1`) | Cheapest at volume, close to the Philippines, and reusable for client stacks | Starts in a sandbox: request production access before go-live |
+| **Brevo** | Free daily allowance, EU-based | Daily cap on the free plan |
+| Google Workspace SMTP relay | If Sandz is already on Workspace and wants no new vendor | Must be restricted to the VM's IP, which needs a fixed outbound IP from Zadara; daily limits |
+| Microsoft 365 | Not recommended | Password-based SMTP sign-in is being switched off from the end of December 2026 (see runbook Step 2b) |
+
+Any of the first three is a good choice; pick by who will own the account. All of them give SMTP host, port 587, username and password, which go straight into the runbook's `SMTP_*` settings. For government clients such as Bacolod, expect to use the client's own relay instead (runbook Step 2b).
+
+## Sign-in options for Ember users
+
+Ember signs people in with **email and password** only (`src/components/auth/LoginForm.tsx`). Accounts are created by an admin. Self-hosting doesn't change this; it works as soon as the stack is up.
+
+If you want single sign-on, Supabase Auth supports it out of the box with **Google** (if Sandz uses Google Workspace) or **Microsoft Entra ID** (if Sandz uses Microsoft 365). Setting it up takes three things:
+
+1. Register Ember as an app in Google Cloud Console or Entra, with the redirect URL `https://<api-domain>/auth/v1/callback`.
+2. Add that provider's client ID and secret to the stack's `.env` (`GOOGLE_*` or `AZURE_*` settings for the auth service).
+3. Add a "Sign in with Google/Microsoft" button to Ember's login page. That is a small code change: `signInWithOAuth` plus an auth callback route.
+
+**Recommendation:** go live with email and password, which needs no extra work, and add SSO later as its own change. When you add it, decide whether signing in with SSO may create a new Ember account or may only match accounts an admin already created. The second keeps today's admin-controlled access model.
+
+This is separate from the **OAuth 2.1 server** in section 6. That one lets AI apps such as Claude and ChatGPT sign in *to* Ember. It is built into Supabase Auth, so there is no third-party OAuth service to choose; the only decision is whether to switch it on.
+
 ## 4. Apply Ember's migrations to a new stack
 
 Ember has 129 migrations in `supabase/migrations/`, all correctly named for the Supabase CLI. **They have never been applied in order to an empty database:** the existing cloud project was built by hand in the SQL Editor and with `scripts/run-migrations.mjs`, so there is no CLI migration history and no `supabase/config.toml`.
@@ -72,6 +123,7 @@ Do this on **lab first**:
 3. Expect a few files to fail on a clean apply (non-idempotent `create policy`, or "fix" migrations that assume an earlier hand-applied state). Fix each one as a corrected migration in the repo. Never edit the database by hand to get past it.
 4. Run `supabase/migration_status_check.sql` and confirm every check passes.
 5. Seed lab with synthetic data only (`npm run db:seed-kbs`, `npm run db:seed-users`), per the runbook's data rule.
+6. **Rebuild the vector index after loading data.** `kb_vectors_embedding_idx` is an `ivfflat` index (`lists = 100`), which computes its clusters when it is built. Built on an empty table, as on a fresh stack, it gives poor search results. After seeding lab, and again after loading prod data (section 5), run `reindex index kb_vectors_embedding_idx;`.
 
 Once lab applies cleanly from an empty database, use the same command for prod and for every later release.
 
@@ -85,8 +137,9 @@ The runbook builds empty stacks. Ember already has live data in the Supabase clo
 2. Dump the cloud project's `auth`, `public` and `storage` schemas (data and schema), using the cloud connection string.
 3. Restore into prod after the migrations have created the schema, or restore schema and data together and then run `migration_status_check.sql`. Choose one approach and rehearse it on a throwaway VM first, as in the runbook's restore test.
 4. Copy the Storage objects from the cloud project's buckets into the prod Zadara bucket, keeping the same bucket names and object paths, because the database stores those paths.
-5. Point Vercel Production at prod (section 1), redeploy, and smoke-test: sign in, open a Project, view the uploaded logo and a blog image, upload a document, ask Ember a question.
-6. Keep the cloud project read-only for at least two weeks as a fallback, then retire it.
+5. Run `reindex index kb_vectors_embedding_idx;` (section 4, step 6).
+6. Point Vercel Production at prod (section 1), redeploy, and smoke-test: sign in, open a Project, view the uploaded logo and a blog image, upload a document, ask Ember a question.
+7. Keep the cloud project read-only for at least two weeks as a fallback, then retire it.
 
 Passwords carry over with the `auth` schema. Everyone has to **sign in again**, because the new stack signs sessions with different keys.
 
@@ -134,7 +187,8 @@ Add these to the runbook checklist for each Ember environment:
 
 - ☐ Vercel environment variables set for this stack (section 1) and a redeploy done
 - ☐ Sign in works; a Project page loads; the header logo loads from `https://<api-domain>/storage/...`
-- ☐ Password-reset email test passed (section 3)
+- ☐ Password-reset email test passed (section 3); SMTP provider recorded in the client sheet
+- ☐ `kb_vectors_embedding_idx` rebuilt after data load (section 4)
 - ☐ All migrations applied from an empty database; `migration_status_check.sql` clean (section 4)
 - ☐ Admin-created user, Project member added by email, and document upload all work with the secret key
 - ☐ Storage bucket versioning on (section 8)
