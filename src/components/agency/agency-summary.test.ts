@@ -19,7 +19,7 @@ const builder: AgencyBuilderRow = {
       status: 'active',
       category: 'foundation',
       clientViewerCount: 1,
-      fee: { amount: 1000, currency: 'USD', period: 'monthly', platformRatePct: 10, monthlyAmount: 1000, platformMonthly: 100 },
+      fee: { amount: 1000, currency: 'USD', period: 'monthly', platformRatePct: 10, builderSharePct: 10, monthlyAmount: 1000, platformMonthly: 100, builderMonthly: 100 },
       createdAt: '2026-09-10T00:00:00Z',
       workstreamCount: 2,
       activeWorkstreamCount: 1,
@@ -60,6 +60,7 @@ const builder: AgencyBuilderRow = {
 const dashboard: AgencyDashboard = {
   viewerIsAdmin: false,
   platformRatePct: 10,
+  builderSharePct: 10,
   agencies: [{ agencyId: 'agency-1', email: 'agency@example.com', fullName: 'North Agency', builders: [builder] }],
   unassigned: [],
   completionByCategory: [

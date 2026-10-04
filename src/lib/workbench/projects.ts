@@ -448,6 +448,48 @@ export async function sendProjectBackToWorking(ctx: WorkbenchCallerContext, proj
 export async function markProjectLive(ctx: WorkbenchCallerContext, projectId: string) {
   await requireCanApprove(ctx, projectId)
   await transitionProjectStatus(projectId, 'completed', 'live', ctx.user.id)
+  await handOverLiveProjectToAgency(projectId)
+}
+
+// At go-live a builder's Project passes to their agency
+// (20261008100001_live_handover_and_builder_share.sql): Ember is then used
+// for maintenance and feature requests, and the agency holds the client
+// relationship even for a solo builder. The builder stays on as curator and
+// remains the builder of record (builder_id) -- their bonus, AI budget and
+// dashboard card follow them. Same membership moves as transferOwnership.
+// No-op when the owner is on no agency's roster, or is the agency already.
+// Service-role client: neither the agency (not yet the owner) nor the
+// builder may change builder_id themselves.
+export async function handOverLiveProjectToAgency(projectId: string): Promise<{ agencyId: string } | null> {
+  const admin = createAdminClient()
+  const { data: project, error: projectError } = await admin.from('projects').select('owner_id, builder_id').eq('id', projectId).single()
+  if (projectError || !project) throw projectError ?? new ProjectValidationError('Project not found')
+  if (!project.owner_id) return null
+
+  const { data: link, error: linkError } = await admin.from('agency_builders').select('agency_id').eq('builder_id', project.owner_id).maybeSingle()
+  if (linkError) throw linkError
+  if (!link || link.agency_id === project.owner_id) return null
+
+  const builderId = project.owner_id
+  const { error: updateError } = await admin
+    .from('projects')
+    .update({ owner_id: link.agency_id, builder_id: project.builder_id ?? builderId })
+    .eq('id', projectId)
+  if (updateError) throw updateError
+
+  const { error: agencyError } = await admin
+    .from('project_members')
+    .upsert({ project_id: projectId, user_id: link.agency_id, role: 'owner', status: 'active' }, { onConflict: 'project_id,user_id' })
+  if (agencyError) throw agencyError
+
+  const { error: builderError } = await admin
+    .from('project_members')
+    .update({ role: 'curator' })
+    .eq('project_id', projectId)
+    .eq('user_id', builderId)
+  if (builderError) throw builderError
+
+  return { agencyId: link.agency_id }
 }
 
 // Approved -> Working on it, when the client asks for changes before
@@ -647,10 +689,13 @@ export async function provisionBuilderProject(admin: ReturnType<typeof createAdm
 export async function isOwnBuilderLabProject(ctx: WorkbenchCallerContext, projectId: string): Promise<boolean> {
   const { data: project } = await ctx.supabase
     .from('projects')
-    .select('owner_id, portfolio_category')
+    .select('owner_id, builder_id, portfolio_category')
     .eq('id', projectId)
     .maybeSingle()
-  return project?.owner_id === ctx.user.id && project?.portfolio_category === 'builder_lab'
+  // The builder of record when there is one: a client Project the agency
+  // took over at go-live is still this builder's work, and never the
+  // agency's own metered spend.
+  return !!project && (project.builder_id ?? project.owner_id) === ctx.user.id && project.portfolio_category === 'builder_lab'
 }
 
 // Backs the Ember search_projects tool (docs/dev-request-ember-onboarding-

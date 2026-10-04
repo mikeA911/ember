@@ -301,6 +301,9 @@ function FeeTotals({ projects }: { projects: AgencyClientProjectRow[] }) {
           <span>
             Platform share <span className="font-semibold">{formatMoney(t.platformMonthly, currency)}</span>
           </span>
+          <span>
+            Builder share <span className="font-semibold">{formatMoney(t.builderMonthly, currency)}</span>
+          </span>
         </div>
       ))}
       {unpriced > 0 && (
@@ -382,7 +385,7 @@ function OverallCompletionStat({ completion }: { completion: AgencyCompletion })
 
 export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard }) {
   const [attentionOnly, setAttentionOnly] = useState(false)
-  const { viewerIsAdmin, agencies, unassigned, platformRatePct } = dashboard
+  const { viewerIsAdmin, agencies, unassigned, platformRatePct, builderSharePct } = dashboard
 
   const allBuilders = [...agencies.flatMap((a) => a.builders), ...unassigned]
   const allClientProjects = allBuilders.flatMap((b) => b.clientProjects)
@@ -418,7 +421,7 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
       <CompletionByCategory categories={dashboard.completionByCategory} overall={dashboard.overallCompletion} />
 
       <FeeTotals projects={allClientProjects} />
-      {viewerIsAdmin && <PlatformRateForm current={platformRatePct} />}
+      {viewerIsAdmin && <PlatformRateForm current={platformRatePct} currentBuilderShare={builderSharePct} />}
 
       <label className="flex w-fit items-center gap-2 text-sm text-zinc-600">
         <input type="checkbox" checked={attentionOnly} onChange={(e) => setAttentionOnly(e.target.checked)} />
@@ -439,7 +442,7 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
                 {created.length} client project{created.length === 1 ? '' : 's'} created, {created.filter((p) => isThisMonth(p.createdAt)).length} this month
                 {monthlyTotals(created.flatMap((p) => (p.fee ? [p.fee] : []))).map(
                   ([currency, t]) =>
-                    ` · ${formatMoney(t.clientMonthly, currency)}/mo in fees, platform share ${formatMoney(t.platformMonthly, currency)}/mo`
+                    ` · ${formatMoney(t.clientMonthly, currency)}/mo in fees, platform share ${formatMoney(t.platformMonthly, currency)}/mo, builder share ${formatMoney(t.builderMonthly, currency)}/mo`
                 )}
               </p>
             </div>

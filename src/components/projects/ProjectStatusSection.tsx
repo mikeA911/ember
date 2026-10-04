@@ -95,7 +95,12 @@ export function ProjectStatusSection({
           <button
             disabled={isPending}
             onClick={() => {
-              if (!confirm('Has the client approved this project? It will go Live and into maintenance.')) return
+              if (
+                !confirm(
+                  "Has the client approved this project? It will go Live and into maintenance. A builder's project passes to their agency, with the builder staying on to maintain it."
+                )
+              )
+                return
               run(() => markProjectLiveAction(projectId))
             }}
             className="rounded-full border border-emerald-600 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 disabled:opacity-50"

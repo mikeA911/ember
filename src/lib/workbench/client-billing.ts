@@ -10,8 +10,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 // project_fees.sql). Ember records figures for invoicing builders; it
 // never charges anyone. The platform rate is one per deployment, in
 // settings.builder_billing -- the platform owner's own business model.
+// The builder's share (20261008100001) works the same way: a deployment
+// default in settings.builder_billing, recorded on each fee when it's
+// created, and adjustable per Project -- for an employee it's a bonus on
+// the maintenance fee.
 
 export const DEFAULT_PLATFORM_RATE_PCT = 10
+export const DEFAULT_BUILDER_SHARE_PCT = 10
 export const FEE_CURRENCIES: FeeCurrency[] = ['PHP', 'USD']
 export const FEE_PERIODS: FeeBillingPeriod[] = ['monthly', 'annual']
 
@@ -21,17 +26,25 @@ export interface FeeInput {
   amount: number
   currency: FeeCurrency
   period: FeeBillingPeriod
+  // Omitted: a new fee takes the deployment default, an existing one keeps
+  // what it has.
+  builderSharePct?: number
 }
 
 export function validateFee(input: FeeInput): FeeInput {
   if (!Number.isFinite(input.amount) || input.amount < 0) throw new ProjectValidationError('Fee must be a number of zero or more')
   if (!FEE_CURRENCIES.includes(input.currency)) throw new ProjectValidationError('Currency must be PHP or USD')
   if (!FEE_PERIODS.includes(input.period)) throw new ProjectValidationError('Billing period must be monthly or annual')
-  return { amount: Math.round(input.amount * 100) / 100, currency: input.currency, period: input.period }
+  return {
+    amount: Math.round(input.amount * 100) / 100,
+    currency: input.currency,
+    period: input.period,
+    ...(input.builderSharePct === undefined ? {} : { builderSharePct: validateRatePct(input.builderSharePct, "Builder's share") }),
+  }
 }
 
-export function validateRatePct(pct: number): number {
-  if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new ProjectValidationError('Platform rate must be between 0 and 100')
+export function validateRatePct(pct: number, label = 'Platform rate'): number {
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new ProjectValidationError(`${label} must be between 0 and 100`)
   return Math.round(pct * 100) / 100
 }
 
@@ -39,37 +52,61 @@ export function monthlyEquivalent(amount: number, period: FeeBillingPeriod): num
   return period === 'annual' ? amount / 12 : amount
 }
 
-export async function getPlatformRatePct(supabase: SupabaseClient<Database>): Promise<number> {
+export interface BillingRates {
+  platformRatePct: number
+  builderSharePct: number
+}
+
+export async function getBillingRates(supabase: SupabaseClient<Database>): Promise<BillingRates> {
   const { data, error } = await supabase.from('settings').select('value').eq('key', SETTINGS_KEY).maybeSingle()
   if (error) throw error
-  const pct = (data?.value as { platformRatePct?: unknown } | undefined)?.platformRatePct
-  return typeof pct === 'number' ? pct : DEFAULT_PLATFORM_RATE_PCT
+  const value = (data?.value ?? {}) as { platformRatePct?: unknown; builderSharePct?: unknown }
+  return {
+    platformRatePct: typeof value.platformRatePct === 'number' ? value.platformRatePct : DEFAULT_PLATFORM_RATE_PCT,
+    builderSharePct: typeof value.builderSharePct === 'number' ? value.builderSharePct : DEFAULT_BUILDER_SHARE_PCT,
+  }
+}
+
+export async function getPlatformRatePct(supabase: SupabaseClient<Database>): Promise<number> {
+  return (await getBillingRates(supabase)).platformRatePct
+}
+
+// Admin only. Either rate may be omitted to keep its current value.
+export async function setBillingRates(ctx: WorkbenchCallerContext, input: Partial<BillingRates>): Promise<void> {
+  if (ctx.profile.role !== 'admin') throw new AuthError('Only the platform admin can set the platform rate')
+  const current = await getBillingRates(ctx.supabase)
+  const value = {
+    platformRatePct: input.platformRatePct === undefined ? current.platformRatePct : validateRatePct(input.platformRatePct),
+    builderSharePct:
+      input.builderSharePct === undefined ? current.builderSharePct : validateRatePct(input.builderSharePct, "Builder's share"),
+  }
+  const { error } = await ctx.supabase
+    .from('settings')
+    .upsert({ key: SETTINGS_KEY, value, updated_by: ctx.user.id, updated_at: new Date().toISOString() })
+  if (error) throw error
 }
 
 export async function setPlatformRatePct(ctx: WorkbenchCallerContext, pct: number): Promise<void> {
-  if (ctx.profile.role !== 'admin') throw new AuthError('Only the platform admin can set the platform rate')
-  const platformRatePct = validateRatePct(pct)
-  const { error } = await ctx.supabase
-    .from('settings')
-    .upsert({ key: SETTINGS_KEY, value: { platformRatePct }, updated_by: ctx.user.id, updated_at: new Date().toISOString() })
-  if (error) throw error
+  await setBillingRates(ctx, { platformRatePct: pct })
 }
 
-// Admin, or the agency of the builder who owns this client Project. A new
-// fee row takes today's platform rate; correcting an existing fee keeps the
-// rate it was recorded with.
+// Admin, or the agency of this client Project's builder (the builder of
+// record, or the owner before a builder_id was recorded). A new fee row
+// takes today's platform rate and builder's share; correcting an existing
+// fee keeps the platform rate it was recorded with.
 export async function setClientProjectFee(ctx: WorkbenchCallerContext, projectId: string, input: FeeInput): Promise<void> {
   const fee = validateFee(input)
   const admin = createAdminClient()
 
   if (ctx.profile.role !== 'admin') {
-    const { data: project, error: projectError } = await admin.from('projects').select('owner_id').eq('id', projectId).maybeSingle()
+    const { data: project, error: projectError } = await admin.from('projects').select('owner_id, builder_id').eq('id', projectId).maybeSingle()
     if (projectError) throw projectError
-    if (!project?.owner_id) throw new ProjectValidationError('Project not found')
+    const builderId = project?.builder_id ?? project?.owner_id
+    if (!builderId) throw new ProjectValidationError('Project not found')
     const { data: link, error: linkError } = await ctx.supabase
       .from('agency_builders')
       .select('builder_id')
-      .eq('builder_id', project.owner_id)
+      .eq('builder_id', builderId)
       .eq('agency_id', ctx.user.id)
       .maybeSingle()
     if (linkError) throw linkError
@@ -83,11 +120,70 @@ export async function setClientProjectFee(ctx: WorkbenchCallerContext, projectId
     .maybeSingle()
   if (existingError) throw existingError
 
-  const row = { amount: fee.amount, currency: fee.currency, billing_period: fee.period, set_by: ctx.user.id }
-  const { error } = existing
-    ? await ctx.supabase.from('client_project_fees').update(row).eq('project_id', projectId)
-    : await ctx.supabase
-        .from('client_project_fees')
-        .insert({ project_id: projectId, ...row, platform_rate_pct: await getPlatformRatePct(admin) })
+  const row = {
+    amount: fee.amount,
+    currency: fee.currency,
+    billing_period: fee.period,
+    set_by: ctx.user.id,
+    ...(fee.builderSharePct === undefined ? {} : { builder_share_pct: fee.builderSharePct }),
+  }
+  let error
+  if (existing) {
+    ;({ error } = await ctx.supabase.from('client_project_fees').update(row).eq('project_id', projectId))
+  } else {
+    const rates = await getBillingRates(admin)
+    ;({ error } = await ctx.supabase.from('client_project_fees').insert({
+      project_id: projectId,
+      builder_share_pct: rates.builderSharePct,
+      ...row,
+      platform_rate_pct: rates.platformRatePct,
+    }))
+  }
   if (error) throw error
+}
+
+export interface MyMaintenanceShare {
+  projectId: string
+  projectName: string
+  currency: FeeCurrency
+  monthlyAmount: number
+  builderSharePct: number
+  builderMonthly: number
+}
+
+// The builder's own view of what they earn: every client Project they are
+// the builder of record for (or still own) that has a fee, through their
+// own RLS-scoped client (client_project_fees_select_builder_agency_or_admin).
+export async function listMyMaintenanceShares(ctx: WorkbenchCallerContext): Promise<MyMaintenanceShare[]> {
+  const { data: projects, error: projectError } = await ctx.supabase
+    .from('projects')
+    .select('id, name, owner_id, builder_id')
+    .or(`builder_id.eq.${ctx.user.id},owner_id.eq.${ctx.user.id}`)
+  if (projectError) throw projectError
+  // Projects with a builder of record are theirs alone -- not one the
+  // caller merely owns after someone else built it.
+  const mine = (projects ?? []).filter((p) => (p.builder_id ?? p.owner_id) === ctx.user.id)
+  if (mine.length === 0) return []
+
+  const { data: fees, error: feeError } = await ctx.supabase
+    .from('client_project_fees')
+    .select('project_id, amount, currency, billing_period, builder_share_pct')
+    .in('project_id', mine.map((p) => p.id))
+  if (feeError) throw feeError
+
+  const nameById = new Map(mine.map((p) => [p.id, p.name]))
+  return (fees ?? [])
+    .map((f) => {
+      const monthlyAmount = monthlyEquivalent(Number(f.amount), f.billing_period)
+      const builderSharePct = Number(f.builder_share_pct)
+      return {
+        projectId: f.project_id,
+        projectName: nameById.get(f.project_id) ?? 'Client project',
+        currency: f.currency,
+        monthlyAmount,
+        builderSharePct,
+        builderMonthly: (monthlyAmount * builderSharePct) / 100,
+      }
+    })
+    .sort((a, b) => a.projectName.localeCompare(b.projectName))
 }

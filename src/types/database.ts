@@ -812,6 +812,10 @@ export interface Project {
   approval_decision_reason: string | null
   // Wizard-picked team members held until approval adds them.
   pending_members: PendingProjectMember[]
+  // The builder of record (20261008100001_live_handover_and_builder_share.sql):
+  // who built it, kept when the agency takes ownership at go-live. Set only
+  // by the service layer or a platform admin.
+  builder_id: string | null
 }
 
 export type ProjectApprovalStatus = 'pending' | 'approved' | 'rejected'
@@ -1464,6 +1468,8 @@ export interface ClientProjectFee {
   currency: FeeCurrency
   billing_period: FeeBillingPeriod
   platform_rate_pct: number
+  // The builder's share -- an employee's bonus (20261008100001).
+  builder_share_pct: number
   set_by: string | null
   created_at: string
   updated_at: string
@@ -2421,6 +2427,7 @@ export type ProjectInsert = Omit<
   | 'approval_decided_at'
   | 'approval_decision_reason'
   | 'pending_members'
+  | 'builder_id'
 > &
   Partial<
     Pick<
@@ -2443,6 +2450,7 @@ export type ProjectInsert = Omit<
       | 'cloned_from_project_id'
       | 'approval_status'
       | 'pending_members'
+      | 'builder_id'
     >
   >
 export type ProjectUpdate = Partial<Omit<Project, 'id' | 'created_at'>>
@@ -2555,7 +2563,8 @@ export type BuilderProgressUpdateUpdate = Partial<
   Omit<BuilderProgressUpdate, 'id' | 'workstream_id' | 'submitted_by' | 'created_at'>
 >
 
-export type ClientProjectFeeInsert = Omit<ClientProjectFee, 'created_at' | 'updated_at'>
+export type ClientProjectFeeInsert = Omit<ClientProjectFee, 'created_at' | 'updated_at' | 'builder_share_pct'> &
+  Partial<Pick<ClientProjectFee, 'builder_share_pct'>>
 export type ClientProjectFeeUpdate = Partial<Omit<ClientProjectFee, 'project_id' | 'created_at'>>
 
 export type AgencyBuilderInsert = Omit<AgencyBuilder, 'created_at' | 'updated_at'>

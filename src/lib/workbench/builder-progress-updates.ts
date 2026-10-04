@@ -117,8 +117,11 @@ export async function listBuilderOperationsRows(ctx: WorkbenchCallerContext): Pr
   }
 
   const admin = createAdminClient()
-  const { data: builderProjects } = await admin.from('projects').select('id, owner_id').eq('portfolio_category', 'builder_lab')
-  if (!builderProjects || builderProjects.length === 0) return []
+  const { data: builderLabProjects } = await admin.from('projects').select('id, owner_id, builder_id').eq('portfolio_category', 'builder_lab')
+  if (!builderLabProjects || builderLabProjects.length === 0) return []
+  // A Live client Project the agency took over still belongs to its
+  // builder of record here.
+  const builderProjects = builderLabProjects.map((p) => ({ id: p.id, owner_id: p.builder_id ?? p.owner_id }))
 
   const projectIds = builderProjects.map((p) => p.id)
   const builderIds = [...new Set(builderProjects.map((p) => p.owner_id).filter((id): id is string => !!id))]

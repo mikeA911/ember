@@ -774,6 +774,14 @@ As a Builder, I want Ember to switch to Sandz-hosted AI automatically once my cl
 - If none is available, Ember says so instead of calling any model.
 - Internal and foundation Projects are never restricted, Live or not.
 
+**BLD-B-11 — Keep maintaining my project after it goes Live**
+As a Builder, I want to stay on my Project as its maintainer after it goes Live and my agency takes ownership, so that I can handle maintenance and feature requests while the agency protects the client relationship.
+- At go-live, ownership passes to my agency; I stay on as curator and remain its builder of record.
+- My work there still counts against my AI budget, I can still share progress updates, and the Project stays on my card on the agency dashboard.
+
+**BLD-B-12 — See my maintenance share**
+As a Builder, I want my profile to show my share of each client Project's maintenance fee, so that I know what I earn (for an employee, a bonus on top of salary).
+
 ### Agency
 
 **BLD-A-01 — See my builders**
@@ -788,6 +796,7 @@ As an Agency, I want to approve or reject Projects and promotions submitted by m
 As an Agency, I want to record the maintenance fee for each of my builders' client Projects, so that invoicing figures are available.
 - Ember records figures only; it never charges anyone.
 - A new fee takes the current platform rate; correcting a fee keeps the rate it was recorded with.
+- Each fee also records the builder's share (10% by default, set by the platform owner). I can adjust it per Project, for example as negotiated with the builder.
 
 **BLD-A-04 — See and control my builders' AI budgets**
 As an Agency, I want to see each of my builders' AI spend against their allowance and credits, and set their monthly allowance, hard stop and one-off credit, so that I control what my builders (or, for an enterprise, my employees) spend on AI.
@@ -802,8 +811,9 @@ As the Platform owner, I want the agency dashboard to show every agency and ever
 **BLD-P-02 — Assign builders to agencies**
 As the Platform owner, I want to assign a builder to an agency or remove the assignment, so that each builder has the right supervisor.
 
-**BLD-P-03 — Set the platform rate**
-As the Platform owner, I want to set the platform's percentage share of client fees, so that billing reflects the programme's business model.
+**BLD-P-03 — Set the platform rate and default builder share**
+As the Platform owner, I want to set the platform's percentage share of client fees and the default builder's share, so that billing reflects the programme's business model.
+- Both apply to fees recorded from then on.
 
 **BLD-P-04 — Review Builder Operations**
 As the Platform owner, I want a Builder Operations view of every builder's shared progress updates and AI spend, so that I know who needs help.

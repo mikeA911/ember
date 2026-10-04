@@ -106,7 +106,7 @@ export function buildAgencySummaryMarkdown(dashboard: AgencyDashboard, generated
     `- **Open proposals:** ${openProposals.length}`,
   ]
   for (const [currency, t] of monthlyTotals(clientProjects.flatMap((p) => (p.fee ? [p.fee] : [])))) {
-    lines.push(`- **Maintenance fees (${currency}):** ${formatMoney(t.clientMonthly, currency)}/month, platform share ${formatMoney(t.platformMonthly, currency)}/month`)
+    lines.push(`- **Maintenance fees (${currency}):** ${formatMoney(t.clientMonthly, currency)}/month, platform share ${formatMoney(t.platformMonthly, currency)}/month, builder share ${formatMoney(t.builderMonthly, currency)}/month`)
   }
   lines.push('')
 

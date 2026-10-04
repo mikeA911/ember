@@ -42,6 +42,13 @@ describe('platform rate', () => {
     const upsert = supabase._calls.find((c) => c.table === 'settings' && c.method === 'upsert')
     expect(upsert?.args).toMatchObject({ key: 'builder_billing', value: { platformRatePct: 12 }, updated_by: 'admin-1' })
   })
+
+  it("keeps the default builder's share when only the platform rate changes", async () => {
+    const supabase = createFakeSupabase({ settings: [{ data: { value: { platformRatePct: 10, builderSharePct: 7 } }, error: null }] })
+    await setPlatformRatePct(ctxWith(supabase, { userId: 'admin-1', role: 'admin' }), 12)
+    const upsert = supabase._calls.find((c) => c.table === 'settings' && c.method === 'upsert')
+    expect(upsert?.args).toMatchObject({ value: { platformRatePct: 12, builderSharePct: 7 } })
+  })
 })
 
 describe('setClientProjectFee', () => {
@@ -66,7 +73,39 @@ describe('setClientProjectFee', () => {
     })
     await setClientProjectFee(ctxWith(supabase), 'proj-1', { amount: 25000, currency: 'PHP', period: 'monthly' })
     const insert = supabase._calls.find((c) => c.table === 'client_project_fees' && c.method === 'insert')
-    expect(insert?.args).toEqual({ project_id: 'proj-1', amount: 25000, currency: 'PHP', billing_period: 'monthly', set_by: 'agency-1', platform_rate_pct: 10 })
+    expect(insert?.args).toEqual({
+      project_id: 'proj-1',
+      amount: 25000,
+      currency: 'PHP',
+      billing_period: 'monthly',
+      set_by: 'agency-1',
+      platform_rate_pct: 10,
+      builder_share_pct: 10,
+    })
+  })
+
+  it("lets the agency set the builder's share, and checks the builder of record after the agency took the project over", async () => {
+    createAdminClientMock.mockReturnValue(
+      createFakeSupabase({
+        projects: [{ data: { owner_id: 'agency-1', builder_id: 'builder-1' }, error: null }],
+        settings: [{ data: { value: { platformRatePct: 10, builderSharePct: 10 } }, error: null }],
+      })
+    )
+    const supabase = createFakeSupabase({
+      agency_builders: [{ data: { builder_id: 'builder-1' }, error: null }],
+      client_project_fees: [{ data: null, error: null }],
+    })
+    await setClientProjectFee(ctxWith(supabase), 'proj-1', { amount: 25000, currency: 'PHP', period: 'monthly', builderSharePct: 15 })
+    expect(supabase._calls).toContainEqual({ table: 'agency_builders', method: 'eq', args: { column: 'builder_id', value: 'builder-1' } })
+    const insert = supabase._calls.find((c) => c.table === 'client_project_fees' && c.method === 'insert')
+    expect(insert?.args).toMatchObject({ platform_rate_pct: 10, builder_share_pct: 15 })
+  })
+
+  it("rejects a builder's share outside 0-100", async () => {
+    createAdminClientMock.mockReturnValue(createFakeSupabase({}))
+    await expect(
+      setClientProjectFee(ctxWith(createFakeSupabase({}), { role: 'admin' }), 'proj-1', { amount: 1, currency: 'USD', period: 'monthly', builderSharePct: 120 })
+    ).rejects.toThrow("Builder's share must be between 0 and 100")
   })
 
   it('keeps the recorded rate when correcting an existing fee', async () => {

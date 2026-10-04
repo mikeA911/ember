@@ -49,7 +49,7 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   const { id, workstreamId } = await params
   const supabase = await createClient()
 
-  const { data: project } = await supabase.from('projects').select('id, name').eq('id', id).single()
+  const { data: project } = await supabase.from('projects').select('id, name, builder_id').eq('id', id).single()
   const { data: workstreamRow } = await supabase.from('project_workstreams').select('*').eq('id', workstreamId).eq('project_id', id).single()
   const workstream = workstreamRow as ProjectWorkstream | null
   if (!project || !workstream) notFound()
@@ -67,7 +67,7 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   let canEdit = false // curator+ -- define scope, mark deliverables done
   let canAttach = false // consultant+ -- attach evidence
   let isActiveMember = false // Workstream Promotion: any active member of this workstream's Project may submit it for promotion
-  let isProjectOwner = false // Builder Operations: Share Builder Update is owner-only (can_manage_project), no curator branch
+  let isProjectOwner = false // Builder Operations: Share Builder Update is owner-only (can_manage_project) -- or the builder of record once the agency owns it
   let canDraftWiki = false // platform curator/admin -- createAIAssistedDraftAction's own bar
   let presentation = null as Awaited<ReturnType<typeof getPresentation>>
   let viewerName: string | null = null // Proposal summary's "prepared by"
@@ -80,7 +80,7 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
     canDraftWiki = isAdmin || viewerProfile?.role === 'curator'
     viewerName = viewerProfile?.full_name && viewerProfile.email ? `${viewerProfile.full_name} (${viewerProfile.email})` : (viewerProfile?.email ?? null)
     isActiveMember = isAdmin || !!viewerMembership
-    isProjectOwner = isAdmin || viewerMembership?.role === 'owner'
+    isProjectOwner = isAdmin || viewerMembership?.role === 'owner' || project.builder_id === user.id
     canEdit = isAdmin || viewerMembership?.role === 'owner' || viewerMembership?.role === 'curator'
     canAttach = isAdmin || canEdit || viewerMembership?.role === 'consultant'
 

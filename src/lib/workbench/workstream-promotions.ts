@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
 import { enrollInOrganizationHome } from './projects'
-import { getPlatformRatePct, validateFee, type FeeInput } from './client-billing'
+import { getBillingRates, validateFee, type FeeInput } from './client-billing'
 
 // Workstream promotion (business-process handoff): a completed Workstream
 // is submitted for review by any active member of its Project; that
@@ -337,7 +337,13 @@ export async function approveWorkstreamPromotion(
     .from('projects')
     .insert(
       isBuilderProposal
-        ? { name: workstream.name, project_type: 'consulting', owner_id: promotion.submitted_by, portfolio_category: 'builder_lab' }
+        ? {
+            name: workstream.name,
+            project_type: 'consulting',
+            owner_id: promotion.submitted_by,
+            builder_id: promotion.submitted_by,
+            portfolio_category: 'builder_lab',
+          }
         : { name: workstream.name, project_type: 'consulting', owner_id: ctx.user.id }
     )
     .select('id')
@@ -394,15 +400,17 @@ export async function approveWorkstreamPromotion(
     if (copyError) throw copyError
   }
 
-  // 4. The agreed maintenance fee, at today's platform rate -- the billing
-  // record for this client (client-billing.ts).
+  // 4. The agreed maintenance fee, at today's platform rate and builder's
+  // share -- the billing record for this client (client-billing.ts).
   if (promotion.proposed_fee_amount !== null && promotion.proposed_fee_currency && promotion.proposed_fee_period) {
+    const rates = await getBillingRates(admin)
     const { error: feeError } = await admin.from('client_project_fees').insert({
       project_id: newProject.id,
       amount: Number(promotion.proposed_fee_amount),
       currency: promotion.proposed_fee_currency,
       billing_period: promotion.proposed_fee_period,
-      platform_rate_pct: await getPlatformRatePct(admin),
+      platform_rate_pct: rates.platformRatePct,
+      builder_share_pct: rates.builderSharePct,
       set_by: ctx.user.id,
     })
     if (feeError) throw feeError

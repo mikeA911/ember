@@ -116,7 +116,16 @@ describe('assembleAgencyDashboard', () => {
         workstreamCount: 1,
         activeWorkstreamCount: 1,
         lastActivityAt: '2026-09-20T00:00:00Z',
-        fee: { amount: 120000, currency: 'PHP', period: 'annual', platformRatePct: 10, monthlyAmount: 10000, platformMonthly: 1000 },
+        fee: {
+          amount: 120000,
+          currency: 'PHP',
+          period: 'annual',
+          platformRatePct: 10,
+          builderSharePct: 0,
+          monthlyAmount: 10000,
+          platformMonthly: 1000,
+          builderMonthly: 0,
+        },
       }),
     ])
     expect(builder.lastActivityAt).toBe('2026-09-25T00:00:00Z')
