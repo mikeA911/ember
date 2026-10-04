@@ -4,6 +4,7 @@ import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 
 const suggestProjectOntologyMock = vi.fn()
 const applyProjectOntologySuggestionMock = vi.fn()
+vi.mock('@/lib/ai', () => ({ aiHostingForProject: async () => 'any' }))
 vi.mock('@/lib/workbench/project-ontology-suggestions', () => ({
   suggestProjectOntology: (...args: unknown[]) => suggestProjectOntologyMock(...args),
   applyProjectOntologySuggestion: (...args: unknown[]) => applyProjectOntologySuggestionMock(...args),
@@ -32,7 +33,8 @@ describe('runSuggestProjectOntology', () => {
         projectType: 'consulting',
         objective: 'Modernize dispatch\n\nFocus especially on: video analytics',
         details: { region: 'Cebu' },
-      })
+      }),
+      { selfHostedOnly: false }
     )
     expect(result.objects).toHaveLength(1)
     expect(result.existingObjectNames).toEqual([])
@@ -58,7 +60,8 @@ describe('runSuggestProjectOntology', () => {
           existing_domain_objects_do_not_repeat: 'Sensor, AnomalyEvent',
           existing_workstreams_do_not_repeat: 'Onboarding',
         }),
-      })
+      }),
+      { selfHostedOnly: false }
     )
   })
 })

@@ -69,6 +69,25 @@ This keeps Step 4's rule intact: only Ember's Supabase VM can reach port 8000. v
 
 **Done when:** in a Project chat, picking `sandz-llm` in the model selector gets an answer, the reply's **Details** show `sandz-llm` as the model, and a question that needs knowledge search completes (proves tool calling works through the relay).
 
+### Live client Projects use Sandz-hosted AI only (Builder mode) **(branch `ccr-8b20ec22-local-llm-readiness`)**
+
+Which AI a Project may use follows its lifecycle:
+
+| Project | AI allowed |
+|---|---|
+| Builder workspace (presales proposals) | Any approved model, within the builder's budget |
+| Client Project before it goes Live | Any approved model, within the builder's budget |
+| Internal or foundation Project (Supabase stacks, hosting, Public Pages, presentations), Live or not | Any approved model |
+| **Client Project once Live** | **Sandz-hosted models only**, for chat, conversation summaries, Wiki drafts, presentations and ontology suggestions |
+
+- **What counts as a client Project:** one created when an agency approves an accepted proposal. That step records the client fee (`client_project_fees`). Changing a Project's portfolio category doesn't change this.
+- **Switching is automatic.** On a Live client Project, the chat model picker offers only Sandz-hosted models, a "Live: Sandz-hosted AI only" badge shows in the chat header, and any other selection is replaced by a Sandz-hosted model. The builder's own LLM isn't used there.
+- **If no Sandz-hosted model is enabled,** chat on that Project replies "This project is live, so it can only use Sandz-hosted AI…" instead of calling any model. Presentations and Wiki drafts show the same message.
+- **Not affected:** document enrichment and embeddings (foundational, any model), and web search.
+- **Enterprise mode** is on hold and has no lifecycle restriction.
+
+To set it up, tick **Sandz-hosted** on the `sandz-llm` provider (Admin → AI Config → provider). Give its models the needed capabilities: **tools** for chat, **structured output** for summaries, drafts and presentations. To keep Sandz-hosted calls from counting against builders' allowances, set the models' prices to 0. The allowance meter prices every call from the registry.
+
 ### Thinking mode
 
 One Ember turn can make up to 8 model calls, and Qwen3.8 thinks before each by default. That multiplies response time and can hit Vercel function timeouts. Until Ember can switch thinking off per call (planned with the Quick/Deep modes), measure turn times in Step 5. If they are too slow, start vLLM with thinking disabled by default and enable it per request later.
@@ -156,6 +175,7 @@ Also time **a full Ember turn that uses tools**, not just single completions. Tu
 - ☐ Step 5 dataset run in Ember against cloud and `sandz-llm`; cloud run marked baseline
 - ☐ (when merged) branch `ccr-8b20ec22-local-llm-readiness`: a Wiki AI draft or presentation for a Restricted Project is **blocked** on a cloud model and succeeds on `sandz-llm`
 - ☐ Decision recorded per deployment: `EMBER_GATE_FOUNDATIONAL_AI` on or off (off = document enrichment and embeddings may use any model)
+- ☐ `sandz-llm` marked **Sandz-hosted**; on a test client Project marked Live, chat shows the badge, offers only Sandz-hosted models and answers with `sandz-llm`; a Live internal Project still offers every model
 - ☐ (when embeddings move) local embedding model is the default and everything has been re-embedded
 
 ## Open questions to add
@@ -171,3 +191,5 @@ Also time **a full Ember turn that uses tools**, not just single completions. Tu
 2. Sensitivity ceilings are set on every provider. Unset providers default to Internal.
 3. Knowledge sources and Projects that hold Confidential/Restricted material are classified.
 4. A decision on which models are the deployment's defaults for structured output (enrichment, Wiki drafts, presentations) and embeddings. Once the branch merges, anything above a default model's ceiling is blocked rather than sent.
+5. The migration `20261006100001_ai_provider_self_hosted.sql` is applied, and `sandz-llm` is marked Sandz-hosted with tools and structured output enabled. Otherwise every Live client Project loses AI until it is.
+6. If PR #32 (web search) merges first, add `webSearchQueries: []` to the "no Sandz-hosted model" early return in `runAssistantTurn` (`src/lib/chat/loop.ts`) when merging this branch.

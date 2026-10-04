@@ -8,6 +8,9 @@ import {
   getActiveStructuredOutputProvider,
   AIProviderError,
   AISensitivityError,
+  SelfHostedAIUnavailableError,
+  aiHostingForArtifact,
+  aiHostingForDocuments,
   gateProvider,
   manifestForArtifact,
   manifestForDocuments,
@@ -64,6 +67,7 @@ async function synthesizeWikiDraftSafely(
     // A policy block isn't fixed by retrying or trimming sources -- pass its
     // own explanation through.
     if (err instanceof AISensitivityError) throw new WikiValidationError(err.message)
+    if (err instanceof SelfHostedAIUnavailableError) throw new WikiValidationError(err.message)
     const detail = err instanceof AIProviderError ? `${err.provider}: ${err.errorCode}` : err instanceof Error ? err.message.slice(0, 200) : String(err)
     throw new WikiValidationError(`AI-assisted draft generation failed (${detail}) -- try again, or with fewer/shorter sources.`)
   }
@@ -199,7 +203,11 @@ async function createAIAssistedDraftInner(
 
   const provider = await gateProvider(
     supabase,
-    await getActiveStructuredOutputProvider(supabase, { requestedBy: user.id }),
+    await getActiveStructuredOutputProvider(
+      supabase,
+      { requestedBy: user.id },
+      { selfHostedOnly: (await aiHostingForDocuments(documentIds)) === 'self_hosted_only' }
+    ),
     await manifestForDocuments(documentIds)
   )
 
@@ -273,7 +281,11 @@ async function createAIAssistedDraftFromArtifact(
 
   const provider = await gateProvider(
     supabase,
-    await getActiveStructuredOutputProvider(supabase, { requestedBy: userId }),
+    await getActiveStructuredOutputProvider(
+      supabase,
+      { requestedBy: userId },
+      { selfHostedOnly: (await aiHostingForArtifact(artifact.id)) === 'self_hosted_only' }
+    ),
     await manifestForArtifact(artifact.id)
   )
 

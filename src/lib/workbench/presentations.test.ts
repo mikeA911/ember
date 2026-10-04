@@ -6,6 +6,7 @@ vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: (...args: unknown[])
 
 const getActiveStructuredOutputProviderMock = vi.fn()
 vi.mock('@/lib/ai', () => ({
+  aiHostingForWorkstream: async () => 'any',
   gateProvider: async (_supabase: unknown, provider: unknown) => provider,
   manifestForDocuments: async () => ({ entries: [] }),
   manifestForProject: async () => ({ entries: [] }),

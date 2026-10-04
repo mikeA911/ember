@@ -11,6 +11,7 @@ import {
   updateModelStatusAction,
   updateProviderEnabledAction,
   setProviderMaxSensitivityAction,
+  setProviderSelfHostedAction,
 } from '@/app/actions/ai-providers'
 import { AddModelForm } from './AddModelForm'
 import type { RoleOption } from './ModelAssignmentsSummary'
@@ -109,6 +110,20 @@ export function ProviderDetail({
           <div className="flex justify-between">
             <span className="text-zinc-500">Credentials</span>
             <span>{configured ? 'Configured ✓' : `Missing (set ${provider.api_key_env_var})`}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-500" title="Builder mode: a Live client Project may use only Sandz-hosted providers for chat, summaries, Wiki drafts and presentations.">
+              Sandz-hosted
+            </span>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={provider.is_self_hosted}
+                disabled={isPending}
+                onChange={(e) => run(() => setProviderSelfHostedAction(provider.id, e.target.checked))}
+              />
+              {provider.is_self_hosted ? 'Yes: allowed for Live client Projects' : 'No (external)'}
+            </label>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-zinc-500">Max AI sensitivity approved to receive</span>

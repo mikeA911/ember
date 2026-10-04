@@ -128,6 +128,7 @@ describe('service-role reads are metadata only', () => {
       'slug',
       'document_id, chunk_id, workstream_artifact_id',
       'document_id',
+      'doc_type',
     ])
     expect(selects.length).toBeGreaterThan(0)
     for (const s of selects) expect(allowed, s).toContain(s)

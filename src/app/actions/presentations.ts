@@ -17,11 +17,26 @@ import {
   scheduleReviewOpen,
   cancelScheduledReviewOpen,
 } from '@/lib/workbench/presentations'
+import { AISensitivityError, SelfHostedAIUnavailableError } from '@/lib/ai'
 import type { PresentationActionStatus } from '@/types/database'
+
+// An AI-hosting or sensitivity block is returned as data, not thrown: in
+// production a thrown Server Action error reaches the user only as a
+// generic digest, and these messages tell them what to do.
+function aiPolicyMessage(err: unknown): string | null {
+  return err instanceof SelfHostedAIUnavailableError || err instanceof AISensitivityError ? err.message : null
+}
 
 export async function generatePresentationAction(projectId: string, workstreamId: string) {
   const ctx = await requireUser()
-  const result = await generatePresentation(ctx, workstreamId)
+  let result: Awaited<ReturnType<typeof generatePresentation>>
+  try {
+    result = await generatePresentation(ctx, workstreamId)
+  } catch (err) {
+    const message = aiPolicyMessage(err)
+    if (message) return { error: message }
+    throw err
+  }
   revalidatePath(`/projects/${projectId}/workstreams/${workstreamId}`)
   revalidatePath(`/projects/${projectId}/workstreams/${workstreamId}/presentation`)
   return result
@@ -100,7 +115,14 @@ export async function replyToCommentAction(projectId: string, workstreamId: stri
 
 export async function classifyPendingCommentsAction(projectId: string, workstreamId: string, versionId: string) {
   const ctx = await requireUser()
-  const result = await classifyPendingComments(ctx, versionId)
+  let result: Awaited<ReturnType<typeof classifyPendingComments>>
+  try {
+    result = await classifyPendingComments(ctx, versionId)
+  } catch (err) {
+    const message = aiPolicyMessage(err)
+    if (message) return { error: message }
+    throw err
+  }
   await revalidatePresentation(projectId, workstreamId)
   return result
 }

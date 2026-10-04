@@ -11,6 +11,8 @@ export type { ChatMessage, ToolCall, ToolSpec, GenerateChatInput, GenerateChatRe
 // uses.
 export {
   AIConfigError,
+  SelfHostedAIUnavailableError,
+  pickSelfHostedModel,
   toRoleOption,
   listProviders,
   listModels,
@@ -28,7 +30,7 @@ export {
   listEmbeddingCapableModels,
   instantiateProvider,
 } from './registry'
-export type { ChatProviderInfo, ChatModelOption } from './registry'
+export type { ChatProviderInfo, ChatModelOption, ProviderResolutionOptions } from './registry'
 
 export {
   AISensitivityError,
@@ -63,3 +65,6 @@ export {
   setBuilderAllowance,
 } from './metering'
 export type { BuilderSpendSummary, SetBuilderAllowanceInput } from './metering'
+
+export { aiHostingForProjects, aiHostingForProject, aiHostingForWorkstream, aiHostingForArtifact, aiHostingForDocuments } from './hosting-policy'
+export type { AIHostingRequirement } from './hosting-policy'

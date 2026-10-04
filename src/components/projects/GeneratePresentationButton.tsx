@@ -26,7 +26,11 @@ export function GeneratePresentationButton({
     setError(null)
     startTransition(async () => {
       try {
-        await generatePresentationAction(projectId, workstreamId)
+        const result = await generatePresentationAction(projectId, workstreamId)
+        if ('error' in result) {
+          setError(result.error)
+          return
+        }
         router.push(`/projects/${projectId}/workstreams/${workstreamId}/presentation`)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to generate presentation')

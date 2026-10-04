@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { AuthError } from '@/lib/auth'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { gateProvider, getActiveStructuredOutputProvider, manifestForWorkstream } from '@/lib/ai'
+import { aiHostingForWorkstream, gateProvider, getActiveStructuredOutputProvider, manifestForWorkstream } from '@/lib/ai'
 import { getOntologyMapData } from '@/lib/projects/ontology-map'
 import { notifyReviewOpened, notifySubmittedForCuratorReview, notifyApproved } from './presentation-notifications'
 import type {
@@ -135,7 +135,11 @@ export async function generatePresentation(
   // objective -- gated on the Project's and each artifact's classification.
   const provider = await gateProvider(
     supabase,
-    await getActiveStructuredOutputProvider(supabase, { requestedBy: user.id }),
+    await getActiveStructuredOutputProvider(
+      supabase,
+      { requestedBy: user.id },
+      { selfHostedOnly: (await aiHostingForWorkstream(workstreamId)) === 'self_hosted_only' }
+    ),
     await manifestForWorkstream(workstreamId)
   )
   const { data: generated } = await provider.generateStructured({
@@ -497,7 +501,11 @@ export async function classifyPendingComments(
   if (presentationError || !presentation) throw presentationError ?? new ProjectValidationError('Presentation not found')
   const provider = await gateProvider(
     ctx.supabase,
-    await getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id }),
+    await getActiveStructuredOutputProvider(
+      ctx.supabase,
+      { requestedBy: ctx.user.id },
+      { selfHostedOnly: (await aiHostingForWorkstream(presentation.workstream_id)) === 'self_hosted_only' }
+    ),
     await manifestForWorkstream(presentation.workstream_id)
   )
   const commentLines = comments.map((c) => `Comment ${c.id} (slide ${c.slide_id}): "${c.comment_text}"`).join('\n')

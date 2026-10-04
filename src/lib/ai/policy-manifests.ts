@@ -18,13 +18,11 @@ function highest(tiers: (InformationSensitivity | null | undefined)[]): Informat
   return top
 }
 
-// The highest classification of any Project that uses one of these
-// knowledge bases: attached to the Project, attached to one of its
-// Workstreams, or owned by it (knowledge_bases.project_id). Unclassified
-// Projects contribute nothing -- an unclassified source already defaults to
-// 'internal' on its own. Undefined when no using Project is classified.
-export async function inheritedProjectSensitivityForKnowledgeBases(knowledgeBaseIds: string[]): Promise<InformationSensitivity | undefined> {
-  if (knowledgeBaseIds.length === 0) return undefined
+// Every Project that uses one of these knowledge bases: attached to the
+// Project, attached to one of its Workstreams, or owned by it
+// (knowledge_bases.project_id). Shared with src/lib/ai/hosting-policy.ts.
+export async function projectIdsUsingKnowledgeBases(knowledgeBaseIds: string[]): Promise<string[]> {
+  if (knowledgeBaseIds.length === 0) return []
   const admin = createAdminClient()
   const [projectLinks, workstreamLinks, owned] = await Promise.all([
     admin.from('project_knowledge_bases').select('project_id').in('knowledge_base_id', knowledgeBaseIds),
@@ -44,9 +42,26 @@ export async function inheritedProjectSensitivityForKnowledgeBases(knowledgeBase
     for (const ws of workstreams ?? []) projectIds.add(ws.project_id)
   }
   for (const row of owned.data ?? []) if (row.project_id) projectIds.add(row.project_id)
-  if (projectIds.size === 0) return undefined
+  return [...projectIds]
+}
 
-  const { data: projects, error } = await admin.from('projects').select('information_sensitivity').in('id', [...projectIds])
+// The knowledge base ids (documents.doc_type) behind these documents.
+export async function knowledgeBaseIdsForDocuments(documentIds: string[]): Promise<string[]> {
+  const ids = [...new Set(documentIds)]
+  if (ids.length === 0) return []
+  const { data, error } = await createAdminClient().from('documents').select('doc_type').in('id', ids)
+  if (error) throw error
+  return [...new Set((data ?? []).map((r) => r.doc_type).filter((id): id is string => !!id))]
+}
+
+// The highest classification of any Project that uses one of these
+// knowledge bases. Unclassified Projects contribute nothing -- an
+// unclassified source already defaults to 'internal' on its own. Undefined
+// when no using Project is classified.
+export async function inheritedProjectSensitivityForKnowledgeBases(knowledgeBaseIds: string[]): Promise<InformationSensitivity | undefined> {
+  const projectIds = await projectIdsUsingKnowledgeBases(knowledgeBaseIds)
+  if (projectIds.length === 0) return undefined
+  const { data: projects, error } = await createAdminClient().from('projects').select('information_sensitivity').in('id', projectIds)
   if (error) throw error
   return highest((projects ?? []).map((p) => p.information_sensitivity as InformationSensitivity | null))
 }

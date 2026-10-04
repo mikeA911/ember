@@ -29,6 +29,9 @@ vi.mock('@/lib/ai', async () => {
   return {
     AIProviderError: actual.AIProviderError,
     AISensitivityError: actual.AISensitivityError,
+    SelfHostedAIUnavailableError: actual.SelfHostedAIUnavailableError,
+    aiHostingForArtifact: async () => 'any',
+    aiHostingForDocuments: async () => 'any',
     gateProvider: async (_supabase: unknown, provider: unknown) => provider,
     manifestForDocuments: async () => ({ entries: [] }),
     manifestForProject: async () => ({ entries: [] }),

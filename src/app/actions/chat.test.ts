@@ -28,6 +28,7 @@ vi.mock('@/lib/chat/project-context', () => ({
   describeProjectKnowledgeScope: () => 'knowledge base(s) Zadara / Sandz',
 }))
 vi.mock('@/lib/ai', () => ({
+  aiHostingForProject: async () => 'any',
   listChatCapableModels: (...args: unknown[]) => listChatCapableModelsMock(...args),
   listProviders: (...args: unknown[]) => listProvidersMock(...args),
   listModels: (...args: unknown[]) => listModelsMock(...args),
@@ -165,6 +166,7 @@ describe('getProjectContextAction', () => {
       knowledgeBases: [],
       wikiArticles: [],
       knowledgeScope: 'knowledge base(s) Zadara / Sandz',
+      aiHosting: 'any',
     })
   })
 })

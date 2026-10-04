@@ -1791,6 +1791,9 @@ export interface AIProviderRow {
   api_key_env_var: string
   enabled: boolean
   supports_model_discovery: boolean
+  // Runs on Sandz infrastructure (20261006100001_ai_provider_self_hosted.sql).
+  // Live client Projects in Builder mode may use only these for content calls.
+  is_self_hosted: boolean
   created_at: string
   updated_at: string
 }
@@ -2750,7 +2753,7 @@ export type WorkstreamArtifactInsert = Omit<
 export type WorkstreamArtifactUpdate = Pick<WorkstreamArtifact, 'status'> &
   Partial<Pick<WorkstreamArtifact, 'validation_notes' | 'reviewed_by' | 'reviewed_at'>>
 
-export type AIProviderInsert = Omit<AIProviderRow, 'id' | 'created_at' | 'updated_at'>
+export type AIProviderInsert = Omit<AIProviderRow, 'id' | 'created_at' | 'updated_at' | 'is_self_hosted'> & Partial<Pick<AIProviderRow, 'is_self_hosted'>>
 export type AIProviderUpdate = Partial<Omit<AIProviderRow, 'id' | 'created_at'>>
 
 export type AIModelInsert = Omit<AIModelRow, 'id' | 'created_at' | 'updated_at'>

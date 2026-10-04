@@ -111,7 +111,11 @@ export function PresentationViewer({
     setProcessingFeedback(true)
     startTransition(async () => {
       try {
-        await classifyPendingCommentsAction(projectId, workstreamId, versionId)
+        const result = await classifyPendingCommentsAction(projectId, workstreamId, versionId)
+        if ('error' in result) {
+          setError(result.error)
+          return
+        }
         router.refresh()
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to process feedback')

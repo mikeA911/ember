@@ -11,6 +11,8 @@ import {
   withAllowanceGate,
   getBuilderSpendSummary,
   BuilderAllowanceError,
+  aiHostingForProject,
+  SelfHostedAIUnavailableError,
 } from '@/lib/ai'
 import type { ChatMessage, ChatProviderInfo } from '@/lib/ai'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -409,7 +411,11 @@ export async function runAssistantTurn(
   // conversation on any other Project, is never metered or substituted.
   const isBuilderOwnProject =
     env.productMode() === 'builder' && resolvedProjectId ? await isOwnBuilderLabProject(ctx, resolvedProjectId) : false
-  const byoLlm = isBuilderOwnProject ? await resolveBuilderLlmProvider(ctx.user.id) : null
+  // A Live client Project may use only Sandz-hosted AI (src/lib/ai/
+  // hosting-policy.ts): no BYOLLM, and the chat model switches to a
+  // Sandz-hosted one if the selection or default isn't.
+  const selfHostedOnly = resolvedProjectId ? (await aiHostingForProject(resolvedProjectId)) === 'self_hosted_only' : false
+  const byoLlm = isBuilderOwnProject && !selfHostedOnly ? await resolveBuilderLlmProvider(ctx.user.id) : null
 
   let chatProvider: ChatProviderInfo
   // null for a BYOLLM turn -- there's no ai_providers row for a builder's
@@ -431,10 +437,32 @@ export async function runAssistantTurn(
       contextWindow: null,
     }
   } else {
-    chatProvider = await resolveChatProvider(ctx.supabase, modelSelection, {
-      requestedBy: ctx.user.id,
-      projectId: resolvedProjectId ?? undefined,
-    })
+    try {
+      chatProvider = await resolveChatProvider(
+        ctx.supabase,
+        modelSelection,
+        { requestedBy: ctx.user.id, projectId: resolvedProjectId ?? undefined },
+        { selfHostedOnly }
+      )
+    } catch (err) {
+      if (!(err instanceof SelfHostedAIUnavailableError)) throw err
+      // Same non-throwing, retryable shape as a provider failure (see
+      // isProviderError below): the user sees why, nothing reaches a model.
+      await ctx.supabase.from('conversations').update({ pending_turn_started_at: null }).eq('id', conversation.id)
+      return {
+        conversationId: conversation.id,
+        reply: err.message,
+        providerName: '',
+        providerDisplayName: '',
+        modelId: '',
+        modelDisplayName: '',
+        toolsUsed: [],
+        structured: null,
+        createdRecords: [],
+        pendingGatewayInvocations: [],
+        isProviderError: true,
+      }
+    }
     // ChatProviderInfo.provider is the built client (has .generateChat(), not
     // .id) -- the eligibility check needs the ai_providers row id, resolved
     // once per turn since chatProvider.providerName is fixed for the turn.
@@ -538,7 +566,7 @@ export async function runAssistantTurn(
   async function finishTurn(reply: string, structured: VerifiedAssistantEnvelope | null): Promise<AssistantTurnResult> {
     const usedEmbeddingRetrieval = toolsUsed.has('search_wiki') || toolsUsed.has(SEARCH_PROJECT_KNOWLEDGE_TOOL_NAME)
     const embeddingModelDisplayName = usedEmbeddingRetrieval ? (await getDefaultModel(ctx.supabase, 'embedding')).model.display_name : undefined
-    await maybeRefreshSummary(ctx, conversation.id, contextWasTruncated, projectContext ? projectContext.informationSensitivity : undefined)
+    await maybeRefreshSummary(ctx, conversation.id, contextWasTruncated, projectContext ? projectContext.informationSensitivity : undefined, selfHostedOnly)
     const resolvedCreatedRecords = (await Promise.all(createdRecordRefs.map((ref) => resolveCreatedRecord(ctx, ref)))).filter(
       (r): r is ResolvedCreatedRecord => r !== null
     )
