@@ -1008,7 +1008,13 @@ export function ChatSession({
           <p className="mt-0.5 text-xs text-zinc-500">Knowledge scope: {projectContext.knowledgeScope}</p>
         )}
         {selfHostedOnly && !feedbackCategory && !showFeedbackChooser && (
-          <p className="mt-0.5 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-800">Live: Sandz-hosted AI only</p>
+          <p
+            className="mt-0.5 inline-flex items-center gap-1.5 rounded bg-slate-900 py-0.5 pl-0.5 pr-2 text-xs text-slate-100"
+            title="This client project is live: Ember uses only Sandz-hosted AI here."
+          >
+            <Image src="/images/shadow-ai-badge.png" alt="" width={20} height={20} className="rounded-sm" />
+            Live: Sandz-hosted AI only
+          </p>
         )}
         {feedbackCategory && (
           <div className="mt-0.5 flex items-center justify-between">
