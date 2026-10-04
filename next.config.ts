@@ -1,29 +1,5 @@
 import type { NextConfig } from "next";
 
-// Supabase Storage's public-object path on whichever Supabase this build
-// points at -- Supabase cloud (<ref>.supabase.co) or a self-hosted stack on
-// its own API domain (docs/guides/ember-on-self-hosted-supabase.md).
-// NEXT_PUBLIC_SUPABASE_URL is required at runtime anyway; when it's absent
-// (e.g. a bare `next build` in CI) only the cloud pattern is registered.
-type RemotePattern = NonNullable<NonNullable<NextConfig["images"]>["remotePatterns"]>[number];
-
-function supabaseStoragePatterns(): RemotePattern[] {
-  const patterns: RemotePattern[] = [
-    { protocol: "https", hostname: "**.supabase.co", pathname: "/storage/v1/object/public/**" },
-  ];
-  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!raw) return patterns;
-  const url = new URL(raw);
-  if (url.hostname.endsWith(".supabase.co")) return patterns;
-  patterns.push({
-    protocol: url.protocol === "http:" ? "http" : "https",
-    hostname: url.hostname,
-    port: url.port,
-    pathname: "/storage/v1/object/public/**",
-  });
-  return patterns;
-}
-
 const nextConfig: NextConfig = {
   // The in-app browser reaches this development server through the machine's
   // LAN address rather than localhost. Keep the exception narrow: this only
@@ -55,7 +31,15 @@ const nextConfig: NextConfig = {
   images: {
     // Admin-uploaded branding icons live in Supabase Storage (a public
     // bucket) rather than public/ once configured -- see src/lib/branding.ts.
-    remotePatterns: supabaseStoragePatterns(),
+    // Wildcard subdomain so this doesn't need updating if the project ref
+    // ever changes.
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+    ],
   },
 };
 

@@ -1,5 +1,4 @@
 {
   "framework": "nextjs",
-  "regions": ["hkg1"],
   "crons": [{ "path": "/api/cron/presentations", "schedule": "*/15 * * * *" }]
 }
