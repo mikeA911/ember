@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { z } from 'zod'
 
 const createCompletionMock = vi.fn()
+const createEmbeddingMock = vi.fn()
 const listModelsMock = vi.fn()
 let capturedConstructorArgs: { apiKey: string; baseURL?: string; timeout?: number } | null = null
 
 vi.mock('openai', () => ({
   default: class MockOpenAI {
     chat = { completions: { create: (...args: unknown[]) => createCompletionMock(...args) } }
+    embeddings = { create: (...args: unknown[]) => createEmbeddingMock(...args) }
     models = { list: (...args: unknown[]) => listModelsMock(...args) }
     constructor(args: { apiKey: string; baseURL?: string; timeout?: number }) {
       capturedConstructorArgs = args
@@ -20,6 +22,7 @@ const { AIProviderError } = await import('./provider')
 
 beforeEach(() => {
   createCompletionMock.mockReset()
+  createEmbeddingMock.mockReset()
   listModelsMock.mockReset()
   capturedConstructorArgs = null
 })
@@ -68,6 +71,7 @@ describe('OpenAICompatibleProvider (Groq)', () => {
     const provider = new OpenAICompatibleProvider('groq', 'test-key', 'https://api.groq.com/openai/v1')
 
     await expect(provider.embed({ text: 'hello' })).rejects.toMatchObject({ errorCode: 'model_unavailable' })
+    expect(createEmbeddingMock).not.toHaveBeenCalled()
   })
 
   it('satisfies generateChat, returning a plain text reply with no tool calls', async () => {
@@ -149,5 +153,53 @@ describe('OpenAICompatibleProvider (Groq)', () => {
     const models = await provider.listModels()
 
     expect(models).toEqual([{ id: 'openai/gpt-oss-20b' }, { id: 'openai/gpt-oss-120b' }])
+  })
+})
+
+describe('OpenAICompatibleProvider (self-hosted embeddings)', () => {
+  const BASE = 'https://api.ember.example/llm-embed/v1'
+
+  it('embeds through /v1/embeddings with the configured embedding model', async () => {
+    createEmbeddingMock.mockResolvedValue({ data: [{ embedding: [0.1, 0.2, 0.3] }], usage: { prompt_tokens: 4 } })
+    const provider = new OpenAICompatibleProvider('sandz-llm', 'test-key', BASE, undefined, 'qwen3-embedding')
+
+    const result = await provider.embed({ text: 'hello' })
+
+    expect(createEmbeddingMock).toHaveBeenCalledWith({ model: 'qwen3-embedding', input: 'hello' })
+    expect(result).toEqual({ embedding: [0.1, 0.2, 0.3], model: 'qwen3-embedding', dimensions: 3, usage: { inputTokens: 4, outputTokens: null } })
+  })
+
+  it('requests the registered dimensions, and accepts an embedding of that size', async () => {
+    createEmbeddingMock.mockResolvedValue({ data: [{ embedding: new Array(1536).fill(0) }], usage: { prompt_tokens: 4 } })
+    const provider = new OpenAICompatibleProvider('sandz-llm', 'test-key', BASE, undefined, 'qwen3-embedding', 1536)
+
+    const result = await provider.embed({ text: 'hello' })
+
+    expect(createEmbeddingMock).toHaveBeenCalledWith({ model: 'qwen3-embedding', input: 'hello', dimensions: 1536 })
+    expect(result.dimensions).toBe(1536)
+  })
+
+  it('fails clearly when the server returns a different size than registered', async () => {
+    createEmbeddingMock.mockResolvedValue({ data: [{ embedding: new Array(1024).fill(0) }], usage: { prompt_tokens: 4 } })
+    const provider = new OpenAICompatibleProvider('sandz-llm', 'test-key', BASE, undefined, 'qwen3-embedding', 1536)
+
+    await expect(provider.embed({ text: 'hello' })).rejects.toMatchObject({ errorCode: 'invalid_request', message: expect.stringMatching(/1024-dimension.*1536/) })
+  })
+
+  it('lets a caller-supplied model override the default (e.g. an eval run snapshot)', async () => {
+    createEmbeddingMock.mockResolvedValue({ data: [{ embedding: [1] }], usage: {} })
+    const provider = new OpenAICompatibleProvider('sandz-llm', 'test-key', BASE)
+
+    const result = await provider.embed({ text: 'hello', model: 'other-embed' })
+
+    expect(createEmbeddingMock).toHaveBeenCalledWith({ model: 'other-embed', input: 'hello' })
+    expect(result.usage.inputTokens).toBeNull()
+  })
+
+  it('wraps a server failure in AIProviderError', async () => {
+    createEmbeddingMock.mockRejectedValue(new Error('connection refused'))
+    const provider = new OpenAICompatibleProvider('sandz-llm', 'test-key', BASE, undefined, 'qwen3-embedding')
+
+    await expect(provider.embed({ text: 'hello' })).rejects.toBeInstanceOf(AIProviderError)
   })
 })

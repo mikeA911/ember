@@ -145,7 +145,9 @@ export function instantiateProvider(
   apiKey: string,
   baseUrl: string | null,
   defaultTextModel?: string,
-  defaultEmbedModel?: string
+  defaultEmbedModel?: string,
+  // openai_compatible only -- see OpenAICompatibleProvider's constructor.
+  embedDimensions?: number
 ): AIProvider {
   switch (providerType) {
     case 'openai':
@@ -159,17 +161,17 @@ export function instantiateProvider(
     case 'groq':
     case 'openai_compatible': {
       if (!baseUrl) throw new AIConfigError(`Provider "${name}" has no base_url configured`)
-      return new OpenAICompatibleProvider(name, apiKey, baseUrl, defaultTextModel)
+      return new OpenAICompatibleProvider(name, apiKey, baseUrl, defaultTextModel, defaultEmbedModel, embedDimensions)
     }
   }
 }
 
-function buildProviderClient(provider: AIProviderRow, defaultTextModel?: string, defaultEmbedModel?: string): AIProvider {
+function buildProviderClient(provider: AIProviderRow, defaultTextModel?: string, defaultEmbedModel?: string, embedDimensions?: number): AIProvider {
   const apiKey = resolveApiKey(provider)
   if (!apiKey) {
     throw new AIConfigError(`Provider "${provider.name}" is enabled but ${provider.api_key_env_var} is not set`)
   }
-  return instantiateProvider(provider.provider_type, provider.name, apiKey, provider.base_url, defaultTextModel, defaultEmbedModel)
+  return instantiateProvider(provider.provider_type, provider.name, apiKey, provider.base_url, defaultTextModel, defaultEmbedModel, embedDimensions)
 }
 
 // The one place evaluation (and everything else) resolves a provider by
@@ -213,7 +215,7 @@ export async function getActiveEmbeddingProvider(
   logContext: LogContext = {}
 ): Promise<AIProvider> {
   const { provider, model } = await getDefaultModel(supabase, 'embedding')
-  return withLogging(buildProviderClient(provider, undefined, model.model_id), logContext)
+  return withLogging(buildProviderClient(provider, undefined, model.model_id, model.embedding_dimensions ?? undefined), logContext)
 }
 
 // The structured-output counterpart to getActiveProvider/getActiveEmbeddingProvider.
