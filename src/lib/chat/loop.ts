@@ -463,6 +463,7 @@ export async function runAssistantTurn(
         modelId: '',
         modelDisplayName: '',
         toolsUsed: [],
+        webSearchQueries: [],
         structured: null,
         createdRecords: [],
         pendingGatewayInvocations: [],

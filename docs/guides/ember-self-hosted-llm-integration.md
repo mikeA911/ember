@@ -192,4 +192,3 @@ Also time **a full Ember turn that uses tools**, not just single completions. Tu
 3. Knowledge sources and Projects that hold Confidential/Restricted material are classified.
 4. A decision on which models are the deployment's defaults for structured output (enrichment, Wiki drafts, presentations) and embeddings. Once the branch merges, anything above a default model's ceiling is blocked rather than sent.
 5. The migration `20261006100001_ai_provider_self_hosted.sql` is applied, and `sandz-llm` is marked Sandz-hosted with tools and structured output enabled. Otherwise every Live client Project loses AI until it is.
-6. If PR #32 (web search) merges first, add `webSearchQueries: []` to the "no Sandz-hosted model" early return in `runAssistantTurn` (`src/lib/chat/loop.ts`) when merging this branch.
