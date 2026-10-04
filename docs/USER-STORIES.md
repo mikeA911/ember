@@ -789,6 +789,11 @@ As an Agency, I want to record the maintenance fee for each of my builders' clie
 - Ember records figures only; it never charges anyone.
 - A new fee takes the current platform rate; correcting a fee keeps the rate it was recorded with.
 
+**BLD-A-04 — See and control my builders' AI budgets**
+As an Agency, I want to see each of my builders' AI spend against their allowance and credits, and set their monthly allowance, hard stop and one-off credit, so that I control what my builders (or, for an enterprise, my employees) spend on AI.
+- Shown on `/agency`, with a total for the period and a flag on any builder near or past their limit.
+- Only for builders on my roster; another agency's curator cannot see or change them (enforced in RLS).
+
 ### Platform owner
 
 **BLD-P-01 — See every agency and unassigned builder**
@@ -806,7 +811,7 @@ As the Platform owner, I want a Builder Operations view of every builder's share
 
 **BLD-P-05 — Set allowances and grant credit**
 As the Platform owner, I want to set a builder's monthly AI allowance, warning threshold and hard stop, and grant one-off credit with a reason, so that usage matches the programme's budget.
-- The service layer also permits curators, but the controls are only on `/admin`, which is admin-only. Exposing them on `/agency` would let agencies manage their own builders.
+- Also on `/agency`, where each agency manages its own builders (BLD-A-04). A builder on no agency's roster is managed by the platform owner alone.
 
 
 **BLD-P-06 — Mark a provider as Sandz-hosted**

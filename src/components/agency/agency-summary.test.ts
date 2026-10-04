@@ -11,6 +11,7 @@ const builder: AgencyBuilderRow = {
   pendingPromotions: [],
   lastActivityAt: '2026-09-20T00:00:00Z',
   attention: null,
+  spend: null,
   clientProjects: [
     {
       id: 'p-acme',

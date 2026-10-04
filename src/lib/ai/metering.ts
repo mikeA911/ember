@@ -66,6 +66,31 @@ export interface BuilderSpendSummary {
   stopAtAllowance: boolean
 }
 
+type AllowanceRow = Pick<
+  Database['public']['Tables']['builder_ai_allowances']['Row'],
+  'monthly_allowance_usd' | 'warning_threshold_pct' | 'stop_at_allowance' | 'current_period_start'
+>
+
+function currentMonthStart(): string {
+  return new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
+}
+
+function periodStartOf(allowanceRow: AllowanceRow | null | undefined): string {
+  return allowanceRow?.current_period_start ?? currentMonthStart()
+}
+
+function summarize(allowanceRow: AllowanceRow | null | undefined, creditsUsd: number, spentThisPeriodUsd: number): BuilderSpendSummary {
+  const allowanceUsd = allowanceRow?.monthly_allowance_usd ?? DEFAULT_MONTHLY_ALLOWANCE_USD
+  return {
+    allowanceUsd,
+    creditsUsd,
+    spentThisPeriodUsd,
+    remainingUsd: allowanceUsd + creditsUsd - spentThisPeriodUsd,
+    warningThresholdPct: allowanceRow?.warning_threshold_pct ?? DEFAULT_WARNING_THRESHOLD_PCT,
+    stopAtAllowance: allowanceRow?.stop_at_allowance ?? DEFAULT_STOP_AT_ALLOWANCE,
+  }
+}
+
 // Admin-client read throughout -- same "safe narrow metadata query" posture
 // as listBuilderOperationsRows. Spend is scoped to this builder's own
 // requests against the platform's budget (is_byo_llm=false) from their
@@ -75,10 +100,6 @@ export async function getBuilderSpendSummary(
   builderId: string
 ): Promise<BuilderSpendSummary> {
   const { data: allowanceRow } = await admin.from('builder_ai_allowances').select('*').eq('builder_id', builderId).maybeSingle()
-  const allowanceUsd = allowanceRow?.monthly_allowance_usd ?? DEFAULT_MONTHLY_ALLOWANCE_USD
-  const warningThresholdPct = allowanceRow?.warning_threshold_pct ?? DEFAULT_WARNING_THRESHOLD_PCT
-  const stopAtAllowance = allowanceRow?.stop_at_allowance ?? DEFAULT_STOP_AT_ALLOWANCE
-  const periodStart = allowanceRow?.current_period_start ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
 
   const { data: grants } = await admin.from('builder_credit_grants').select('amount_usd').eq('builder_id', builderId)
   const creditsUsd = (grants ?? []).reduce((sum, g) => sum + g.amount_usd, 0)
@@ -88,17 +109,51 @@ export async function getBuilderSpendSummary(
     .select('estimated_cost_usd')
     .eq('requested_by', builderId)
     .eq('is_byo_llm', false)
-    .gte('created_at', periodStart)
+    .gte('created_at', periodStartOf(allowanceRow))
   const spentThisPeriodUsd = (logs ?? []).reduce((sum, l) => sum + (l.estimated_cost_usd ?? 0), 0)
 
-  return {
-    allowanceUsd,
-    creditsUsd,
-    spentThisPeriodUsd,
-    remainingUsd: allowanceUsd + creditsUsd - spentThisPeriodUsd,
-    warningThresholdPct,
-    stopAtAllowance,
+  return summarize(allowanceRow, creditsUsd, spentThisPeriodUsd)
+}
+
+// The same summary for many builders in three queries (the agency
+// dashboard). Each builder's spend still starts at their own period start.
+export async function getBuilderSpendSummaries(
+  admin: SupabaseClient<Database>,
+  builderIds: string[]
+): Promise<Map<string, BuilderSpendSummary>> {
+  const result = new Map<string, BuilderSpendSummary>()
+  if (builderIds.length === 0) return result
+
+  const [{ data: allowanceRows, error: allowanceError }, { data: grants, error: grantError }] = await Promise.all([
+    admin.from('builder_ai_allowances').select('*').in('builder_id', builderIds),
+    admin.from('builder_credit_grants').select('builder_id, amount_usd').in('builder_id', builderIds),
+  ])
+  if (allowanceError) throw allowanceError
+  if (grantError) throw grantError
+  const allowanceByBuilder = new Map((allowanceRows ?? []).map((r) => [r.builder_id, r]))
+  const periodStartByBuilder = new Map(builderIds.map((id) => [id, periodStartOf(allowanceByBuilder.get(id))]))
+  const earliestPeriodStart = [...periodStartByBuilder.values()].reduce((a, b) => (b < a ? b : a))
+
+  const { data: logs, error: logError } = await admin
+    .from('ai_operation_logs')
+    .select('requested_by, estimated_cost_usd, created_at')
+    .in('requested_by', builderIds)
+    .eq('is_byo_llm', false)
+    .gte('created_at', earliestPeriodStart)
+  if (logError) throw logError
+
+  const creditsByBuilder = new Map<string, number>()
+  for (const g of grants ?? []) creditsByBuilder.set(g.builder_id, (creditsByBuilder.get(g.builder_id) ?? 0) + Number(g.amount_usd))
+  const spentByBuilder = new Map<string, number>()
+  for (const l of logs ?? []) {
+    if (!l.requested_by || l.created_at < periodStartByBuilder.get(l.requested_by)!) continue
+    spentByBuilder.set(l.requested_by, (spentByBuilder.get(l.requested_by) ?? 0) + Number(l.estimated_cost_usd ?? 0))
   }
+
+  for (const id of builderIds) {
+    result.set(id, summarize(allowanceByBuilder.get(id), creditsByBuilder.get(id) ?? 0, spentByBuilder.get(id) ?? 0))
+  }
+  return result
 }
 
 // Mirrors src/lib/ai/sensitivity.ts's withPolicyGate shape exactly: a
@@ -112,7 +167,7 @@ export function withAllowanceGate(getSummary: () => Promise<BuilderSpendSummary>
     const summary = await getSummary()
     if (summary.stopAtAllowance && summary.remainingUsd <= 0) {
       throw new BuilderAllowanceError(
-        'Monthly AI allowance used up -- ask your operator for more credit, or configure your own LLM in your profile.'
+        'Monthly AI allowance used up -- ask your agency for more credit, or configure your own LLM in your profile.'
       )
     }
   }
@@ -138,14 +193,27 @@ export function withAllowanceGate(getSummary: () => Promise<BuilderSpendSummary>
   }
 }
 
-async function requireCuratorOrAdmin(ctx: WorkbenchCallerContext): Promise<void> {
-  if (ctx.profile.role !== 'curator' && ctx.profile.role !== 'admin') {
+// The platform admin, or the builder's own agency (agency_builders) -- the
+// same set can_manage_builder_budget enforces in RLS
+// (20261007100001_agency_scoped_builder_budgets.sql). An enterprise running
+// its own Ember is the agency, so it manages its employees' budgets here.
+async function requireBudgetManager(ctx: WorkbenchCallerContext, builderId: string): Promise<void> {
+  if (ctx.profile.role === 'admin') return
+  if (ctx.profile.role !== 'curator') {
     throw new AuthError('Requires curator or admin role to manage builder AI allowances')
   }
+  const { data: link, error } = await ctx.supabase
+    .from('agency_builders')
+    .select('builder_id')
+    .eq('builder_id', builderId)
+    .eq('agency_id', ctx.user.id)
+    .maybeSingle()
+  if (error) throw error
+  if (!link) throw new AuthError("Only the builder's agency or the platform admin can manage their AI budget")
 }
 
 export async function grantBuilderCredit(ctx: WorkbenchCallerContext, builderId: string, amountUsd: number, reason: string): Promise<void> {
-  await requireCuratorOrAdmin(ctx)
+  await requireBudgetManager(ctx, builderId)
   const trimmedReason = reason.trim()
   if (amountUsd <= 0) throw new Error('Credit amount must be positive')
   if (!trimmedReason) throw new Error('A reason is required')
@@ -162,7 +230,7 @@ export interface SetBuilderAllowanceInput {
 }
 
 export async function setBuilderAllowance(ctx: WorkbenchCallerContext, builderId: string, input: SetBuilderAllowanceInput): Promise<void> {
-  await requireCuratorOrAdmin(ctx)
+  await requireBudgetManager(ctx, builderId)
   if (input.monthlyAllowanceUsd < 0) throw new Error('Monthly allowance cannot be negative')
   const { error } = await ctx.supabase.from('builder_ai_allowances').upsert(
     {

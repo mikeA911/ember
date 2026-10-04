@@ -14,6 +14,8 @@ import type {
 } from '@/lib/workbench/agency-dashboard'
 import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamPromotionsReview'
 import { AssignAgencySelect } from './AssignAgencySelect'
+import { BuilderMeteringActions } from '@/components/admin/BuilderMeteringActions'
+import type { BuilderSpendSummary } from '@/lib/ai/metering'
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_STYLES } from '@/lib/projects/status-labels'
 import { ClientFeeEditor } from './ClientFeeEditor'
 import { PlatformRateForm } from './PlatformRateForm'
@@ -33,6 +35,42 @@ const ATTENTION_STYLES: Record<AgencyAttention, string> = {
   blocked: 'bg-red-100 text-red-800',
   help_requested: 'bg-red-100 text-red-800',
   at_risk: 'bg-amber-100 text-amber-800',
+}
+
+// 'used_up' only blocks Ember when the builder's stop-at-limit is on;
+// otherwise it's a warning like 'warning'.
+type BudgetState = 'used_up' | 'warning' | null
+
+function budgetState(spend: BuilderSpendSummary | null): BudgetState {
+  if (!spend) return null
+  const available = spend.allowanceUsd + spend.creditsUsd
+  if (spend.remainingUsd <= 0) return 'used_up'
+  if (available > 0 && (spend.spentThisPeriodUsd / available) * 100 >= spend.warningThresholdPct) return 'warning'
+  return null
+}
+
+function AiBudget({ spend }: { spend: BuilderSpendSummary }) {
+  const available = spend.allowanceUsd + spend.creditsUsd
+  const pct = available > 0 ? Math.min(100, Math.round((spend.spentThisPeriodUsd / available) * 100)) : 100
+  const state = budgetState(spend)
+  return (
+    <div className="mt-2 rounded bg-zinc-50 p-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium text-zinc-700">AI budget this period</span>
+        <span className="tabular-nums text-zinc-600">
+          {formatMoney(spend.spentThisPeriodUsd, 'USD')} of {formatMoney(available, 'USD')}
+          {spend.creditsUsd > 0 && ` (incl. ${formatMoney(spend.creditsUsd, 'USD')} credit)`} · {formatMoney(spend.remainingUsd, 'USD')} left
+          {state === 'used_up' && (spend.stopAtAllowance ? ' -- Ember blocked' : ' -- over, not blocked')}
+        </span>
+      </div>
+      <div className="my-1 h-1.5 overflow-hidden rounded-full bg-zinc-200">
+        <div
+          className={`h-full rounded-full ${state === 'used_up' ? 'bg-red-500' : state === 'warning' ? 'bg-amber-500' : 'bg-emerald-500'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  )
 }
 
 function formatDate(iso: string | null) {
@@ -198,6 +236,8 @@ function BuilderCard({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {builder.attention && <Pill className={ATTENTION_STYLES[builder.attention]}>{ATTENTION_LABELS[builder.attention]}</Pill>}
+          {budgetState(builder.spend) === 'used_up' && <Pill className="bg-red-100 text-red-800">AI budget used up</Pill>}
+          {budgetState(builder.spend) === 'warning' && <Pill className="bg-amber-100 text-amber-800">AI budget nearly used</Pill>}
           <Pill className={builder.isActive ? 'bg-green-100 text-green-800' : 'bg-zinc-200 text-zinc-600'}>{builder.isActive ? 'Active' : 'Inactive'}</Pill>
           {viewerIsAdmin && <AssignAgencySelect builderId={builder.builderId} agencyId={builder.agencyId} options={agencyOptions} />}
         </div>
@@ -206,6 +246,18 @@ function BuilderCard({
         {builder.proposals.length} proposal{builder.proposals.length === 1 ? '' : 's'} · {builder.clientProjects.length} client project
         {builder.clientProjects.length === 1 ? '' : 's'} · last activity {formatDate(builder.lastActivityAt)}
       </p>
+
+      {builder.spend && (
+        <>
+          <AiBudget spend={builder.spend} />
+          <BuilderMeteringActions
+            builderId={builder.builderId}
+            currentAllowanceUsd={builder.spend.allowanceUsd}
+            currentWarningThresholdPct={builder.spend.warningThresholdPct}
+            currentStopAtAllowance={builder.spend.stopAtAllowance}
+          />
+        </>
+      )}
 
       {builder.pendingPromotions.length > 0 && (
         <div className="mt-2 flex flex-col gap-1">
@@ -335,7 +387,9 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
   const allBuilders = [...agencies.flatMap((a) => a.builders), ...unassigned]
   const allClientProjects = allBuilders.flatMap((b) => b.clientProjects)
   const agencyOptions = agencies.map((a) => ({ id: a.agencyId, label: a.fullName || a.email || a.agencyId }))
-  const needsAction = (b: AgencyBuilderRow) => !!b.attention || b.pendingPromotions.length > 0
+  const needsAction = (b: AgencyBuilderRow) => !!b.attention || b.pendingPromotions.length > 0 || budgetState(b.spend) === 'used_up'
+  const aiSpent = allBuilders.reduce((n, b) => n + (b.spend?.spentThisPeriodUsd ?? 0), 0)
+  const aiAvailable = allBuilders.reduce((n, b) => n + (b.spend ? b.spend.allowanceUsd + b.spend.creditsUsd : 0), 0)
   const visible = (builders: AgencyBuilderRow[]) => (attentionOnly ? builders.filter(needsAction) : builders)
 
   const sections = [
@@ -347,13 +401,18 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         <OverallCompletionStat completion={dashboard.overallCompletion} />
         <Stat label="Builders" value={allBuilders.length} />
         <Stat label="Open proposals" value={allBuilders.flatMap((b) => b.proposals).filter((p) => p.promotionStatus !== 'approved').length} />
         <Stat label="Client project requests" value={allBuilders.reduce((n, b) => n + b.pendingPromotions.length, 0)} />
         <Stat label="Client projects created this month" value={allClientProjects.filter((p) => isThisMonth(p.createdAt)).length} />
         <Stat label="Client projects in total" value={allClientProjects.length} />
+        <Stat
+          label="AI spend this period"
+          value={formatMoney(aiSpent, 'USD')}
+          title={`${formatMoney(aiSpent, 'USD')} of ${formatMoney(aiAvailable, 'USD')} in allowances and credits, across these builders`}
+        />
       </div>
 
       <CompletionByCategory categories={dashboard.completionByCategory} overall={dashboard.overallCompletion} />
@@ -363,7 +422,7 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
 
       <label className="flex w-fit items-center gap-2 text-sm text-zinc-600">
         <input type="checkbox" checked={attentionOnly} onChange={(e) => setAttentionOnly(e.target.checked)} />
-        Only builders waiting on a decision, blocked, at risk or asking for help
+        Only builders waiting on a decision, blocked, at risk, asking for help or out of AI budget
       </label>
 
       {sections.length === 0 && <p className="text-sm text-zinc-500">No agencies yet. Create a curator account for each builder agency.</p>}

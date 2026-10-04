@@ -17,6 +17,7 @@ import type { WorkbenchCallerContext } from './context'
 import { shapePendingPromotions, type PendingWorkstreamPromotionRow } from './workstream-promotions'
 import { getPlatformRatePct, monthlyEquivalent } from './client-billing'
 import { CATEGORY_ORDER } from '@/lib/projects/portfolio-categories'
+import { getBuilderSpendSummaries, type BuilderSpendSummary } from '@/lib/ai'
 
 // Builder agency dashboard (/agency, 2026-10-01, Mike): the platform owner
 // is the admin, each builder agency is a curator, each builder is a
@@ -36,7 +37,9 @@ import { CATEGORY_ORDER } from '@/lib/projects/portfolio-categories'
 // progress update the builder chose to share -- plus, for the management
 // view (2026-10-03), each project's workstreams, the knowledge bases
 // attached to them (names only) and a completion percentage computed from
-// deliverable checklist counts, never the deliverable labels. Never goal/details/
+// deliverable checklist counts, never the deliverable labels -- and each
+// builder's AI budget (allowance, credits, spend this period), which the
+// agency manages (metering.ts). Never goal/details/
 // objective, notebooks, conversations, artifacts or slides. The admin
 // client is the query engine only -- every query below is scoped to the
 // builders the caller is entitled to see before anything is read.
@@ -127,6 +130,8 @@ export interface AgencyBuilderRow {
   pendingPromotions: PendingWorkstreamPromotionRow[]
   lastActivityAt: string | null
   attention: AgencyAttention | null
+  // null when the dashboard was assembled without spend (tests, fixtures).
+  spend: BuilderSpendSummary | null
 }
 
 export interface AgencyGroup {
@@ -217,6 +222,7 @@ export interface AgencyDashboardInput {
   fees: { project_id: string; amount: number; currency: FeeCurrency; billing_period: FeeBillingPeriod; platform_rate_pct: number }[]
   pendingPromotionRows: PendingWorkstreamPromotionRow[]
   platformRatePct: number
+  spendByBuilder?: Map<string, BuilderSpendSummary>
 }
 
 function laterOf(a: string | null, b: string | null): string | null {
@@ -417,6 +423,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
       pendingPromotions: pendingByBuilder.get(b.id) ?? [],
       lastActivityAt: all.reduce<string | null>((latest, r) => laterOf(latest, r.lastActivityAt), null),
       attention: attentionFor(all.flatMap((r) => (r.latestUpdate ? [r.latestUpdate] : []))),
+      spend: input.spendByBuilder?.get(b.id) ?? null,
     }
   })
   builderRows.sort(byEmail)
@@ -582,9 +589,10 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     knowledgeBases = data ?? []
   }
 
-  const [pendingPromotionRows, platformRatePct] = await Promise.all([
+  const [pendingPromotionRows, platformRatePct, spendByBuilder] = await Promise.all([
     shapePendingPromotions(promotions.filter((p) => p.status === 'pending')),
     getPlatformRatePct(admin),
+    getBuilderSpendSummaries(admin, builderIds),
   ])
 
   return assembleAgencyDashboard({
@@ -604,6 +612,7 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     fees,
     pendingPromotionRows,
     platformRatePct,
+    spendByBuilder,
   })
 }
 

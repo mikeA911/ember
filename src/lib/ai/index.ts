@@ -60,6 +60,7 @@ export {
   BuilderAllowanceError,
   computeCost,
   getBuilderSpendSummary,
+  getBuilderSpendSummaries,
   withAllowanceGate,
   grantBuilderCredit,
   setBuilderAllowance,
