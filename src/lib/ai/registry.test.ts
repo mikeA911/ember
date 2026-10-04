@@ -43,6 +43,7 @@ function model(overrides: Partial<AIModelRow> = {}): AIModelRow {
     context_window: null,
     max_output_tokens: null,
     input_cost_per_million: null,
+    cached_input_cost_per_million: null,
     output_cost_per_million: null,
     embedding_dimensions: null,
     supports_structured_output: false,

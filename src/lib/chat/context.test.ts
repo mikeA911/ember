@@ -42,7 +42,7 @@ describe('composeWorkingContext', () => {
 
     const result = composeWorkingContext({ history, summary: null })
 
-    expect(result).toEqual({ messages: history, wasTruncated: false, summaryIncluded: false })
+    expect(result).toEqual({ messages: history, wasTruncated: false, omittedMessageCount: 0, summaryIncluded: false })
   })
 
   it('never splits a tool-call/tool-result pair, even when the budget only fits part of that turn', () => {
@@ -83,6 +83,28 @@ describe('composeWorkingContext', () => {
   })
 
   it('returns an empty result for empty history', () => {
-    expect(composeWorkingContext({ history: [], summary: null })).toEqual({ messages: [], wasTruncated: false, summaryIncluded: false })
+    expect(composeWorkingContext({ history: [], summary: null })).toEqual({
+      messages: [],
+      wasTruncated: false,
+      omittedMessageCount: 0,
+      summaryIncluded: false,
+    })
+  })
+
+  // Just over 1000 tokens per turn against an 18k budget: 17 turns fit.
+  const bigTurn = (i: number) => userTurn(`q${i} ` + 'x'.repeat(4000))
+  const historyOf = (n: number) => Array.from({ length: n }, (_, i) => bigTurn(i)).flat()
+
+  it('cuts at a multiple of CUT_STEP_TURNS, so the start of the history holds for several turns', () => {
+    const starts = [20, 21, 22, 23, 24].map((n) => composeWorkingContext({ history: historyOf(n), summary: null }).messages[0].content.split(' ')[0])
+    // A one-turn-at-a-time cut would start at q3, q4, q5, q6, q7.
+    expect(starts).toEqual(['q4', 'q4', 'q8', 'q8', 'q8'])
+  })
+
+  it('reports how many messages it cut and stays within the budget', () => {
+    const result = composeWorkingContext({ history: historyOf(23), summary: null })
+    expect(result.wasTruncated).toBe(true)
+    expect(result.omittedMessageCount).toBe(8)
+    expect(result.messages).toHaveLength(15)
   })
 })

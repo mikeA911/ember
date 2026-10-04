@@ -40,19 +40,26 @@ export async function computeCost(
   providerName: string,
   modelId: string,
   inputTokens: number | null,
-  outputTokens: number | null
+  outputTokens: number | null,
+  // Part of inputTokens served from the provider's prompt cache. Charged at
+  // cached_input_cost_per_million when one is set, otherwise at the full
+  // input price -- never understated.
+  cachedInputTokens: number | null = null
 ): Promise<number | null> {
   if (inputTokens === null && outputTokens === null) return null
   const { data: provider } = await supabase.from('ai_providers').select('id').eq('name', providerName).maybeSingle()
   if (!provider) return null
   const { data: model } = await supabase
     .from('ai_models')
-    .select('input_cost_per_million, output_cost_per_million')
+    .select('input_cost_per_million, cached_input_cost_per_million, output_cost_per_million')
     .eq('provider_id', provider.id)
     .eq('model_id', modelId)
     .maybeSingle()
   if (!model || model.input_cost_per_million === null || model.output_cost_per_million === null) return null
-  const inputCost = ((inputTokens ?? 0) / 1_000_000) * model.input_cost_per_million
+  const cached = Math.min(cachedInputTokens ?? 0, inputTokens ?? 0)
+  const cachedRate = model.cached_input_cost_per_million ?? model.input_cost_per_million
+  const inputCost =
+    (((inputTokens ?? 0) - cached) / 1_000_000) * model.input_cost_per_million + (cached / 1_000_000) * cachedRate
   const outputCost = ((outputTokens ?? 0) / 1_000_000) * model.output_cost_per_million
   return inputCost + outputCost
 }

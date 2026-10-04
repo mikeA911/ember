@@ -25,6 +25,8 @@ import { listPendingMethods } from '@/lib/workbench/methods'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 import { AgentAccessSettings } from '@/components/admin/AgentAccessSettings'
 import { listMcpAccessUsers, listMcpActivity, listMcpApprovedClients } from '@/lib/mcp/admin'
+import { getAICostReport } from '@/lib/workbench/ai-cost-report'
+import { AICostReportView } from '@/components/admin/AICostReportView'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -76,10 +78,11 @@ export default async function AdminPage() {
   const callerCtx = { user, profile, supabase } as unknown as WorkbenchCallerContext
   const pendingWorkstreamPromotions = await listPendingWorkstreamPromotions(callerCtx)
   const pendingMethods = await listPendingMethods(callerCtx)
-  const [mcpUsers, mcpClients, mcpActivity] = await Promise.all([
+  const [mcpUsers, mcpClients, mcpActivity, aiCostReport] = await Promise.all([
     listMcpAccessUsers(callerCtx),
     listMcpApprovedClients(callerCtx),
     listMcpActivity(callerCtx, { ownOnly: false, limit: 50 }),
+    getAICostReport(callerCtx),
   ])
 
   const builderOperationsRows = await listBuilderOperationsRows(callerCtx)
@@ -135,6 +138,7 @@ export default async function AdminPage() {
               </div>
             ),
           },
+          { id: 'ai-cost', label: 'Usage & cost', content: <AICostReportView report={aiCostReport} /> },
           { id: 'branding', label: 'Branding', content: <BrandingSettings current={brandingUrls} /> },
           { id: 'blog', label: 'Blog', content: <BlogPostsList posts={blogPosts} emailById={emailById} /> },
           {

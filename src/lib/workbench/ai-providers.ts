@@ -85,6 +85,7 @@ export async function createModel(ctx: WorkbenchCallerContext, input: CreateMode
     context_window: input.contextWindow,
     max_output_tokens: input.maxOutputTokens,
     input_cost_per_million: null,
+    cached_input_cost_per_million: null,
     output_cost_per_million: null,
     embedding_dimensions: input.embeddingDimensions,
     supports_structured_output: input.supportsStructuredOutput,
@@ -139,6 +140,36 @@ export async function updateModelStatus(
   deprecationDate: string | null
 ) {
   const { error } = await ctx.supabase.from('ai_models').update({ status, deprecation_date: deprecationDate }).eq('id', modelId)
+  if (error) throw error
+}
+
+// USD per million tokens, as the provider's price list gives them. Each may
+// be null (not set). A model without input and output prices is reported as
+// unpriced; without a cached price, cached input is charged at the input
+// price (src/lib/ai/metering.ts computeCost). Applies to calls logged from
+// now on -- logged costs are never recomputed.
+export interface ModelPricingInput {
+  inputCostPerMillion: number | null
+  cachedInputCostPerMillion: number | null
+  outputCostPerMillion: number | null
+}
+
+export async function updateModelPricing(ctx: WorkbenchCallerContext, modelId: string, input: ModelPricingInput) {
+  for (const [label, value] of [
+    ['Input price', input.inputCostPerMillion],
+    ['Cached input price', input.cachedInputCostPerMillion],
+    ['Output price', input.outputCostPerMillion],
+  ] as const) {
+    if (value !== null && (!Number.isFinite(value) || value < 0)) throw new AIConfigError(`${label} must be zero or more`)
+  }
+  const { error } = await ctx.supabase
+    .from('ai_models')
+    .update({
+      input_cost_per_million: input.inputCostPerMillion,
+      cached_input_cost_per_million: input.cachedInputCostPerMillion,
+      output_cost_per_million: input.outputCostPerMillion,
+    })
+    .eq('id', modelId)
   if (error) throw error
 }
 

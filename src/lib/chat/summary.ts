@@ -21,9 +21,12 @@ const ConversationSummarySchema = z.object({
   nextAction: z.string(),
 })
 
-// Refresh roughly every 10 turns (the doc's own suggested cadence), or
-// immediately once composeWorkingContext has actually had to truncate --
-// reusing that flag instead of a second token check.
+// Refresh roughly every 10 turns (the doc's own suggested cadence), or as
+// soon as composeWorkingContext has cut turns the summary doesn't cover yet.
+// The cut moves in steps (CUT_STEP_TURNS), so a long conversation refreshes
+// once per step, not on every turn -- each refresh is a model call, and a
+// changed summary changes the start of the next chat prompt, which the
+// provider then can't serve from its cache.
 const REFRESH_TURN_THRESHOLD = 10
 
 export async function getConversationSummary(
@@ -41,6 +44,8 @@ function countTurnsSince(rows: ChatMessageRow[], throughMessageId: string | null
   return relevant.filter((r) => r.role === 'user').length
 }
 
+// rows: only the messages since the previous summary when there is one --
+// the previous summary already stands for everything before them.
 function buildSummaryPrompt(rows: ChatMessageRow[], previous: ConversationSummary | null): string {
   const transcript = rows
     .map((r) => {
@@ -52,7 +57,7 @@ function buildSummaryPrompt(rows: ChatMessageRow[], previous: ConversationSummar
     .join('\n')
   const previousBlock = previous ? `Previous summary:\n${JSON.stringify(previous)}\n\n` : ''
   return (
-    `${previousBlock}Conversation transcript so far:\n${transcript}\n\n` +
+    `${previousBlock}${previous ? 'Conversation since that summary' : 'Conversation transcript so far'}:\n${transcript}\n\n` +
     'Produce an updated structured summary of this conversation between a user and the Ember Workbench Assistant, ' +
     'as a single JSON object with exactly these fields:\n' +
     '- objective: string, the user\'s overall goal in this conversation\n' +
@@ -94,7 +99,9 @@ function buildManifest(rows: ChatMessageRow[], projectSensitivity: InformationSe
 export async function maybeRefreshSummary(
   ctx: WorkbenchCallerContext,
   conversationId: string,
-  wasTruncated: boolean,
+  // How many of the conversation's messages, oldest first, the last turn's
+  // working context left out (composeWorkingContext). 0 = nothing cut.
+  omittedMessageCount: number,
   projectSensitivity?: InformationSensitivity | null,
   // A Live client Project (src/lib/ai/hosting-policy.ts): summarize with a
   // Sandz-hosted model, or not at all -- SelfHostedAIUnavailableError lands
@@ -111,8 +118,15 @@ export async function maybeRefreshSummary(
 
     const rows = await listMessages(ctx.supabase, conversationId)
     const turnsSince = countTurnsSince(rows, conversation.summary_through_message_id)
-    if (turnsSince < REFRESH_TURN_THRESHOLD && !wasTruncated) return
+    const summarizedThrough = conversation.summary_through_message_id
+      ? rows.findIndex((r) => r.id === conversation.summary_through_message_id)
+      : -1
+    const cutBeyondSummary = omittedMessageCount > 0 && summarizedThrough < omittedMessageCount - 1
+    if (turnsSince < REFRESH_TURN_THRESHOLD && !cutBeyondSummary) return
     if (rows.length === 0) return
+    // With a previous summary, send only what came after it.
+    const previous = summarizedThrough >= 0 ? conversation.summary_json : null
+    const rowsToSummarize = previous ? rows.slice(summarizedThrough + 1) : rows
 
     const provider = await getActiveStructuredOutputProvider(ctx.supabase, { task: 'conversation_summary', requestedBy: ctx.user.id }, { selfHostedOnly })
     // A separately-resolved provider than the live turn's chatProvider --
@@ -127,7 +141,7 @@ export async function maybeRefreshSummary(
 
     const { data, model } = await gatedProvider.generateStructured({
       system: 'You maintain a running summary of a Workbench Assistant conversation so it can continue past its context window.',
-      prompt: buildSummaryPrompt(rows, conversation.summary_json),
+      prompt: buildSummaryPrompt(rowsToSummarize, previous),
       schema: ConversationSummarySchema,
       maxOutputTokens: 1024,
     })

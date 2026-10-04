@@ -124,6 +124,7 @@ export class OpenAIProvider implements AIProvider {
         messages,
         tools,
         max_completion_tokens: input.maxOutputTokens,
+        ...(input.cacheKey ? { prompt_cache_key: input.cacheKey } : {}),
       })
 
       const responseMessage = res.choices[0]?.message

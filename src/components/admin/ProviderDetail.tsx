@@ -14,6 +14,7 @@ import {
   setProviderSelfHostedAction,
 } from '@/app/actions/ai-providers'
 import { AddModelForm } from './AddModelForm'
+import { ModelPricingEditor } from './ModelPricingEditor'
 import type { RoleOption } from './ModelAssignmentsSummary'
 
 const STATUS_OPTIONS: AIModelStatus[] = ['active', 'deprecated', 'disabled', 'unavailable']
@@ -241,6 +242,13 @@ export function ProviderDetail({
                     {m.supports_reasoning && <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">Reasoning</span>}
                     {m.supports_vision && <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">Vision</span>}
                   </div>
+                  <ModelPricingEditor
+                    modelId={m.id}
+                    providerId={provider.id}
+                    input={m.input_cost_per_million}
+                    cachedInput={m.cached_input_cost_per_million}
+                    output={m.output_cost_per_million}
+                  />
                 </div>
                 <div className="flex shrink-0 items-center gap-2 text-xs">
                   <label className="flex items-center gap-1.5">
