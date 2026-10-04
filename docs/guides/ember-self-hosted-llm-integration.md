@@ -2,7 +2,7 @@
 
 This section replaces **Step 3's "Connecting Ember (first consumer)"** in the setup guide (Mike Aguilar, 3 October 2026). It also adds items to Step 4, Step 5, the operations rules, the acceptance checklist and the open questions. The rest of the guide (model, vLLM, hardware, Steps 1–2) stands as written.
 
-It describes how Ember works today. Items marked **(branch `ccr-8b20ec22-local-llm-readiness`)** depend on code that is built but not yet merged into `main`. Merge it once the prerequisites at the end are met.
+It describes how Ember works as of October 2026. The code it relies on (Sandz-hosted AI for Live client Projects, the AI policy gate and local embeddings) is in `main` (PR #33), and the `ai_providers.is_self_hosted` migration has been applied.
 
 ---
 
@@ -69,7 +69,7 @@ This keeps Step 4's rule intact: only Ember's Supabase VM can reach port 8000. v
 
 **Done when:** in a Project chat, picking `sandz-llm` in the model selector gets an answer, the reply's **Details** show `sandz-llm` as the model, and a question that needs knowledge search completes (proves tool calling works through the relay).
 
-### Live client Projects use Sandz-hosted AI only (Builder mode) **(branch `ccr-8b20ec22-local-llm-readiness`)**
+### Live client Projects use Sandz-hosted AI only (Builder mode)
 
 Which AI a Project may use follows its lifecycle:
 
@@ -96,7 +96,7 @@ One Ember turn can make up to 8 model calls, and Qwen3.8 thinks before each by d
 
 Ember needs an **embedding model** as well as the chat model. Embeddings index every approved document chunk and every search question. Today they come from OpenAI (`text-embedding-3-small`, 1536 dimensions), so even with Qwen answering, document text and questions still leave Zadara for indexing.
 
-To keep embeddings on Zadara **(branch `ccr-8b20ec22-local-llm-readiness`)**:
+To keep embeddings on Zadara:
 
 1. Serve an embedding model with a second vLLM process on the same GPU. Give it a small share of GPU memory, and lower the chat model's `--gpu-memory-utilization` to make room. Choose a model that can output **1536 dimensions** (for example a Qwen3-Embedding model with its output size set to 1536), so Ember's existing `vector(1536)` columns don't change.
 2. Relay it like the chat model, for example `https://<api-domain>/llm-embed/v1`.
@@ -128,7 +128,7 @@ Not yet recorded:
 The guide says prompts and documents "never leave our infrastructure". With Ember on Vercel, that is not yet true:
 
 1. **Every prompt passes through Vercel** (region `hkg1`) on its way to the model. That already applies to all Ember data, including Project content.
-2. **Other AI calls besides chat** use the platform's default models, which are cloud providers today. Branch `ccr-8b20ec22-local-llm-readiness` splits them in two:
+2. **Other AI calls besides chat** use the platform's default models, which are cloud providers today. Ember splits them in two:
    - **Content calls** (presentation generation and Wiki AI drafts) now check sensitivity, so Confidential or Restricted material is **blocked** from cloud models instead of sent.
    - **Foundational calls** (document enrichment on upload and all embeddings) may use **any model** by Sandz policy. Document text from a Restricted Project still goes to the default enrichment and embedding models. To keep it on Zadara, either make the local models those defaults, or set `EMBER_GATE_FOUNDATIONAL_AI=true` on the deployment so these calls are checked too.
 
@@ -173,7 +173,7 @@ Also time **a full Ember turn that uses tools**, not just single completions. Tu
 - ☐ A Project chat on `sandz-llm` completes a knowledge-search question (tool calling through the relay)
 - ☐ Served model name includes the version
 - ☐ Step 5 dataset run in Ember against cloud and `sandz-llm`; cloud run marked baseline
-- ☐ (when merged) branch `ccr-8b20ec22-local-llm-readiness`: a Wiki AI draft or presentation for a Restricted Project is **blocked** on a cloud model and succeeds on `sandz-llm`
+- ☐ A Wiki AI draft or presentation for a Restricted Project is **blocked** on a cloud model and succeeds on `sandz-llm`
 - ☐ Decision recorded per deployment: `EMBER_GATE_FOUNDATIONAL_AI` on or off (off = document enrichment and embeddings may use any model)
 - ☐ `sandz-llm` marked **Sandz-hosted**; on a test client Project marked Live, chat shows the badge, offers only Sandz-hosted models and answers with `sandz-llm`; a Live internal Project still offers every model
 - ☐ (when embeddings move) local embedding model is the default and everything has been re-embedded
@@ -185,10 +185,12 @@ Also time **a full Ember turn that uses tools**, not just single completions. Tu
 - ☐ Which embedding model, and when to move the deployment's default embedding model to it?
 - ☐ The do-not-train tag: default from Project sensitivity, plus a per-Project opt-in?
 
-## Prerequisites for merging `ccr-8b20ec22-local-llm-readiness`
+## Before the first client Project goes Live
+
+The code and the `20261006100001_ai_provider_self_hosted.sql` migration are already in place. What remains is configuration:
 
 1. The self-hosted model is live and registered in Ember (this step).
-2. Sensitivity ceilings are set on every provider. Unset providers default to Internal.
-3. Knowledge sources and Projects that hold Confidential/Restricted material are classified.
-4. A decision on which models are the deployment's defaults for structured output (enrichment, Wiki drafts, presentations) and embeddings. Once the branch merges, anything above a default model's ceiling is blocked rather than sent.
-5. The migration `20261006100001_ai_provider_self_hosted.sql` is applied, and `sandz-llm` is marked Sandz-hosted with tools and structured output enabled. Otherwise every Live client Project loses AI until it is.
+2. `sandz-llm` is marked **Sandz-hosted**, with tools and structured output enabled. Until then, a Live client Project gets the "Sandz-hosted AI isn't available" message instead of AI.
+3. Sensitivity ceilings are set on every provider. Unset providers count as Internal.
+4. Knowledge sources and Projects that hold Confidential/Restricted material are classified.
+5. A decision on which models are the deployment's defaults for structured output (enrichment, Wiki drafts, presentations) and embeddings. Anything above a default model's ceiling is blocked rather than sent.
