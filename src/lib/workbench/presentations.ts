@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { AuthError } from '@/lib/auth'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getActiveStructuredOutputProvider } from '@/lib/ai'
+import { gateProvider, getActiveStructuredOutputProvider, manifestForWorkstream } from '@/lib/ai'
 import { getOntologyMapData } from '@/lib/projects/ontology-map'
 import { notifyReviewOpened, notifySubmittedForCuratorReview, notifyApproved } from './presentation-notifications'
 import type {
@@ -131,7 +131,13 @@ export async function generatePresentation(
   // arrays for those, not an error, so this is a plain presence check.
   const ontologyData = await getOntologyMapData(supabase, workstream.project_id)
 
-  const provider = await getActiveStructuredOutputProvider(supabase, { requestedBy: user.id })
+  // Sends the Workstream's goal/summary, every artifact and the Project
+  // objective -- gated on the Project's and each artifact's classification.
+  const provider = await gateProvider(
+    supabase,
+    await getActiveStructuredOutputProvider(supabase, { requestedBy: user.id }),
+    await manifestForWorkstream(workstreamId)
+  )
   const { data: generated } = await provider.generateStructured({
     system: 'You are Ember, turning a completed Workstream into a concise slide-based proposal for internal and customer review.',
     prompt: buildPresentationPrompt(workstream, artifacts ?? [], project),
@@ -481,7 +487,19 @@ export async function classifyPendingComments(
   if (commentsError) throw commentsError
   if (!comments || comments.length === 0) return { classified: 0, actionsCreated: 0 }
 
-  const provider = await getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id })
+  // Review comments discuss the Workstream's content, so they carry its
+  // classification.
+  const { data: presentation, error: presentationError } = await ctx.supabase
+    .from('presentations')
+    .select('workstream_id')
+    .eq('id', version.presentation_id)
+    .single()
+  if (presentationError || !presentation) throw presentationError ?? new ProjectValidationError('Presentation not found')
+  const provider = await gateProvider(
+    ctx.supabase,
+    await getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id }),
+    await manifestForWorkstream(presentation.workstream_id)
+  )
   const commentLines = comments.map((c) => `Comment ${c.id} (slide ${c.slide_id}): "${c.comment_text}"`).join('\n')
   const { data: classified } = await provider.generateStructured({
     // Caught live (3rd distinct Gemini structured-output quirk, after the

@@ -5,7 +5,7 @@ import { ProjectValidationError } from '@/lib/projects/errors'
 import { requireActiveKnowledgeBase } from '@/lib/knowledge-bases'
 import { createUploadedDocument, processDocument, deleteDocumentById } from '@/lib/curator/documents'
 import { approveChunk } from '@/lib/curator/chunks'
-import { getActiveEmbeddingProvider } from '@/lib/ai'
+import { gateProvider, getActiveEmbeddingProvider, manifestForDocuments } from '@/lib/ai'
 import { getWorkingKnowledgeItem } from '@/lib/projects/working-knowledge'
 import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
 
@@ -51,8 +51,9 @@ async function autoApproveAllChunks(ctx: WorkbenchCallerContext, documentId: str
   const { data: chunks, error } = await admin.from('document_chunks').select('id').eq('document_id', documentId)
   if (error) throw error
 
+  const manifest = await manifestForDocuments([documentId])
   for (const chunk of chunks ?? []) {
-    const provider = await getActiveEmbeddingProvider(admin, { documentId, chunkId: chunk.id, requestedBy: decidedBy })
+    const provider = await gateProvider(admin, await getActiveEmbeddingProvider(admin, { documentId, chunkId: chunk.id, requestedBy: decidedBy }), manifest)
     await approveChunk(admin, provider, {
       chunkId: chunk.id,
       curatorNotes: 'Auto-approved on source submission approval -- eligible for re-review.',

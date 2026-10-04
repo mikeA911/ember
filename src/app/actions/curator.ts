@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
-import { getActiveEmbeddingProvider, getActiveStructuredOutputProvider } from '@/lib/ai'
+import { gateProvider, getActiveEmbeddingProvider, getActiveStructuredOutputProvider, manifestForDocuments } from '@/lib/ai'
 import {
   createUploadedDocument,
   processDocument,
@@ -27,7 +27,14 @@ export async function uploadAndProcessDocument(formData: FormData) {
 
   await processDocument(supabase, doc.id)
 
-  const provider = await getActiveStructuredOutputProvider(supabase, { documentId: doc.id, requestedBy: user.id })
+  // Gated on the document's sensitivity, including the floor inherited from
+  // Projects that use this knowledge base -- the source is brand new and
+  // unclassified at this point (src/lib/ai/policy-manifests.ts).
+  const provider = await gateProvider(
+    supabase,
+    await getActiveStructuredOutputProvider(supabase, { documentId: doc.id, requestedBy: user.id }),
+    await manifestForDocuments([doc.id])
+  )
   await enrichDocumentChunks(supabase, provider, doc.id, docType, 10)
 
   revalidatePath('/dashboard')
@@ -52,7 +59,11 @@ export async function enrichMoreChunks(
 ): Promise<({ ok: true } & Awaited<ReturnType<typeof enrichDocumentChunks>>) | { ok: false; error: string }> {
   const { user, supabase } = await requireRole('curator')
   try {
-    const provider = await getActiveStructuredOutputProvider(supabase, { documentId, requestedBy: user.id })
+    const provider = await gateProvider(
+      supabase,
+      await getActiveStructuredOutputProvider(supabase, { documentId, requestedBy: user.id }),
+      await manifestForDocuments([documentId])
+    )
     const result = await enrichDocumentChunks(supabase, provider, documentId, docType, 10)
     return { ok: true, ...result }
   } catch (err) {
@@ -65,7 +76,11 @@ export async function enrichMoreChunks(
 export async function approveChunkAction(chunkId: string, documentId: string, curatorNotes: string | null): Promise<ReviewActionResult> {
   const { user, supabase } = await requireRole('curator')
   try {
-    const provider = await getActiveEmbeddingProvider(supabase, { documentId, chunkId, requestedBy: user.id })
+    const provider = await gateProvider(
+      supabase,
+      await getActiveEmbeddingProvider(supabase, { documentId, chunkId, requestedBy: user.id }),
+      await manifestForDocuments([documentId])
+    )
     await approveChunk(supabase, provider, { chunkId, curatorNotes, reviewedBy: user.id })
     return { ok: true }
   } catch (err) {
@@ -100,7 +115,11 @@ export async function approveRemainingChunksAction(
     if (error) throw error
     if (!chunks || chunks.length === 0) return { ok: true, approved: 0 }
 
-    const provider = await getActiveEmbeddingProvider(supabase, { documentId, requestedBy: user.id })
+    const provider = await gateProvider(
+      supabase,
+      await getActiveEmbeddingProvider(supabase, { documentId, requestedBy: user.id }),
+      await manifestForDocuments([documentId])
+    )
     for (const chunk of chunks) {
       await approveChunk(supabase, provider, { chunkId: chunk.id, curatorNotes: null, reviewedBy: user.id })
       approved++

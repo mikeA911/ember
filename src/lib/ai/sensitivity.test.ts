@@ -18,6 +18,8 @@ const {
   evaluatePolicy,
   withPolicyGate,
   readResourceTiers,
+  mergeManifests,
+  gateProvider,
   AISensitivityError,
   SENSITIVITY_RANK,
 } = await import('./sensitivity')
@@ -259,5 +261,110 @@ describe('tier lookup does not depend on who is asking', () => {
       ['a', 'public'],
       ['b', 'internal'],
     ])
+  })
+})
+
+describe('getEffectiveSensitivity -- inherited floor and artifacts', () => {
+  it('applies minimumSensitivity even when nothing else is in the manifest', async () => {
+    const fakeSupabase = createFakeSupabase({})
+    const result = await getEffectiveSensitivity(fakeSupabase as never, { wikiArticleSlugs: [], knowledgeSourceIds: [], minimumSensitivity: 'restricted' })
+    expect(result).toBe('restricted')
+  })
+
+  it('raises an unclassified source to the inherited floor (a new upload for a Restricted Project)', async () => {
+    const fakeSupabase = createFakeSupabase({ resource_access_policies: [{ data: [], error: null }] })
+    const result = await getEffectiveSensitivity(fakeSupabase as never, {
+      wikiArticleSlugs: [],
+      knowledgeSourceIds: ['ks-new'],
+      minimumSensitivity: 'restricted',
+    })
+    expect(result).toBe('restricted')
+  })
+
+  it('never lowers a stricter resource tier to the floor', async () => {
+    const fakeSupabase = createFakeSupabase({
+      resource_access_policies: [{ data: [{ resource_id: 'ks-1', information_sensitivity: 'restricted' }], error: null }],
+    })
+    const result = await getEffectiveSensitivity(fakeSupabase as never, { wikiArticleSlugs: [], knowledgeSourceIds: ['ks-1'], minimumSensitivity: 'internal' })
+    expect(result).toBe('restricted')
+  })
+
+  it('reads workstream artifact tiers', async () => {
+    const fakeSupabase = createFakeSupabase({
+      resource_access_policies: [{ data: [{ resource_id: 'art-1', information_sensitivity: 'confidential' }], error: null }],
+    })
+    const result = await getEffectiveSensitivity(fakeSupabase as never, { wikiArticleSlugs: [], knowledgeSourceIds: [], workstreamArtifactIds: ['art-1'] })
+    expect(result).toBe('confidential')
+    const call = (fakeSupabase as unknown as { _calls: { table: string; method: string; args: unknown }[] })._calls.find(
+      (c) => c.table === 'resource_access_policies' && c.method === 'eq'
+    )
+    expect(call?.args).toEqual({ column: 'resource_type', value: 'workstream_artifact' })
+  })
+})
+
+describe('mergeManifests', () => {
+  it('unions entries and keeps the stricter project tier and floor', () => {
+    const merged = mergeManifests(
+      { entries: [{ resourceType: 'knowledge_source', resourceId: 'ks-1' }], projectSensitivity: null, minimumSensitivity: 'internal' },
+      { entries: [{ resourceType: 'knowledge_source', resourceId: 'ks-1' }, { resourceType: 'wiki_article', resourceId: 'slug' }], projectSensitivity: 'confidential' },
+      { entries: [], minimumSensitivity: 'restricted' }
+    )
+    expect(merged.entries).toHaveLength(2)
+    expect(merged.projectSensitivity).toBe('confidential')
+    expect(merged.minimumSensitivity).toBe('restricted')
+  })
+
+  it('leaves projectSensitivity undefined when no input is project-bound', () => {
+    const merged = mergeManifests({ entries: [] }, { entries: [] })
+    expect(merged).toEqual({ entries: [] })
+  })
+
+  it('keeps an unclassified-but-bound project (null) rather than dropping it', () => {
+    expect(mergeManifests({ entries: [] }, { entries: [], projectSensitivity: null }).projectSensitivity).toBeNull()
+  })
+})
+
+describe('gateProvider', () => {
+  function fakeProvider(): AIProvider {
+    return {
+      name: 'openai',
+      generateText: vi.fn(),
+      generateStructured: vi.fn().mockResolvedValue({ data: {}, model: 'm', usage: {} }),
+      generateChat: vi.fn(),
+      embed: vi.fn().mockResolvedValue({ embedding: [], model: 'm', dimensions: 0, usage: {} }),
+    } as unknown as AIProvider
+  }
+
+  it("looks up the provider's id by name and blocks a manifest above its ceiling", async () => {
+    const fakeSupabase = createFakeSupabase({
+      ai_providers: [{ data: { id: 'provider-openai' }, error: null }],
+      ai_provider_sensitivity_eligibility: [{ data: { max_sensitivity: 'internal' }, error: null }],
+    })
+    const provider = fakeProvider()
+    const gated = await gateProvider(fakeSupabase as never, provider, { entries: [], minimumSensitivity: 'restricted' })
+
+    await expect(gated.embed({ text: 'x' })).rejects.toThrow(AISensitivityError)
+    expect(provider.embed).not.toHaveBeenCalled()
+    const lookup = (fakeSupabase as unknown as { _calls: { table: string; method: string; args: unknown }[] })._calls.find(
+      (c) => c.table === 'ai_provider_sensitivity_eligibility' && c.method === 'eq'
+    )
+    expect(lookup?.args).toEqual({ column: 'provider_id', value: 'provider-openai' })
+  })
+
+  it('passes an eligible call through', async () => {
+    const fakeSupabase = createFakeSupabase({
+      ai_providers: [{ data: { id: 'provider-local' }, error: null }],
+      ai_provider_sensitivity_eligibility: [{ data: { max_sensitivity: 'restricted' }, error: null }],
+    })
+    const provider = fakeProvider()
+    const gated = await gateProvider(fakeSupabase as never, provider, { entries: [], minimumSensitivity: 'restricted' })
+
+    await gated.embed({ text: 'x' })
+    expect(provider.embed).toHaveBeenCalled()
+  })
+
+  it('refuses to run unchecked when the provider is not registered', async () => {
+    const fakeSupabase = createFakeSupabase({ ai_providers: [{ data: null, error: null }] })
+    await expect(gateProvider(fakeSupabase as never, fakeProvider(), { entries: [] })).rejects.toThrow(/not registered/)
   })
 })

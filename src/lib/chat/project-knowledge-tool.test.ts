@@ -3,7 +3,15 @@ import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 
 const embedMock = vi.fn()
-vi.mock('@/lib/ai', () => ({ getActiveEmbeddingProvider: async () => ({ embed: embedMock }) }))
+vi.mock('@/lib/ai', () => ({
+  gateProvider: async (_supabase: unknown, provider: unknown) => provider,
+  manifestForDocuments: async () => ({ entries: [] }),
+  manifestForProject: async () => ({ entries: [] }),
+  manifestForWorkstream: async () => ({ entries: [] }),
+  manifestForArtifact: async () => ({ entries: [] }),
+  manifestForWikiVersion: async () => ({ entries: [] }),
+  getActiveEmbeddingProvider: async () => ({ embed: embedMock }),
+}))
 
 const { runSearchProjectKnowledge } = await import('./project-knowledge-tool')
 

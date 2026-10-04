@@ -30,7 +30,24 @@ export {
 } from './registry'
 export type { ChatProviderInfo, ChatModelOption } from './registry'
 
-export { AISensitivityError, SENSITIVITY_RANK, getEffectiveSensitivity, assertProviderEligible, evaluatePolicy, withPolicyGate } from './sensitivity'
+export {
+  AISensitivityError,
+  SENSITIVITY_RANK,
+  getEffectiveSensitivity,
+  assertProviderEligible,
+  evaluatePolicy,
+  withPolicyGate,
+  gateProvider,
+  mergeManifests,
+} from './sensitivity'
+export {
+  manifestForDocuments,
+  manifestForProject,
+  manifestForWorkstream,
+  manifestForArtifact,
+  manifestForWikiVersion,
+  inheritedProjectSensitivityForKnowledgeBases,
+} from './policy-manifests'
 export type { ContextManifest, ContextManifestEntry, PolicySubject, PolicyDecision } from './sensitivity'
 
 export { withLogging } from './logging'

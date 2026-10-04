@@ -78,7 +78,15 @@ export async function readResourceTiers(resourceType: EvidenceResourceType, reso
 // tiers come from readResourceTiers.
 export async function getEffectiveSensitivity(
   supabase: SupabaseClient<Database>,
-  retrieved: { wikiArticleSlugs: string[]; knowledgeSourceIds: string[]; projectSensitivity?: InformationSensitivity | null }
+  retrieved: {
+    wikiArticleSlugs: string[]
+    knowledgeSourceIds: string[]
+    workstreamArtifactIds?: string[]
+    projectSensitivity?: InformationSensitivity | null
+    // An inherited floor that isn't a resource of its own -- see
+    // ContextManifest.minimumSensitivity.
+    minimumSensitivity?: InformationSensitivity
+  }
 ): Promise<InformationSensitivity> {
   const resourceIdsByType = new Map<EvidenceResourceType, string[]>()
 
@@ -90,9 +98,12 @@ export async function getEffectiveSensitivity(
   if (retrieved.knowledgeSourceIds.length > 0) {
     resourceIdsByType.set('knowledge_source', retrieved.knowledgeSourceIds)
   }
-  if (resourceIdsByType.size === 0 && retrieved.projectSensitivity === undefined) return 'public'
+  if (retrieved.workstreamArtifactIds && retrieved.workstreamArtifactIds.length > 0) {
+    resourceIdsByType.set('workstream_artifact', retrieved.workstreamArtifactIds)
+  }
+  if (resourceIdsByType.size === 0 && retrieved.projectSensitivity === undefined) return retrieved.minimumSensitivity ?? 'public'
 
-  let highest: InformationSensitivity = 'public'
+  let highest: InformationSensitivity = retrieved.minimumSensitivity ?? 'public'
   if (retrieved.projectSensitivity !== undefined) {
     const projectTier = retrieved.projectSensitivity ?? 'internal'
     if (SENSITIVITY_RANK[projectTier] > SENSITIVITY_RANK[highest]) highest = projectTier
@@ -142,12 +153,21 @@ export async function assertProviderEligible(supabase: SupabaseClient<Database>,
 export type ContextManifestEntry =
   | { resourceType: 'wiki_article'; resourceId: string }
   | { resourceType: 'knowledge_source'; resourceId: string }
+  | { resourceType: 'workstream_artifact'; resourceId: string }
 
 export interface ContextManifest {
   entries: ContextManifestEntry[]
   // Same semantics as getEffectiveSensitivity's own projectSensitivity
   // param: undefined = no project bound, null = bound but unclassified.
   projectSensitivity?: InformationSensitivity | null
+  // A floor inherited from context rather than from a resource's own
+  // classification -- today, the highest classification of any Project
+  // that uses the knowledge base a document belongs to
+  // (src/lib/ai/policy-manifests.ts). Covers the window between upload and
+  // a curator classifying the new source: without it, an unclassified
+  // document uploaded for a Restricted Project reads as 'internal' and is
+  // enriched/embedded by a cloud model straight away. Undefined = no floor.
+  minimumSensitivity?: InformationSensitivity
 }
 
 export interface PolicySubject {
@@ -162,11 +182,38 @@ export interface PolicyDecision {
   reason?: string
 }
 
-function manifestToRetrieved(manifest: ContextManifest): { wikiArticleSlugs: string[]; knowledgeSourceIds: string[]; projectSensitivity?: InformationSensitivity | null } {
+function manifestToRetrieved(manifest: ContextManifest): Parameters<typeof getEffectiveSensitivity>[1] {
   return {
     wikiArticleSlugs: manifest.entries.filter((e) => e.resourceType === 'wiki_article').map((e) => e.resourceId),
     knowledgeSourceIds: manifest.entries.filter((e) => e.resourceType === 'knowledge_source').map((e) => e.resourceId),
+    workstreamArtifactIds: manifest.entries.filter((e) => e.resourceType === 'workstream_artifact').map((e) => e.resourceId),
     projectSensitivity: manifest.projectSensitivity,
+    minimumSensitivity: manifest.minimumSensitivity,
+  }
+}
+
+// Combines manifests for a call that sends several kinds of content (e.g. a
+// Wiki version plus the documents it was synthesized from). Entries are
+// unioned; projectSensitivity and minimumSensitivity keep the higher tier.
+export function mergeManifests(...manifests: ContextManifest[]): ContextManifest {
+  const entries = new Map<string, ContextManifestEntry>()
+  let projectSensitivity: InformationSensitivity | null | undefined
+  let minimumSensitivity: InformationSensitivity | undefined
+  for (const m of manifests) {
+    for (const e of m.entries) entries.set(`${e.resourceType}:${e.resourceId}`, e)
+    if (m.projectSensitivity !== undefined) {
+      const tier = m.projectSensitivity ?? 'internal'
+      const current = projectSensitivity === undefined ? undefined : (projectSensitivity ?? 'internal')
+      if (current === undefined || SENSITIVITY_RANK[tier] > SENSITIVITY_RANK[current]) projectSensitivity = m.projectSensitivity
+    }
+    if (m.minimumSensitivity && (!minimumSensitivity || SENSITIVITY_RANK[m.minimumSensitivity] > SENSITIVITY_RANK[minimumSensitivity])) {
+      minimumSensitivity = m.minimumSensitivity
+    }
+  }
+  return {
+    entries: [...entries.values()],
+    ...(projectSensitivity !== undefined ? { projectSensitivity } : {}),
+    ...(minimumSensitivity ? { minimumSensitivity } : {}),
   }
 }
 
@@ -214,4 +261,17 @@ export function withPolicyGate(supabase: SupabaseClient<Database>, provider: AIP
       return provider.embed(input)
     },
   }
+}
+
+// withPolicyGate for the common single-shot case where the caller holds a
+// resolved provider (getActiveStructuredOutputProvider/
+// getActiveEmbeddingProvider) but not its ai_providers row id -- looked up
+// by name through the caller's own client, the same way chat/summary.ts
+// does (ai_providers is readable by any active, non-anonymous session). The
+// service-role client stays reserved for tier reads in this file.
+export async function gateProvider(supabase: SupabaseClient<Database>, provider: AIProvider, manifest: ContextManifest): Promise<AIProvider> {
+  const { data, error } = await supabase.from('ai_providers').select('id').eq('name', provider.name).maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error(`AI provider "${provider.name}" is not registered, so its eligibility can't be checked`)
+  return withPolicyGate(supabase, provider, manifest, { providerId: data.id })
 }

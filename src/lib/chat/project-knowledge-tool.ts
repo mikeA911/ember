@@ -1,7 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import type { ToolSpec } from '@/lib/ai'
-import { getActiveEmbeddingProvider } from '@/lib/ai'
+import { gateProvider, getActiveEmbeddingProvider, manifestForProject } from '@/lib/ai'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 import type { Database } from '@/types/database'
 
@@ -78,7 +78,14 @@ export async function runSearchProjectKnowledge(
   rawInput: unknown
 ): Promise<{ results: ProjectKnowledgeHit[] }> {
   const input = InputSchema.parse(rawInput)
-  const embeddingProvider = await getActiveEmbeddingProvider(ctx.supabase, { requestedBy: ctx.user.id })
+  // The question is written in this Project's context (Ember chat, or the
+  // external MCP server's search_project_knowledge), so it carries the
+  // Project's classification to the embedding provider.
+  const embeddingProvider = await gateProvider(
+    ctx.supabase,
+    await getActiveEmbeddingProvider(ctx.supabase, { requestedBy: ctx.user.id }),
+    await manifestForProject(projectId)
+  )
   const { embedding } = await embeddingProvider.embed({ text: input.query })
 
   const { kbIds: projectKbIds, articleIds: projectArticleIds } = await getProjectKnowledgeScopeIds(ctx.supabase, projectId)

@@ -3,7 +3,16 @@
 import { revalidatePath } from 'next/cache'
 import { requireUser, requireRole } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getActiveEmbeddingProvider, getActiveStructuredOutputProvider, AIProviderError } from '@/lib/ai'
+import {
+  getActiveEmbeddingProvider,
+  getActiveStructuredOutputProvider,
+  AIProviderError,
+  AISensitivityError,
+  gateProvider,
+  manifestForArtifact,
+  manifestForDocuments,
+  manifestForWikiVersion,
+} from '@/lib/ai'
 import { getQuickHelpBySlug } from '@/lib/wiki/help'
 import {
   createManualDraftArticle,
@@ -52,6 +61,9 @@ async function synthesizeWikiDraftSafely(
   try {
     return await synthesizeWikiDraft(provider, input)
   } catch (err) {
+    // A policy block isn't fixed by retrying or trimming sources -- pass its
+    // own explanation through.
+    if (err instanceof AISensitivityError) throw new WikiValidationError(err.message)
     const detail = err instanceof AIProviderError ? `${err.provider}: ${err.errorCode}` : err instanceof Error ? err.message.slice(0, 200) : String(err)
     throw new WikiValidationError(`AI-assisted draft generation failed (${detail}) -- try again, or with fewer/shorter sources.`)
   }
@@ -185,7 +197,11 @@ async function createAIAssistedDraftInner(
     )
   }
 
-  const provider = await getActiveStructuredOutputProvider(supabase, { requestedBy: user.id })
+  const provider = await gateProvider(
+    supabase,
+    await getActiveStructuredOutputProvider(supabase, { requestedBy: user.id }),
+    await manifestForDocuments(documentIds)
+  )
 
   const draft = await synthesizeWikiDraftSafely(provider, {
     topic: input.topic,
@@ -255,7 +271,11 @@ async function createAIAssistedDraftFromArtifact(
     )
   }
 
-  const provider = await getActiveStructuredOutputProvider(supabase, { requestedBy: userId })
+  const provider = await gateProvider(
+    supabase,
+    await getActiveStructuredOutputProvider(supabase, { requestedBy: userId }),
+    await manifestForArtifact(artifact.id)
+  )
 
   const draft = await synthesizeWikiDraftSafely(provider, {
     topic: input.topic,
@@ -453,7 +473,10 @@ export async function approveArticleAction(articleId: string, versionId: string)
   try {
     const { data: version } = await admin.from('wiki_versions').select('content').eq('id', versionId).single()
     if (version) {
-      const provider = await getActiveEmbeddingProvider(admin, { requestedBy: user.id })
+      // A block (AISensitivityError) lands in the catch below like any other
+      // embedding failure: the approval stands, the version just isn't
+      // embedded until an eligible embedding model is the default.
+      const provider = await gateProvider(admin, await getActiveEmbeddingProvider(admin, { requestedBy: user.id }), await manifestForWikiVersion(versionId))
       await embedApprovedVersion(admin, provider, versionId, version.content)
     }
   } catch (err) {

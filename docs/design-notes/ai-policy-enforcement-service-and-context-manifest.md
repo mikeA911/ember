@@ -175,6 +175,30 @@ The dev request lists eight open decisions. Phase 2 can start with these provisi
 - Does not touch `chat/summary.ts` or any other ungated call site from §2.3 — flagging them is this note's job; closing them is Phase 2's.
 - Does not resolve decision 7 (retention) or 8 (Sandz environment) beyond naming them as blocked on non-technical/external input.
 
+## 5a. Coverage status (October 2026, branch `ccr-8b20ec22-local-llm-readiness`)
+
+§2.3's inventory, updated. "Gated" means the call goes through `withPolicyGate`/`gateProvider` with a manifest built in `src/lib/ai/policy-manifests.ts`, and is blocked (`AISensitivityError`) when the manifest's effective sensitivity is above the provider's ceiling.
+
+| Call site | Manifest | Status |
+| --- | --- | --- |
+| Ember turn loop | Retrieved evidence + Project | Gated (Phase 1) |
+| Conversation summary | Transcript's retrieved resources + Project | Gated (Phase 2, increment 1) |
+| Chunk enrichment on upload / "enrich more" | Document's knowledge source + inherited floor | **Gated** |
+| Chunk embedding (approve, approve remaining, submission auto-approve) | Same | **Gated** |
+| Project knowledge search query embedding (Ember and external MCP) | Project | **Gated** |
+| Wiki AI draft from chunks / from an artifact | Source documents / artifact + its Project | **Gated** |
+| Wiki approval embedding | Article + everything it was written from | **Gated** (a block skips embedding; the approval stands) |
+| Presentation generation and comment triage | Project + every artifact on the Workstream | **Gated** |
+| `eval/judge.ts`, `eval/generation.ts`, `eval/retrieval.ts` | — | Not yet |
+| `graph/nodes.ts` (RAG Answer Agent) | — | Not yet |
+| `journal/generate.ts` | — | Not yet |
+| `search_wiki` query embedding (platform Wiki; no Project in the tool's context) | — | Not yet |
+| Blog Word import | — | Not gated by design: authored for public release, no classified resource involved |
+
+**Inherited floor (`ContextManifest.minimumSensitivity`).** A document is enriched as soon as it's uploaded, before anyone can classify its new knowledge source, so the source would read as unclassified (`internal`). The floor closes that window: a document carries at least the highest classification of any Project that uses its knowledge base, whether the base is attached to the Project, attached to one of its Workstreams, or owned by it.
+
+**Block, not route.** A blocked call fails with the policy message. Enrichment records `ai_policy_blocked` on the chunk and stops; the rest stay pending. Nothing is re-sent to a different provider: that's Phase 3's `route` outcome. To process Confidential/Restricted material, an eligible model must be the deployment's default for that role (structured output, embeddings).
+
 ## 6. Related documents
 
 - [Enterprise Shadow AI Governance — Later Phases](../dev-request-enterprise-shadow-ai-governance-later-phases.md) — the dev request this note answers step 2 of.
