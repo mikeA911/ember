@@ -13,6 +13,8 @@ import { listProjectNotes } from '@/lib/projects/notes'
 import { listAttachableKnowledgeBases } from '@/lib/knowledge-bases'
 import { listKnowledgeBasesForProject, listSourcesForKnowledgeBases, getSourceReviewCounts } from '@/lib/projects/queries'
 import { listArticlesForProject } from '@/lib/wiki/project-links'
+import { getProjectReadiness } from '@/lib/projects/ember-readiness'
+import { EmberReadinessSection } from '@/components/projects/EmberReadinessSection'
 import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton, PendingReviewBadge } from '@/components/projects/KnowledgeBaseAttachManager'
 import { getOrganizationExplorer } from '@/lib/projects/explorer'
 import { OrganizationExplorer } from '@/components/projects/OrganizationExplorer'
@@ -160,6 +162,7 @@ export default async function ProjectPage({
     { data: joinRequests },
     ontologyMapData,
     { data: projectArtifacts },
+    emberReadiness,
   ] = await Promise.all([
     listKnowledgeBasesForProject(supabase, id),
     supabase.from('eval_datasets').select('id, name, status').eq('project_id', id),
@@ -217,6 +220,13 @@ export default async function ProjectPage({
       .from('workstream_artifacts')
       .select('workstream_id, status, workstream:project_workstreams!inner(project_id)')
       .eq('workstream.project_id', id),
+    // Ember Readiness, Stage 2 -- member-scoped by RLS and by
+    // project_ember_readiness_signals itself. A failure (e.g. the migration
+    // not applied yet) hides the section rather than the whole page.
+    getProjectReadiness(supabase, id).catch((err) => {
+      console.error('Ember readiness unavailable', err)
+      return null
+    }),
   ])
   const statusHistoryActorIds = [...new Set((statusHistory ?? []).map((h) => h.actor_id).filter((x): x is string => !!x))]
 
@@ -704,23 +714,15 @@ export default async function ProjectPage({
 
       <OrganizationExplorer explorer={explorer} />
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Evals</h2>
-        {(evalDatasets ?? []).length > 0 ? (
-          <ul className="flex flex-col gap-1 text-sm">
-            {evalDatasets!.map((d) => (
-              <li key={d.id}>
-                <Link href={`/evals/datasets/${d.id}`} className="underline">
-                  {d.name}
-                </Link>{' '}
-                <span className="text-zinc-500">({d.status})</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-zinc-500">No benchmark attached yet.</p>
-        )}
-      </section>
+      {emberReadiness && (
+        <EmberReadinessSection
+          projectId={project.id}
+          readiness={emberReadiness}
+          canEdit={canCurateWorkstreams}
+          datasets={evalDatasets ?? []}
+          nameForUser={(userId) => (userId ? memberEmailById.get(userId) || 'a platform admin' : 'a former member')}
+        />
+      )}
 
       {canCurateWorkstreams && pendingWorkstreamPromotions.length > 0 && (
         <section className="flex flex-col gap-3">

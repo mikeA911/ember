@@ -11,6 +11,8 @@ import { getAgentStats } from '@/lib/agent/queries'
 import { getTrendingStats, listRecentSharedLinks } from '@/lib/trending/queries'
 import { listNotesForUser } from '@/lib/projects/notes'
 import { getNeedsAttention } from '@/lib/dashboard/needs-attention'
+import { listProjectReadiness, type ProjectReadiness } from '@/lib/projects/ember-readiness'
+import { EmberReadinessWidget } from '@/components/projects/EmberReadinessWidget'
 import { listUpcomingScheduledPresentations } from '@/lib/workbench/presentations'
 import { ScheduledPresentationsWidget } from '@/components/dashboard/ScheduledPresentationsWidget'
 import { hasRequiredRole } from '@/lib/auth'
@@ -100,6 +102,23 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     memberProjectIds.length > 0
       ? await supabase.from('projects').select('id, name').in('id', memberProjectIds).order('name')
       : { data: [] }
+
+  // Ember Readiness, Stage 2: one row per Project the viewer belongs to --
+  // the same membership list whichever dashboard branch renders.
+  const readinessProjects: { id: string; name: string }[] = isEmberFirst ? emberProjects : myProjects
+  // A failure (e.g. the migration not applied yet) hides the table rather
+  // than the dashboard.
+  const readinessById = await listProjectReadiness(
+    supabase,
+    readinessProjects.map((p) => p.id)
+  ).catch((err) => {
+    console.error('Ember readiness unavailable', err)
+    return new Map<string, ProjectReadiness>()
+  })
+  const readinessRows = readinessProjects.flatMap((p) => {
+    const readiness = readinessById.get(p.id)
+    return readiness ? [{ id: p.id, name: p.name, readiness }] : []
+  })
 
   const projectIds = [...new Set(notesForUser.map((n) => n.project_id))]
   const { data: noteProjects } =
@@ -199,6 +218,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </div>
       )}
 
+      <EmberReadinessWidget projects={readinessRows} />
       {canSeeWikiQueue && <UnpublishedWikiWidget articles={unpublishedWikiArticles} />}
       {canSeeWikiQueue && <ScheduledPresentationsWidget presentations={scheduledPresentations} />}
       {canSeeSharedLinks && <SharedLinksWidget links={sharedLinks} projects={sharedLinkProjects ?? []} isAdmin={isAdmin} />}

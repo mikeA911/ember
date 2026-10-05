@@ -44,6 +44,11 @@ describe('buildReadinessOverview', () => {
         result({ retrieval_hit: false, outcome_score: 0.4 }),
         result({ eval_run_id: 'run-old', human_reviewed_at: '2026-10-02T00:00:00Z' }),
       ],
+      // Newest first: the first row per Project is its current judgement.
+      judgements: [
+        { project_id: 'p-ng911', confidence_percent: 70, verdict: 'needs_more_sources', review_due_at: '2026-12-30T00:00:00Z' },
+        { project_id: 'p-ng911', confidence_percent: 40, verdict: 'needs_more_sources', review_due_at: '2026-11-30T00:00:00Z' },
+      ],
     })
 
     expect(overview.failedRunCount).toBe(1)
@@ -55,7 +60,8 @@ describe('buildReadinessOverview', () => {
     expect(ng911.latestRun!.avgOutcomeScore).toBeCloseTo(0.6)
 
     const global = overview.datasets.find((d) => d.datasetId === 'ds-global')!
-    expect(global).toMatchObject({ projectId: null, projectName: null, caseCount: 1, latestRun: null })
+    expect(ng911.curatorJudgement).toEqual({ confidencePercent: 70, verdict: 'needs_more_sources', reviewDueAt: '2026-12-30T00:00:00Z' })
+    expect(global).toMatchObject({ projectId: null, projectName: null, caseCount: 1, latestRun: null, curatorJudgement: null })
   })
 })
 

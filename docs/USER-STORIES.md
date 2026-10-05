@@ -74,7 +74,7 @@ Notes on the mapping:
 | WST Workstreams and presentations | ○ | ● | ● | ● |
 | ASM Assessments | ○ | ● | ● | ● |
 | MTH Methods | ○ | ● | ○ | ● |
-| EVL Evaluations | ● | ● | — | — |
+| EVL Evaluations | ● | ● | ○ | ● |
 | AGT Graphs, agents and registry | ○ | ● | ● | ○ |
 | PUB Publishing, blog and trending | ● | ● | ○ | ● |
 | FBK Feedback and roadmap | ● | ○ | ○ | ● |
@@ -225,6 +225,18 @@ As a Viewer, I want to read a Project's system assessments and completed respons
 **VWR-MTH-01 — Browse published Methods**
 As a Viewer, I want to browse the published Method catalog, so that I can learn the recognized ways of doing applied AI work.
 
+### EVL — Evaluations
+
+**VWR-EVL-01 — See how ready Ember is for my Project**
+As a Viewer, I want to see on the Project page how ready Ember is for this Project — the verdict, the curator's confidence with their reason, the measured test score and how much knowledge the Project holds — so that I know how far to rely on Ember's answers.
+- The section is **Ember readiness** on the Project page (Stage 2, `docs/dev-request-ember-readiness-and-knowledge-gaps.md`).
+- Curator confidence and the measured score are shown side by side, never blended into one number. *Not assessed* until a curator sets a judgement.
+- The section says when the two disagree by more than 25 points, and marks the judgement *review due* when its review date has passed or the measured score has fallen 15 points or more since it was set.
+- I see counts only (questions passed, sources, searchable sources, Wiki articles), never individual test results.
+
+**VWR-EVL-02 — See readiness for all my Projects**
+As a Viewer, I want an **Ember readiness** table on my dashboard with one row per Project I belong to, so that I can see at a glance where Ember is ready and where it still needs sources.
+
 ### PUB — Publishing, blog and trending
 
 **VWR-PUB-01 — Read the blog and public knowledge**
@@ -325,7 +337,7 @@ As a Consultant, I want to complete a system assessment's questions and save my 
 
 ### EVL — Evaluations
 
-Consultants have no evaluation stories. Running evaluations, reading results and marking baselines moved to the Platform Admin on 5 October 2026 (Ember Readiness, Stage 1); see [ADM-EVL](#evl--evaluations-2).
+Consultants see Ember readiness like every member (VWR-EVL-01, VWR-EVL-02) and have no evaluation stories of their own. Running evaluations, reading results and marking baselines moved to the Platform Admin on 5 October 2026 (Ember Readiness, Stage 1); see [ADM-EVL](#evl--evaluations-3).
 
 ### AGT — Graphs, agents and agent registry
 
@@ -337,7 +349,7 @@ As a Consultant, I want to create an Agent from an Agent Template with its purpo
 As a Consultant, I want to ask the RAG Answer Agent a question and see its answer and trace, so that I can test it on real questions.
 
 **CON-AGT-03 — Run an Agent's evaluation suite** *(Platform Admin only since 5 October 2026)*
-As a Platform Admin, I want to run an Agent against a benchmark from its detail page, so that its performance is comparable to other runs. The **Run evaluation suite** button is hidden from everyone else; see [ADM-EVL-02](#evl--evaluations-2).
+As a Platform Admin, I want to run an Agent against a benchmark from its detail page, so that its performance is comparable to other runs. The **Run evaluation suite** button is hidden from everyone else; see [ADM-EVL-02](#evl--evaluations-3).
 
 **CON-AGT-04 — Inspect graphs**
 As a Consultant, I want to view each graph's versions and flow, so that I understand how a retry loop is configured.
@@ -527,7 +539,15 @@ As a Curator, I want to create a dataset and add cases with a question, expected
 **CUR-EVL-02 — Activate or archive a dataset**
 As a Curator, I want to activate a dataset (it needs at least one case) and archive it later, so that the platform admin has a stable benchmark to run.
 - Once a dataset leaves draft, its cases are frozen.
-- Curators no longer run datasets, mark baselines or record human review (Platform Admin, [ADM-EVL](#evl--evaluations-2)).
+- Curators no longer run datasets, mark baselines or record human review (Platform Admin, [ADM-EVL](#evl--evaluations-3)).
+
+**CUR-EVL-03 — Assess Ember readiness** *(owner)*
+As a Project Curator, I want to record how confident I am that Ember knows enough about my Project (a percentage), a verdict (*Ready* or *Needs more sources*), my reason and when to review it again (30, 60, 90 or 180 days), so that the team knows how far to rely on Ember and what is still missing.
+- Project owner/curator or platform admin only, in the service layer and RLS.
+- Each save adds to the history; earlier assessments stay readable and are never edited.
+- The measured score at the time is recorded server-side, so a later drop can mark the assessment for review.
+- The Project's test-question datasets are linked from the section for me to maintain.
+
 
 ### AGT — Graphs, agents and agent registry
 
@@ -602,7 +622,7 @@ As a Platform Admin, I want to make an approved article public or private, so th
 AI evaluation is evidence that Ember understands a Project's context before it suggests anything. Running it is a platform decision, like choosing the default model (Ember Readiness, Stage 1 — `docs/dev-request-ember-readiness-and-knowledge-gaps.md`).
 
 **ADM-EVL-01 — See Ember readiness across datasets**
-As a Platform Admin, I want one view of every non-archived dataset with its Project, number of questions and latest completed run (Hit@K, outcome score, results awaiting review), so that I know which Projects Ember has been checked against and which need a run.
+As a Platform Admin, I want one view of every non-archived dataset with its Project, the Project curator's current verdict and confidence, number of questions and latest completed run (Hit@K, outcome score, results awaiting review), so that I know which Projects Ember has been checked against and which need a run.
 - Admin → **Ember readiness**.
 - Failed runs and runs awaiting review are called out.
 
