@@ -14,13 +14,14 @@ create extension if not exists vector;
 
 -- embedding_model is "<model>/<dimensions>": vectors are only ever compared
 -- with vectors from the same model and size.
+-- "if not exists" so the migration can be re-run safely after a partial run.
 alter table project_knowledge_gaps
-  add column embedding vector,
-  add column embedding_model text;
+  add column if not exists embedding vector,
+  add column if not exists embedding_model text;
 
 alter table project_knowledge_gap_occurrences
-  add column embedding vector,
-  add column embedding_model text;
+  add column if not exists embedding vector,
+  add column if not exists embedding_model text;
 
 -- The asker may still only change note and suggested_source on their
 -- detection; the embedding columns join the frozen list.
@@ -52,6 +53,7 @@ $$;
 -- record_automatic_knowledge_gap gains the embedding; its argument list
 -- changes, so the old one is dropped first.
 drop function if exists record_automatic_knowledge_gap(uuid, text, text, text);
+drop function if exists record_automatic_knowledge_gap(uuid, text, text, text, vector, text, double precision);
 
 create function record_automatic_knowledge_gap(
   p_message_id uuid,
