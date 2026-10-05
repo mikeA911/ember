@@ -933,6 +933,45 @@ export interface SolutionVerificationMethod {
   updated_at: string
 }
 
+// Solution conformance, Stage 2 (20261019100001_solution_verification_records.sql):
+// append-only results, written only through record_solution_verification().
+export type VerificationResult = 'pass' | 'fail' | 'conditional_pass' | 'not_run' | 'not_applicable'
+export type VerificationEnvironment = 'lab' | 'factory' | 'staging' | 'site' | 'production' | 'vendor' | 'other'
+// Roll-up of a requirement's current results (src/lib/projects/verification.ts).
+export type RequirementVerificationStatus = 'no_method' | 'not_verified' | 'failed' | 'passed' | 'conditional' | 'not_applicable' | 'partial'
+
+export interface SolutionVerificationRecord {
+  id: string
+  project_id: string
+  requirement_id: string
+  method_id: string | null
+  method_kind: VerificationMethodKind
+  pass_criteria: string
+  threshold: string | null
+  measure_window: string | null
+  result: VerificationResult
+  conditions: string | null
+  rationale: string | null
+  measured_value: string | null
+  environment: VerificationEnvironment
+  solution_reference: string
+  configuration_reference: string | null
+  performed_on: string
+  observations: string | null
+  defect_reference: string | null
+  supersedes_id: string | null
+  recorded_by: string | null
+  recorded_at: string
+}
+
+export interface SolutionVerificationEvidence {
+  id: string
+  record_id: string
+  project_id: string
+  workstream_artifact_id: string | null
+  created_at: string
+}
+
 // private = members/admin only (default, never auto-changed). internal =
 // any authenticated user can view (editing still gated by project_members).
 // public = a deliberately published presentation, visible with no session
@@ -3368,6 +3407,8 @@ interface DatabaseDefinition {
         Update: Partial<Pick<SolutionVerificationMethod, 'method' | 'procedure' | 'pass_criteria' | 'threshold' | 'measure_window' | 'performed_by'>>
         Relationships: []
       }
+      solution_verification_records: { Row: SolutionVerificationRecord; Insert: never; Update: never; Relationships: [] }
+      solution_verification_evidence: { Row: SolutionVerificationEvidence; Insert: never; Update: never; Relationships: [] }
       project_knowledge_gaps: {
         Row: ProjectKnowledgeGap
         Insert: ProjectKnowledgeGapInsert
@@ -3508,6 +3549,25 @@ interface DatabaseDefinition {
         Returns: { gap_id: string; occurrence_id: string; is_new: boolean; occurrence_count: number }[]
       }
       withdraw_knowledge_gap_occurrence: { Args: { p_occurrence_id: string }; Returns: void }
+      record_solution_verification: {
+        Args: {
+          p_requirement_id: string
+          p_method_id: string
+          p_result: VerificationResult
+          p_environment: VerificationEnvironment
+          p_solution_reference: string
+          p_performed_on: string
+          p_artifact_ids: string[]
+          p_configuration_reference?: string | null
+          p_conditions?: string | null
+          p_rationale?: string | null
+          p_measured_value?: string | null
+          p_observations?: string | null
+          p_defect_reference?: string | null
+          p_supersedes_id?: string | null
+        }
+        Returns: string
+      }
       match_documents: {
         Args: {
           query_embedding: number[]

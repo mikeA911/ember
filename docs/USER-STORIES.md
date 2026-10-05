@@ -76,7 +76,7 @@ Notes on the mapping:
 | ASM Assessments | ○ | ● | ● | ● |
 | MTH Methods | ○ | ● | ○ | ● |
 | EVL Evaluations | ● | ● | ○ | ● |
-| SOL Solution requirements and conformance | ○ | ● | ○ | ● |
+| SOL Solution requirements and conformance | ○ | ● | ● | ● |
 | AGT Graphs, agents and registry | ○ | ● | ● | ○ |
 | PUB Publishing, blog and trending | ● | ● | ○ | ● |
 | FBK Feedback and roadmap | ● | ○ | ○ | ● |
@@ -264,6 +264,12 @@ As a Viewer, I want to read my Project's requirements — what the delivered sol
 - A source citing restricted evidence is hidden unless I have a grant.
 - Vendor claims are shown as claims to verify, never as met requirements.
 
+**VWR-SOL-02 — See where verification stands**
+As a Viewer, I want to see each requirement's verification status and its full result history — what was tested, against which build and environment, with what result and evidence — so that I know what has really been shown to work.
+- The register shows a verification status per requirement (passed, failed, conditional, partly verified, not verified, no method) and counts; the Project page shows passed and failed.
+- Each method shows its current result; the history keeps every record, with corrections and the records they superseded.
+- Evidence citing a restricted artifact is hidden unless I have a grant.
+
 ### PUB — Publishing, blog and trending
 
 **VWR-PUB-01 — Read the blog and public knowledge**
@@ -365,6 +371,18 @@ As a Consultant, I want to complete a system assessment's questions and save my 
 ### EVL — Evaluations
 
 Consultants see Ember readiness like every member (VWR-EVL-01, VWR-EVL-02) and have no evaluation stories of their own. Running evaluations, reading results and marking baselines moved to the Platform Admin on 5 October 2026 (Ember Readiness, Stage 1); see [ADM-EVL](#evl--evaluations-3).
+
+### SOL — Solution requirements and conformance
+
+**CON-SOL-01 — Record a verification result with evidence**
+As a Consultant, I want to record the result of a requirement's verification method — pass, fail, conditional pass (with conditions), not run, or not applicable (with a rationale) — against an identified solution state (environment, build or component versions, configuration, date), citing the workstream artifacts that evidence it, so that acceptance rests on evidence rather than assertion.
+- A pass or conditional pass needs at least one evidence artifact from one of the Project's workstreams that I can see; an operational measure needs the measured value.
+- Results can be recorded on draft and baselined requirements, not on withdrawn or superseded ones.
+- Each record keeps the method and pass criteria it was judged against.
+
+**CON-SOL-02 — Correct a result without rewriting history**
+As a Consultant, I want to correct a result by recording a new one that supersedes it, so that mistakes are fixed while the original stays readable.
+- Records are never edited or deleted; a record can be superseded once, and the correction becomes the current result.
 
 ### AGT — Graphs, agents and agent registry
 
@@ -606,6 +624,8 @@ As a Project Curator, I want to link a requirement to the workstreams and Projec
 **CUR-SOL-03 — Keep the register honest** *(owner)*
 As a Project Curator, I want to edit a requirement only while it is a draft, withdraw one that no longer applies, and delete a draft added by mistake, so that what was agreed is never silently changed.
 - Content, sources, scope and methods are fixed once a requirement leaves draft; a withdrawn or superseded requirement cannot be reopened.
+- A requirement with verification results can't be deleted, only withdrawn.
+- Curators can also record and correct verification results (see CON-SOL-01 and CON-SOL-02).
 
 ### AGT — Graphs, agents and agent registry
 

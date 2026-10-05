@@ -54,6 +54,10 @@ function rethrow(err: unknown): never {
   }
   if (message.includes('cannot be reopened')) throw new RequirementValidationError('A superseded or withdrawn requirement cannot be reopened')
   if (message.includes('must be in this Project')) throw new RequirementValidationError('Scope must be a workstream or object in this Project')
+  // A requirement with verification records can't be deleted (Stage 2).
+  if (e?.code === '23503' && message.includes('solution_verification_records')) {
+    throw new RequirementValidationError('This requirement has verification results, so it can’t be deleted. Withdraw it instead.')
+  }
   if (e?.code === '42501') throw new RequirementValidationError('Only a draft requirement can be changed, by this Project’s owner or curators')
   throw err
 }

@@ -288,6 +288,7 @@ Status terms used below:
 - Resource-level evidence access with an audit log (see M1), kept separate from AI-processing sensitivity.
 - Produced a phased design (`docs/dev-request-enterprise-shadow-ai-governance-later-phases.md`) and an architecture note (`docs/design-notes/ai-policy-enforcement-service-and-context-manifest.md`) covering the remaining AI-processing-boundary coverage, versioned org-level policy, and deterministic redact/route/approve outcomes -- paused after the first increment pending customer feedback before continuing.
 - Solution conformance, Stage 1: a requirements register per Project -- requirements traced to standards, regulation, contract terms, customer needs and vendor claims (linked to Project knowledge where possible), scoped to workstreams and Project objects, with verification methods and pass criteria; editable only while draft (5 Oct).
+- Solution conformance, Stage 2: append-only verification records -- results (pass, fail, conditional pass, not run, not applicable) against an identified solution state, evidenced by workstream artifacts (a pass needs at least one), corrected only by superseding records; verification status per requirement in the register (5 Oct).
 
 ### Next
 
@@ -295,7 +296,7 @@ Status terms used below:
 - Replace free-text-only guardrails with reusable, versioned guardrail templates where runtime enforcement is meaningful.
 - Define the confirmation and approval policy for each Assistant tool.
 - Define retention and privacy boundaries for demand events, conversations, project knowledge, tool records, and model provenance.
-- **Solution conformance and acceptance evaluation** (`docs/dev-request-solution-conformance-and-acceptance-evaluation.md`): Stage 1 (requirements register) is done; Stages 2–5 remain. Govern evaluation of a Project's delivered solution, separate from AI evaluation. Requirements traced to standards (e.g. NENA), regulation, contract and vendor claims; verification methods with explicit pass criteria; append-only verification records with artifact evidence; frozen evaluation baselines; conformance decisions and waivers through existing approval policies; re-verification during management and maintenance. Worked example: `cebu-ng911`.
+- **Solution conformance and acceptance evaluation** (`docs/dev-request-solution-conformance-and-acceptance-evaluation.md`): Stages 1 (requirements register) and 2 (verification records) are done; Stages 3–5 remain. Govern evaluation of a Project's delivered solution, separate from AI evaluation. Requirements traced to standards (e.g. NENA), regulation, contract and vendor claims; verification methods with explicit pass criteria; append-only verification records with artifact evidence; frozen evaluation baselines; conformance decisions and waivers through existing approval policies; re-verification during management and maintenance. Worked example: `cebu-ng911`.
 - Extend the AI-processing sensitivity gate to the remaining outbound AI call sites (evaluation judging/generation/retrieval, journal generation, curator enrichment, embedding calls) using the shared policy service already built -- deferred pending customer feedback on priority.
 
 ### Future
