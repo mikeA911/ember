@@ -860,6 +860,75 @@ export type ProjectKnowledgeGapUpdate = Partial<
   >
 >
 
+// Solution conformance, Stage 1 (20261017100001_solution_requirements.sql):
+// the requirements register -- what the Project's delivered solution must
+// satisfy, where each requirement came from, what it concerns and how it
+// will be verified. Members read; Project curators/admins write; content is
+// editable only while a requirement is a draft.
+export type RequirementCategory = 'functional' | 'interface' | 'performance' | 'security' | 'privacy' | 'operational' | 'regulatory' | 'contractual'
+export type RequirementPriority = 'must' | 'should' | 'could'
+export type RequirementAppliesFrom = 'presales' | 'deployment' | 'management_maintenance'
+export type RequirementStatus = 'draft' | 'baselined' | 'superseded' | 'withdrawn'
+export type RequirementSourceKind = 'standard' | 'regulation' | 'contract' | 'customer_need' | 'vendor_claim'
+export type VerificationMethodKind = 'test' | 'demonstration' | 'inspection' | 'analysis' | 'vendor_evidence' | 'operational_measure'
+export type VerificationPerformer = 'vendor' | 'integrator' | 'customer' | 'independent_tester' | 'project_team'
+
+export interface SolutionRequirement {
+  id: string
+  project_id: string
+  code: string
+  title: string
+  statement: string
+  rationale: string | null
+  category: RequirementCategory
+  priority: RequirementPriority
+  applies_from: RequirementAppliesFrom
+  status: RequirementStatus
+  superseded_by: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SolutionRequirementSource {
+  id: string
+  requirement_id: string
+  project_id: string
+  kind: RequirementSourceKind
+  knowledge_source_id: string | null
+  document_version_id: string | null
+  wiki_article_id: string | null
+  locator: string | null
+  requester: string | null
+  note: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface SolutionRequirementScopeLink {
+  id: string
+  requirement_id: string
+  project_id: string
+  workstream_id: string | null
+  project_object_id: string | null
+  created_at: string
+}
+
+export interface SolutionVerificationMethod {
+  id: string
+  requirement_id: string
+  project_id: string
+  method: VerificationMethodKind
+  procedure: string | null
+  pass_criteria: string
+  threshold: string | null
+  measure_window: string | null
+  performed_by: VerificationPerformer
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // private = members/admin only (default, never auto-changed). internal =
 // any authenticated user can view (editing still gated by project_members).
 // public = a deliberately published presentation, visible with no session
@@ -3267,6 +3336,34 @@ interface DatabaseDefinition {
         Relationships: []
       }
       project_status_history: { Row: ProjectStatusHistoryEntry; Insert: ProjectStatusHistoryEntryInsert; Update: never; Relationships: [] }
+      solution_requirements: {
+        Row: SolutionRequirement
+        Insert: Pick<SolutionRequirement, 'project_id' | 'code' | 'title' | 'statement' | 'category' | 'created_by'> &
+          Partial<Pick<SolutionRequirement, 'rationale' | 'priority' | 'applies_from'>>
+        Update: Partial<Pick<SolutionRequirement, 'code' | 'title' | 'statement' | 'rationale' | 'category' | 'priority' | 'applies_from' | 'status' | 'superseded_by'>>
+        Relationships: []
+      }
+      solution_requirement_sources: {
+        Row: SolutionRequirementSource
+        Insert: Pick<SolutionRequirementSource, 'requirement_id' | 'project_id' | 'kind'> &
+          Partial<Pick<SolutionRequirementSource, 'knowledge_source_id' | 'wiki_article_id' | 'locator' | 'requester' | 'note' | 'created_by'>>
+        Update: Partial<Pick<SolutionRequirementSource, 'locator' | 'requester' | 'note'>>
+        Relationships: []
+      }
+      solution_requirement_scope_links: {
+        Row: SolutionRequirementScopeLink
+        Insert: Pick<SolutionRequirementScopeLink, 'requirement_id' | 'project_id'> &
+          Partial<Pick<SolutionRequirementScopeLink, 'workstream_id' | 'project_object_id'>>
+        Update: never
+        Relationships: []
+      }
+      solution_verification_methods: {
+        Row: SolutionVerificationMethod
+        Insert: Pick<SolutionVerificationMethod, 'requirement_id' | 'project_id' | 'method' | 'pass_criteria'> &
+          Partial<Pick<SolutionVerificationMethod, 'procedure' | 'threshold' | 'measure_window' | 'performed_by' | 'created_by'>>
+        Update: Partial<Pick<SolutionVerificationMethod, 'method' | 'procedure' | 'pass_criteria' | 'threshold' | 'measure_window' | 'performed_by'>>
+        Relationships: []
+      }
       project_knowledge_gaps: {
         Row: ProjectKnowledgeGap
         Insert: ProjectKnowledgeGapInsert

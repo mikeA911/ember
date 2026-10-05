@@ -50,6 +50,7 @@ Notes on the mapping:
 | ASM | Assessments | `/projects/[id]/assessments/...` |
 | MTH | Methods | `/methods`, `/methods/[id]` |
 | EVL | Evaluations | `/evals`, `/evals/datasets/...`, `/evals/runs/...` |
+| SOL | Solution requirements and conformance | `/projects/[id]/requirements/...` |
 | AGT | Graphs, agents and agent registry | `/graphs`, `/agents`, `/agent-registry` |
 | PUB | Publishing, blog and trending | `/projects/[id]/publish`, `/blog`, `/contribute/blog`, `/trending`, `/examples`, `/knowledge` |
 | FBK | Feedback and roadmap | `/feedback`, `/roadmap` |
@@ -75,6 +76,7 @@ Notes on the mapping:
 | ASM Assessments | ○ | ● | ● | ● |
 | MTH Methods | ○ | ● | ○ | ● |
 | EVL Evaluations | ● | ● | ○ | ● |
+| SOL Solution requirements and conformance | ○ | ● | ○ | ● |
 | AGT Graphs, agents and registry | ○ | ● | ● | ○ |
 | PUB Publishing, blog and trending | ● | ● | ○ | ● |
 | FBK Feedback and roadmap | ● | ○ | ○ | ● |
@@ -253,6 +255,14 @@ As a Viewer, I want Ember to tell me when it couldn't answer my question from th
 **VWR-EVL-04 — Follow my reports**
 As a Viewer, I want to see my own reports and what happened to them under **Knowledge gaps**, and get a note when one is resolved or closed, so that I know whether Ember can now answer.
 - I see only my own reports; other members see only the open-gap count.
+
+### SOL — Solution requirements and conformance
+
+**VWR-SOL-01 — Read the requirements register**
+As a Viewer, I want to read my Project's requirements — what the delivered solution must satisfy, where each comes from, what it concerns and how it will be verified — so that I know what we are building and accepting against.
+- Requirements area on the Project (`/projects/[id]/requirements`), filterable by status, workstream and category.
+- A source citing restricted evidence is hidden unless I have a grant.
+- Vendor claims are shown as claims to verify, never as met requirements.
 
 ### PUB — Publishing, blog and trending
 
@@ -581,6 +591,21 @@ As a Project Curator, I want one click to add a gap's question, with its correct
 As a Project Curator, I want to move a report that is really a problem with Ember itself (not missing knowledge) to the platform feedback board, so that the platform owner sees it.
 - Filed as a feedback report in my name; the gap closes as an Ember product issue.
 
+
+### SOL — Solution requirements and conformance
+
+**CUR-SOL-01 — Record a requirement with its origin** *(owner)*
+As a Project Curator, I want to add a requirement (code, title, statement, rationale, category, priority, the stage it must be verified from) with at least one source — a standard clause, regulation, contract term, customer need with a named requester, or vendor claim — linked to the Project's knowledge where possible, so that every requirement is traceable to the authority behind it.
+- Starts as a draft; a blank code becomes the next `REQ-nnn`.
+- Sources can link a knowledge source from the Project's or its workstreams' knowledge bases or a Wiki article attached to the Project, plus a clause locator.
+
+**CUR-SOL-02 — Scope a requirement and define how it will be verified** *(owner)*
+As a Project Curator, I want to link a requirement to the workstreams and Project objects it concerns and give it verification methods (test, demonstration, inspection, analysis, vendor evidence or operational measure) with explicit pass criteria and who performs them, so that acceptance is planned before anyone tests.
+- An operational measure needs a threshold and the window it is measured over.
+
+**CUR-SOL-03 — Keep the register honest** *(owner)*
+As a Project Curator, I want to edit a requirement only while it is a draft, withdraw one that no longer applies, and delete a draft added by mistake, so that what was agreed is never silently changed.
+- Content, sources, scope and methods are fixed once a requirement leaves draft; a withdrawn or superseded requirement cannot be reopened.
 
 ### AGT — Graphs, agents and agent registry
 

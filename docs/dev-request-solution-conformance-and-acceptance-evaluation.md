@@ -2,7 +2,25 @@
 
 ## Status
 
-Proposed. Worked example: the `cebu-ng911` Project.
+Stage 1 (requirements register) built 5 October 2026; Stages 2–5 proposed. Worked example: the `cebu-ng911` Project.
+
+## Delivery stages
+
+1. **Requirements register** — requirements with sources, scope and verification methods; the Project's Requirements area. *Built.*
+2. **Verification records** — append-only results with artifact evidence, against an identified solution state.
+3. **Baselines and conformance decisions** — frozen baselines, verdict roll-up, waivers, decisions through approval policies and authorities.
+4. **Re-verification triggers** — component changes, new source versions, review dates, threshold breaches.
+5. **Ember tools** — `propose_requirements`, `list_requirement_status`, `propose_verification_method`.
+
+**As built (Stage 1, 5 October 2026):**
+
+- **Tables** (`20261017100001_solution_requirements.sql`): `solution_requirements` (code unique per Project, category, priority, `applies_from`, status `draft`/`baselined`/`superseded`/`withdrawn`), `solution_requirement_sources` (kind, optional linked knowledge source and/or Project Wiki article, clause locator, requester for a customer need), `solution_requirement_scope_links` (a workstream or a Project object, each checked to be in the same Project) and `solution_verification_methods` (method, pass criteria, threshold and window required for an operational measure, performer).
+- **Rules:** every Project member reads the register; the Project's owner/curators and platform admins write it. A requirement and its sources, scope and methods change only while it is a draft; afterwards it can only be withdrawn or superseded and never reopened. A draft can be deleted. A new requirement needs at least one source; a customer need needs a named requester, and any other source needs a linked source, Wiki article or clause locator. A cited knowledge source records its current version for Stage 4.
+- **Evidence access:** a source row citing a restricted knowledge source or Wiki article is hidden from anyone without a grant, curators included (the write policies are split by command so none of them also grants read).
+- **What can be cited:** sources in the Project's and its workstreams' knowledge bases (the same scope as Ember's Project search) and Wiki articles attached to the Project. A standard held elsewhere can still be cited by clause locator.
+- **UI:** `/projects/[id]/requirements` (filters by status, workstream and category; counts of drafts, baselined, requirements without a verification method, and vendor-claim citations), `/requirements/new` (code suggested as the next `REQ-nnn` if left blank), and `/requirements/[requirementId]` (sources, scope, verification methods, edit while draft, withdraw, delete draft). A *Requirements* summary on the Project page.
+- **Not yet:** setting `baselined` (Stage 3); superseding with a linked replacement (Stage 3); requirements on the workstream page.
+
 
 ## Problem
 

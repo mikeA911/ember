@@ -17,6 +17,7 @@ import { getProjectReadiness } from '@/lib/projects/ember-readiness'
 import { EmberReadinessSection } from '@/components/projects/EmberReadinessSection'
 import { listKnowledgeGaps, listKnowledgeGapOccurrences } from '@/lib/projects/knowledge-gaps'
 import { KnowledgeGapsSection } from '@/components/projects/KnowledgeGapsSection'
+import { RequirementsSummarySection } from '@/components/projects/RequirementsSummarySection'
 import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton, PendingReviewBadge } from '@/components/projects/KnowledgeBaseAttachManager'
 import { getOrganizationExplorer } from '@/lib/projects/explorer'
 import { OrganizationExplorer } from '@/components/projects/OrganizationExplorer'
@@ -167,6 +168,7 @@ export default async function ProjectPage({
     emberReadiness,
     knowledgeGaps,
     knowledgeGapOccurrences,
+    requirementCounts,
   ] = await Promise.all([
     listKnowledgeBasesForProject(supabase, id),
     supabase.from('eval_datasets').select('id, name, status').eq('project_id', id),
@@ -247,6 +249,25 @@ export default async function ProjectPage({
           return []
         })
       : Promise.resolve([]),
+    // Solution conformance, Stage 1 -- counts for the Requirements section;
+    // hidden if the register can't be read (e.g. migration not applied).
+    (async () => {
+      const [{ data: reqs, error }, { data: methods }] = await Promise.all([
+        supabase.from('solution_requirements').select('id, status').eq('project_id', id),
+        supabase.from('solution_verification_methods').select('requirement_id').eq('project_id', id),
+      ])
+      if (error) {
+        console.error('Requirements unavailable', error)
+        return null
+      }
+      const withMethod = new Set((methods ?? []).map((m) => m.requirement_id))
+      const open = (reqs ?? []).filter((r) => r.status === 'draft' || r.status === 'baselined')
+      return {
+        draft: open.filter((r) => r.status === 'draft').length,
+        baselined: open.filter((r) => r.status === 'baselined').length,
+        withoutMethod: open.filter((r) => !withMethod.has(r.id)).length,
+      }
+    })(),
   ])
   const statusHistoryActorIds = [...new Set((statusHistory ?? []).map((h) => h.actor_id).filter((x): x is string => !!x))]
 
@@ -781,6 +802,8 @@ export default async function ProjectPage({
           nameForUser={(userId) => (userId ? memberEmailById.get(userId) || 'a platform admin' : 'a former member')}
         />
       )}
+      {requirementCounts && <RequirementsSummarySection projectId={project.id} counts={requirementCounts} canCurate={canCurateWorkstreams} />}
+
       {knowledgeGaps && (
         <KnowledgeGapsSection
           projectId={project.id}
