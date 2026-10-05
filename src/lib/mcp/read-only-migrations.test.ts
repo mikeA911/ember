@@ -48,13 +48,22 @@ describe('external MCP read-only enforcement', () => {
     for (const file of later) {
       const text = fs.readFileSync(path.join(dir, file), 'utf-8')
       if (/create table/i.test(text)) {
-        // Either the plain call, or the guarded form (for databases where
+        // Either the plain call, or the guarded one (for databases where
         // the MCP migration hasn't run yet -- when it does, its own call
         // covers every table that exists by then).
         expect(text, `${file} creates a table but never calls apply_oauth_read_only_policies()`).toMatch(
-          /^select apply_oauth_read_only_policies\(\);$|if to_regprocedure\('public\.apply_oauth_read_only_policies\(\)'\) is not null then\s+perform apply_oauth_read_only_policies\(\);/m
+          /^select apply_oauth_read_only_policies(_if_available)?\(\);$/m
         )
       }
+    }
+  })
+  it('only skips the read-only policies when the MCP migration has not run', () => {
+    for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.sql'))) {
+      const text = fs.readFileSync(path.join(dir, file), 'utf-8')
+      if (!/^select apply_oauth_read_only_policies_if_available\(\);$/m.test(text)) continue
+      const fn = text.slice(text.indexOf('create or replace function apply_oauth_read_only_policies_if_available()'))
+      expect(fn).toMatch(/if to_regprocedure\('public\.apply_oauth_read_only_policies\(\)'\) is not null then\s+perform apply_oauth_read_only_policies\(\);/)
+      expect(text).toMatch(/revoke all on function apply_oauth_read_only_policies_if_available\(\) from public, anon, authenticated;/)
     }
   })
 })
