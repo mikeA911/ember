@@ -55,7 +55,7 @@ async function autoApproveAllChunks(ctx: WorkbenchCallerContext, documentId: str
   for (const chunk of chunks ?? []) {
     const provider = await gateProvider(
       admin,
-      await getActiveEmbeddingProvider(admin, { documentId, chunkId: chunk.id, requestedBy: decidedBy }),
+      await getActiveEmbeddingProvider(admin, { task: 'chunk_embedding', documentId, chunkId: chunk.id, requestedBy: decidedBy }),
       manifest,
       'foundational'
     )

@@ -55,11 +55,11 @@ export async function executeEvalRun(supabase: SupabaseClient<Database>, runId: 
       .order('created_at', { ascending: true })
     if (casesError) throw casesError
 
-    const generationProvider = await getProviderByName(supabase, config.generation.provider, { evalRunId: runId, requestedBy })
+    const generationProvider = await getProviderByName(supabase, config.generation.provider, { task: 'eval_run', evalRunId: runId, requestedBy })
     const embeddingProvider =
       config.embedding.provider === config.generation.provider
         ? generationProvider
-        : await getProviderByName(supabase, config.embedding.provider, { evalRunId: runId, requestedBy })
+        : await getProviderByName(supabase, config.embedding.provider, { task: 'eval_run', evalRunId: runId, requestedBy })
 
     for (const evalCase of cases ?? []) {
       await runCase(supabase, runId, evalCase, config, {
@@ -126,6 +126,7 @@ async function runCase(
     let judge: Awaited<ReturnType<typeof judgeAnswer>> | null = null
     if (models.evaluatorModelId && config.evaluator.provider) {
       const evalProviderWithContext = await getProviderByName(supabase, config.evaluator.provider, {
+        task: 'eval_run',
         evalRunId: runId,
         evalCaseId: evalCase.id,
         requestedBy: models.requestedBy,
@@ -278,6 +279,7 @@ async function runCaseViaGraph(
   let judge: { provider: AIProvider; model: string; evalCase: Pick<EvalCase, 'question' | 'expected_answer' | 'expected_concepts' | 'scoring_criteria'> } | undefined
   if (models.evaluatorModelId && config.evaluator.provider) {
     const evalProviderWithContext = await getProviderByName(supabase, config.evaluator.provider, {
+      task: 'eval_run',
       evalRunId: runId,
       evalCaseId: evalCase.id,
       graphRunId: graphRun.id,

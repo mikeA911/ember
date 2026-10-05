@@ -42,7 +42,7 @@ describe('withLogging', () => {
         )
     )
 
-    await expect(withLogging(provider).generateChat({ messages: [] })).rejects.toBeInstanceOf(AIProviderError)
+    await expect(withLogging(provider, { task: 'chat' }).generateChat({ messages: [] })).rejects.toBeInstanceOf(AIProviderError)
 
     const insertCall = supabase._calls.find((c) => c.table === 'ai_operation_logs' && c.method === 'insert')
     expect(insertCall?.args).toMatchObject({
@@ -56,7 +56,7 @@ describe('withLogging', () => {
     const supabase = fakeAdmin()
     const provider = fakeProvider(vi.fn().mockRejectedValue(new Error('boom')))
 
-    await expect(withLogging(provider).generateChat({ messages: [] })).rejects.toThrow('boom')
+    await expect(withLogging(provider, { task: 'chat' }).generateChat({ messages: [] })).rejects.toThrow('boom')
 
     const insertCall = supabase._calls.find((c) => c.table === 'ai_operation_logs' && c.method === 'insert')
     expect(insertCall?.args).toMatchObject({ success: false, error_code: null })
@@ -70,9 +70,37 @@ describe('withLogging', () => {
         .mockResolvedValue({ message: { role: 'assistant', content: 'hi' }, model: 'test-model', usage: { inputTokens: 1, outputTokens: 1 } })
     )
 
-    await withLogging(provider).generateChat({ messages: [] })
+    await withLogging(provider, { task: 'chat' }).generateChat({ messages: [] })
 
     const insertCall = supabase._calls.find((c) => c.table === 'ai_operation_logs' && c.method === 'insert')
     expect(insertCall?.args).toMatchObject({ success: true, error_code: null, error_message: null })
+  })
+
+  it('records the task and the cached part of the input', async () => {
+    const supabase = fakeAdmin()
+    const provider = fakeProvider(
+      vi.fn().mockResolvedValue({
+        message: { role: 'assistant', content: 'hi' },
+        model: 'test-model',
+        usage: { inputTokens: 3000, outputTokens: 20, cachedInputTokens: 2048 },
+      })
+    )
+
+    await withLogging(provider, { task: 'conversation_summary' }).generateChat({ messages: [] })
+
+    const insertCall = supabase._calls.find((c) => c.table === 'ai_operation_logs' && c.method === 'insert')
+    expect(insertCall?.args).toMatchObject({ task: 'conversation_summary', input_tokens: 3000, cached_input_tokens: 2048 })
+  })
+
+  it('records a null cached count when the provider reports none', async () => {
+    const supabase = fakeAdmin()
+    const provider = fakeProvider(
+      vi.fn().mockResolvedValue({ message: { role: 'assistant', content: 'hi' }, model: 'test-model', usage: { inputTokens: 1, outputTokens: 1 } })
+    )
+
+    await withLogging(provider, { task: 'chat' }).generateChat({ messages: [] })
+
+    const insertCall = supabase._calls.find((c) => c.table === 'ai_operation_logs' && c.method === 'insert')
+    expect(insertCall?.args).toMatchObject({ task: 'chat', cached_input_tokens: null })
   })
 })

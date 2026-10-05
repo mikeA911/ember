@@ -432,7 +432,7 @@ export async function runAssistantTurn(
     // (isByoLlm: true) but never wrapped in withAllowanceGate, and
     // logging.ts skips cost computation for it entirely.
     chatProvider = {
-      provider: withLogging(byoLlm.provider, { requestedBy: ctx.user.id, projectId: resolvedProjectId ?? undefined, isByoLlm: true }),
+      provider: withLogging(byoLlm.provider, { task: 'chat', requestedBy: ctx.user.id, projectId: resolvedProjectId ?? undefined, isByoLlm: true }),
       providerName: byoLlm.provider.name,
       providerDisplayName: 'Your own LLM',
       modelId: byoLlm.modelId,
@@ -445,7 +445,7 @@ export async function runAssistantTurn(
       chatProvider = await resolveChatProvider(
         ctx.supabase,
         modelSelection,
-        { requestedBy: ctx.user.id, projectId: resolvedProjectId ?? undefined },
+        { task: 'chat', requestedBy: ctx.user.id, projectId: resolvedProjectId ?? undefined },
         { selfHostedOnly }
       )
     } catch (err) {

@@ -54,6 +54,8 @@ export {
 export type { ContextManifest, ContextManifestEntry, PolicySubject, PolicyDecision } from './sensitivity'
 
 export { withLogging } from './logging'
+export { AI_TASKS } from './tasks'
+export type { AITask } from './tasks'
 export type { LogContext } from './logging'
 
 export {

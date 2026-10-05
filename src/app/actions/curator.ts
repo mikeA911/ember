@@ -33,7 +33,7 @@ export async function uploadAndProcessDocument(formData: FormData) {
   // (src/lib/ai/policy-manifests.ts).
   const provider = await gateProvider(
     supabase,
-    await getActiveStructuredOutputProvider(supabase, { documentId: doc.id, requestedBy: user.id }),
+    await getActiveStructuredOutputProvider(supabase, { task: 'chunk_enrichment', documentId: doc.id, requestedBy: user.id }),
     () => manifestForDocuments([doc.id]),
     'foundational'
   )
@@ -63,7 +63,7 @@ export async function enrichMoreChunks(
   try {
     const provider = await gateProvider(
       supabase,
-      await getActiveStructuredOutputProvider(supabase, { documentId, requestedBy: user.id }),
+      await getActiveStructuredOutputProvider(supabase, { task: 'chunk_enrichment', documentId, requestedBy: user.id }),
       () => manifestForDocuments([documentId]),
       'foundational'
     )
@@ -81,7 +81,7 @@ export async function approveChunkAction(chunkId: string, documentId: string, cu
   try {
     const provider = await gateProvider(
       supabase,
-      await getActiveEmbeddingProvider(supabase, { documentId, chunkId, requestedBy: user.id }),
+      await getActiveEmbeddingProvider(supabase, { task: 'chunk_embedding', documentId, chunkId, requestedBy: user.id }),
       () => manifestForDocuments([documentId]),
       'foundational'
     )
@@ -121,7 +121,7 @@ export async function approveRemainingChunksAction(
 
     const provider = await gateProvider(
       supabase,
-      await getActiveEmbeddingProvider(supabase, { documentId, requestedBy: user.id }),
+      await getActiveEmbeddingProvider(supabase, { task: 'chunk_embedding', documentId, requestedBy: user.id }),
       () => manifestForDocuments([documentId]),
       'foundational'
     )

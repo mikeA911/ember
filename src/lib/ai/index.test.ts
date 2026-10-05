@@ -68,14 +68,14 @@ describe('getActiveProvider', () => {
   it('throws a clear config error instead of silently defaulting when the default provider has no key', async () => {
     const supabase = createFakeSupabase(defaultGenerationModelFixture()) as never
 
-    await expect(getActiveProvider(supabase)).rejects.toBeInstanceOf(AIConfigError)
+    await expect(getActiveProvider(supabase, { task: 'chat' })).rejects.toBeInstanceOf(AIConfigError)
   })
 
   it('builds a provider for whichever model the registry marks as the default generation model', async () => {
     process.env.OPENAI_API_KEY = 'test-key'
     const supabase = createFakeSupabase(defaultGenerationModelFixture()) as never
 
-    const provider = await getActiveProvider(supabase)
+    const provider = await getActiveProvider(supabase, { task: 'chat' })
     expect(provider.name).toBe('openai')
   })
 })
@@ -90,13 +90,13 @@ describe('getActiveEmbeddingProvider', () => {
     process.env.GOOGLE_API_KEY = 'test-key'
     const supabase = createFakeSupabase(defaultEmbeddingModelFixture()) as never
 
-    const provider = await getActiveEmbeddingProvider(supabase)
+    const provider = await getActiveEmbeddingProvider(supabase, { task: 'chunk_embedding' })
     expect(provider.name).toBe('gemini')
   })
 
   it('throws a clear config error instead of silently defaulting when no embedding model is configured', async () => {
     const supabase = createFakeSupabase({ ai_models: [{ data: null, error: null }] }) as never
-    await expect(getActiveEmbeddingProvider(supabase)).rejects.toBeInstanceOf(AIConfigError)
+    await expect(getActiveEmbeddingProvider(supabase, { task: 'chunk_embedding' })).rejects.toBeInstanceOf(AIConfigError)
   })
 })
 
@@ -125,12 +125,12 @@ describe('getActiveStructuredOutputProvider', () => {
       ],
     }) as never
 
-    const provider = await getActiveStructuredOutputProvider(supabase)
+    const provider = await getActiveStructuredOutputProvider(supabase, { task: 'chunk_enrichment' })
     expect(provider.name).toBe('openai')
   })
 
   it('throws a clear config error instead of silently defaulting when no structured-output model is configured', async () => {
     const supabase = createFakeSupabase({ ai_models: [{ data: null, error: null }] }) as never
-    await expect(getActiveStructuredOutputProvider(supabase)).rejects.toBeInstanceOf(AIConfigError)
+    await expect(getActiveStructuredOutputProvider(supabase, { task: 'chunk_enrichment' })).rejects.toBeInstanceOf(AIConfigError)
   })
 })

@@ -224,7 +224,7 @@ export async function generateSubstackExportAction(postId: string) {
   const post = await getPostById(supabase, postId)
   if (!post) throw new BlogValidationError('Post not found')
 
-  const provider = await getActiveStructuredOutputProvider(supabase, { requestedBy: user.id })
+  const provider = await getActiveStructuredOutputProvider(supabase, { task: 'blog_export', requestedBy: user.id })
   const canonicalUrl = `${env.siteUrl()}/blog/${post.slug}`
   return generateSubstackPackage(provider, post, canonicalUrl)
 }

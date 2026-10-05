@@ -112,13 +112,14 @@ export async function answerQuestion(supabase: SupabaseClient<Database>, input: 
   if (graphRunError || !graphRun) throw graphRunError ?? new Error('Failed to create graph run')
 
   const generationProvider = await getProviderByName(supabase, generationProviderRow.name, {
+    task: 'agent_run',
     graphRunId: graphRun.id,
     requestedBy: input.requestedBy,
   })
   const embeddingProvider =
     embeddingProviderRow.name === generationProviderRow.name
       ? generationProvider
-      : await getProviderByName(supabase, embeddingProviderRow.name, { graphRunId: graphRun.id, requestedBy: input.requestedBy })
+      : await getProviderByName(supabase, embeddingProviderRow.name, { task: 'agent_run', graphRunId: graphRun.id, requestedBy: input.requestedBy })
 
   let judge: { provider: AIProvider; model: string; evalCase: { question: string; expected_answer: null; expected_concepts: null; scoring_criteria: null } } | undefined
   if (version.evaluator_provider_id && version.evaluator_model_id) {
@@ -132,7 +133,7 @@ export async function answerQuestion(supabase: SupabaseClient<Database>, input: 
       const evaluatorProvider =
         evaluatorProviderRow.name === generationProviderRow.name
           ? generationProvider
-          : await getProviderByName(supabase, evaluatorProviderRow.name, { graphRunId: graphRun.id, requestedBy: input.requestedBy })
+          : await getProviderByName(supabase, evaluatorProviderRow.name, { task: 'agent_run', graphRunId: graphRun.id, requestedBy: input.requestedBy })
       judge = {
         provider: evaluatorProvider,
         model: evaluatorModelRow.model_id,

@@ -54,7 +54,7 @@ export async function suggestProjectOntology(
   // policy.ts); the new-project wizard never needs it, a new Project isn't Live.
   options: { selfHostedOnly?: boolean } = {}
 ): Promise<ProjectOntologySuggestion> {
-  const provider = await getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id }, options)
+  const provider = await getActiveStructuredOutputProvider(ctx.supabase, { task: 'ontology_suggestions', requestedBy: ctx.user.id }, options)
   const { data } = await provider.generateStructured({
     system: 'You help an Ember builder sketch a starting domain-object ontology and workstream set for a new project.',
     prompt: buildPrompt(input.projectType, input.objective, input.details),

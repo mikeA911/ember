@@ -125,7 +125,7 @@ describe.sequential('live E2E against the real Supabase project', () => {
   }, 30000)
 
   it('enriches chunks via the real active AI provider (Gemini)', async () => {
-    const provider = await getActiveProvider(curator.client, { documentId, requestedBy: curator.userId })
+    const provider = await getActiveProvider(curator.client, { task: 'chunk_enrichment', documentId, requestedBy: curator.userId })
     expect(provider.name).toBe('gemini')
 
     const result = await enrichDocumentChunks(curator.client, provider, documentId, 'fhir', 5)
@@ -145,7 +145,7 @@ describe.sequential('live E2E against the real Supabase project', () => {
   }, 60000)
 
   it('approves a chunk for real: writes kb_vectors with a real embedding and increments the counter', async () => {
-    const provider = await getActiveProvider(curator.client, { documentId, chunkId: approvedChunkId, requestedBy: curator.userId })
+    const provider = await getActiveProvider(curator.client, { task: 'chunk_embedding', documentId, chunkId: approvedChunkId, requestedBy: curator.userId })
     await approveChunk(curator.client, provider, {
       chunkId: approvedChunkId,
       curatorNotes: 'live e2e check',

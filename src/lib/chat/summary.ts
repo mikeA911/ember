@@ -114,7 +114,7 @@ export async function maybeRefreshSummary(
     if (turnsSince < REFRESH_TURN_THRESHOLD && !wasTruncated) return
     if (rows.length === 0) return
 
-    const provider = await getActiveStructuredOutputProvider(ctx.supabase, { requestedBy: ctx.user.id }, { selfHostedOnly })
+    const provider = await getActiveStructuredOutputProvider(ctx.supabase, { task: 'conversation_summary', requestedBy: ctx.user.id }, { selfHostedOnly })
     // A separately-resolved provider than the live turn's chatProvider --
     // exactly why this needs its own gate rather than trusting the turn's
     // already-passed check (docs/design-notes/ai-policy-enforcement-service-

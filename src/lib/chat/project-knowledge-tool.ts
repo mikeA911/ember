@@ -82,7 +82,7 @@ export async function runSearchProjectKnowledge(
   // is on, in which case the question carries the Project's classification.
   const embeddingProvider = await gateProvider(
     ctx.supabase,
-    await getActiveEmbeddingProvider(ctx.supabase, { requestedBy: ctx.user.id }),
+    await getActiveEmbeddingProvider(ctx.supabase, { task: 'knowledge_search', requestedBy: ctx.user.id }),
     () => manifestForProject(projectId),
     'foundational'
   )

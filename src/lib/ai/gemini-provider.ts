@@ -60,6 +60,7 @@ export class GeminiProvider implements AIProvider {
         usage: {
           inputTokens: res.usageMetadata?.promptTokenCount ?? null,
           outputTokens: res.usageMetadata?.candidatesTokenCount ?? null,
+          cachedInputTokens: res.usageMetadata?.cachedContentTokenCount ?? null,
         },
       }
     } catch (err) {
@@ -91,6 +92,7 @@ export class GeminiProvider implements AIProvider {
         usage: {
           inputTokens: res.usageMetadata?.promptTokenCount ?? null,
           outputTokens: res.usageMetadata?.candidatesTokenCount ?? null,
+          cachedInputTokens: res.usageMetadata?.cachedContentTokenCount ?? null,
         },
       }
     } catch (err) {
@@ -183,6 +185,7 @@ export class GeminiProvider implements AIProvider {
         usage: {
           inputTokens: res.usageMetadata?.promptTokenCount ?? null,
           outputTokens: res.usageMetadata?.candidatesTokenCount ?? null,
+          cachedInputTokens: res.usageMetadata?.cachedContentTokenCount ?? null,
         },
       }
     } catch (err) {

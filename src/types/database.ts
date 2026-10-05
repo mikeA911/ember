@@ -248,6 +248,12 @@ export interface AIOperationLog {
   // deferred design-time integration (see methods.ts's own header comment),
   // nothing populates it in this pass.
   applied_method_id: string | null
+  // What the call was for (src/lib/ai/tasks.ts); null on rows logged
+  // before 20261010100001_ai_operation_logs_task.sql.
+  task: string | null
+  // The part of input_tokens served from the provider's prompt cache; null
+  // when not reported.
+  cached_input_tokens: number | null
 }
 
 export interface ChunkForReview extends DocumentChunk {

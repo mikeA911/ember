@@ -137,7 +137,7 @@ export async function generatePresentation(
     supabase,
     await getActiveStructuredOutputProvider(
       supabase,
-      { requestedBy: user.id },
+      { task: 'presentation', requestedBy: user.id },
       { selfHostedOnly: (await aiHostingForWorkstream(workstreamId)) === 'self_hosted_only' }
     ),
     await manifestForWorkstream(workstreamId)
@@ -503,7 +503,7 @@ export async function classifyPendingComments(
     ctx.supabase,
     await getActiveStructuredOutputProvider(
       ctx.supabase,
-      { requestedBy: ctx.user.id },
+      { task: 'presentation_review', requestedBy: ctx.user.id },
       { selfHostedOnly: (await aiHostingForWorkstream(presentation.workstream_id)) === 'self_hosted_only' }
     ),
     await manifestForWorkstream(presentation.workstream_id)
