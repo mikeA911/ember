@@ -7,8 +7,12 @@ import { createClient } from '@/lib/supabase/browser'
 import { NavDropdown } from '@/components/NavDropdown'
 import type { Profile } from '@/types/database'
 
+// Evals is platform-admin only (Ember Readiness, Stage 1 --
+// docs/dev-request-ember-readiness-and-knowledge-gaps.md): admins also reach
+// it from Admin -> Ember readiness; curators author their datasets from the
+// Project page.
+const EVALS_ITEM = { href: '/evals', label: 'Evals' }
 const EXPLORE_ITEMS = [
-  { href: '/evals', label: 'Evals' },
   { href: '/graphs', label: 'Graphs' },
   { href: '/agents', label: 'Agents' },
   { href: '/agent-registry', label: 'Agent Registry (external)' },
@@ -58,7 +62,7 @@ export function Header({
                 <Link href="/wiki" className="hover:text-zinc-900">Wiki</Link>
                 <Link href="/blog" className="hover:text-zinc-900">Blog</Link>
                 <Link href="/trending" className="hover:text-zinc-900">Trending</Link>
-                <NavDropdown label="Explore" items={EXPLORE_ITEMS} />
+                <NavDropdown label="Explore" items={profile.role === 'admin' ? [EVALS_ITEM, ...EXPLORE_ITEMS] : EXPLORE_ITEMS} />
                 <Link href="/agency" className="hover:text-zinc-900">Agency</Link>
               </>
             ) : (

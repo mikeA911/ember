@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { HumanReviewForm } from '@/components/eval/HumanReviewForm'
@@ -7,6 +7,16 @@ import type { RetrievedEvidenceItem } from '@/types/database'
 export default async function EvalResultPage({ params }: { params: Promise<{ id: string; resultId: string }> }) {
   const { id, resultId } = await params
   const supabase = await createClient()
+
+  // Ember Readiness, Stage 1: eval results and human review are platform-
+  // admin work.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const { data: viewerProfile } = user
+    ? await supabase.from('profiles').select('role').eq('id', user.id).single()
+    : { data: null }
+  if (viewerProfile?.role !== 'admin') redirect('/dashboard')
 
   const { data: result } = await supabase.from('eval_results').select('*').eq('id', resultId).eq('eval_run_id', id).single()
   if (!result) notFound()

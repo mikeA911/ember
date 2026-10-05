@@ -56,8 +56,12 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ sl
   } = await supabase.auth.getUser()
 
   let canManage = false
+  // Ember Readiness, Stage 1: running an evaluation suite is platform-admin
+  // work.
+  let canRunEvals = false
   if (user) {
     const { data: viewerProfile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    canRunEvals = viewerProfile?.role === 'admin'
     if (viewerProfile?.role === 'admin') {
       canManage = true
     } else if (agent.project_id === null) {
@@ -99,9 +103,11 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ sl
         <Link href={`/agents/${agent.slug}/run`} className="rounded bg-zinc-900 px-4 py-2 font-medium text-white">
           Ask a question →
         </Link>
-        <Link href={`/evals/runs/new?agent=${agent.slug}`} className="rounded border border-zinc-300 px-4 py-2 font-medium">
-          Run evaluation suite →
-        </Link>
+        {canRunEvals && (
+          <Link href={`/evals/runs/new?agent=${agent.slug}`} className="rounded border border-zinc-300 px-4 py-2 font-medium">
+            Run evaluation suite →
+          </Link>
+        )}
         {graphSlug && (
           <Link href={`/graphs/${graphSlug}`} className="self-center text-xs underline text-zinc-500">
             View graph

@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { RunConfigForm } from '@/components/eval/RunConfigForm'
 import { listProviders, listModels } from '@/lib/ai'
@@ -19,6 +20,16 @@ export default async function NewEvalRunPage({
 }) {
   const { dataset: preselectedDatasetId, agent: agentSlug } = await searchParams
   const supabase = await createClient()
+
+  // Ember Readiness, Stage 1: running an evaluation is platform-admin work
+  // (createAndRunEvalAction and RLS enforce the same rule).
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const { data: viewerProfile } = user
+    ? await supabase.from('profiles').select('role').eq('id', user.id).single()
+    : { data: null }
+  if (viewerProfile?.role !== 'admin') redirect('/dashboard')
 
   const [{ data: datasets }, providers, models, graphs] = await Promise.all([
     supabase.from('eval_datasets').select('id, name, status, version').order('created_at', { ascending: false }),

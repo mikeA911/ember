@@ -32,7 +32,7 @@ describe('getNeedsAttention', () => {
       presentation_slide_comments: [{ data: [{ id: 'c1' }], error: null }],
     }) as never
 
-    const result = await getNeedsAttention(supabase)
+    const result = await getNeedsAttention(supabase, { includeEvalRuns: true })
 
     expect(result).toEqual([
       { label: 'documents sent for optional admin sign-off', count: 1, href: '/upload' },
@@ -43,5 +43,21 @@ describe('getNeedsAttention', () => {
       { label: 'projects with a governance authority needed', count: 0, href: '/projects' },
       { label: 'presentation comments awaiting classification', count: 1, href: '/projects' },
     ])
+  })
+  it('leaves out failed evaluation runs for a viewer who is not a platform admin', async () => {
+    listUnpublishedArticlesMock.mockResolvedValue([])
+    listProjectsWithDraftUpdatesMock.mockResolvedValue([])
+    listTrendingUnderReviewMock.mockResolvedValue([])
+    listProjectsWithMissingAuthoritiesMock.mockResolvedValue([])
+
+    const supabase = createFakeSupabase({
+      documents: [{ data: [], error: null }],
+      presentation_slide_comments: [{ data: [], error: null }],
+    })
+
+    const result = await getNeedsAttention(supabase as never, { includeEvalRuns: false })
+
+    expect(result.map((item) => item.label)).not.toContain('failed evaluation runs')
+    expect(supabase._calls.some((c) => c.table === 'eval_runs')).toBe(false)
   })
 })

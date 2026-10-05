@@ -12,6 +12,7 @@ const {
   createDatasetAction,
   createCaseAction,
   createAndRunEvalAction,
+  markBaselineAction,
   submitHumanReviewAction,
 } = await import('./eval')
 
@@ -71,7 +72,7 @@ describe('createAndRunEvalAction', () => {
       eval_datasets: [{ data: { version: 3, status: 'draft' }, error: null }],
       eval_runs: [{ data: { id: 'run-1' }, error: null }],
     })
-    requireRoleMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'curator' }, supabase })
+    requireRoleMock.mockResolvedValue({ user: { id: 'user-1' }, profile: { role: 'admin' }, supabase })
     executeEvalRunMock.mockResolvedValue(undefined)
 
     const result = await createAndRunEvalAction({ datasetId: 'dataset-1', name: 'gemini + wiki', config })
@@ -82,7 +83,21 @@ describe('createAndRunEvalAction', () => {
     expect(executeEvalRunMock).toHaveBeenCalledWith(supabase, 'run-1', 'user-1')
   })
 
-  it('rejects a consultant running against a draft (unpublished) dataset', async () => {
+  it('requires the platform admin role to run an evaluation', async () => {
+    const config = {
+      generation: { provider: 'gemini' as const, model: 'gemini-3.5-flash' },
+      embedding: { provider: 'gemini' as const, model: 'gemini-embedding-001' },
+      retrieval: { evidence_source: 'wiki' as const, top_k: 5 },
+      evaluator: { type: 'none' as const },
+    }
+    requireRoleMock.mockRejectedValue(new Error('Requires admin role'))
+
+    await expect(createAndRunEvalAction({ datasetId: 'dataset-1', name: '', config })).rejects.toThrow('Requires admin role')
+    expect(requireRoleMock).toHaveBeenCalledWith('admin')
+    expect(executeEvalRunMock).not.toHaveBeenCalled()
+  })
+
+  it('lets an admin test-run a draft dataset before it is activated', async () => {
     const config = {
       generation: { provider: 'gemini' as const, model: 'gemini-3.5-flash' },
       embedding: { provider: 'gemini' as const, model: 'gemini-embedding-001' },
@@ -91,31 +106,21 @@ describe('createAndRunEvalAction', () => {
     }
     const supabase = createFakeSupabase({
       eval_datasets: [{ data: { version: 1, status: 'draft' }, error: null }],
-    })
-    requireRoleMock.mockResolvedValue({ user: { id: 'consultant-1' }, profile: { role: 'consultant' }, supabase })
-
-    await expect(createAndRunEvalAction({ datasetId: 'dataset-1', name: '', config })).rejects.toThrow(
-      'not active yet'
-    )
-    expect(executeEvalRunMock).not.toHaveBeenCalled()
-  })
-
-  it('allows a consultant to run against an active dataset', async () => {
-    const config = {
-      generation: { provider: 'gemini' as const, model: 'gemini-3.5-flash' },
-      embedding: { provider: 'gemini' as const, model: 'gemini-embedding-001' },
-      retrieval: { evidence_source: 'wiki' as const, top_k: 5 },
-      evaluator: { type: 'none' as const },
-    }
-    const supabase = createFakeSupabase({
-      eval_datasets: [{ data: { version: 1, status: 'active' }, error: null }],
       eval_runs: [{ data: { id: 'run-2' }, error: null }],
     })
-    requireRoleMock.mockResolvedValue({ user: { id: 'consultant-1' }, profile: { role: 'consultant' }, supabase })
+    requireRoleMock.mockResolvedValue({ user: { id: 'admin-1' }, profile: { role: 'admin' }, supabase })
     executeEvalRunMock.mockResolvedValue(undefined)
 
     const result = await createAndRunEvalAction({ datasetId: 'dataset-1', name: '', config })
     expect(result).toEqual({ runId: 'run-2' })
+  })
+})
+
+describe('markBaselineAction', () => {
+  it('requires the platform admin role', async () => {
+    requireRoleMock.mockRejectedValue(new Error('Requires admin role'))
+    await expect(markBaselineAction('run-1', 'dataset-1')).rejects.toThrow('Requires admin role')
+    expect(requireRoleMock).toHaveBeenCalledWith('admin')
   })
 })
 
@@ -142,6 +147,7 @@ describe('submitHumanReviewAction', () => {
     })
     expect(args).not.toHaveProperty('generation_score')
     expect(args).not.toHaveProperty('failure_classification')
+    expect(requireRoleMock).toHaveBeenCalledWith('admin')
   })
 
   it('allows a human to correct the automated failure classification', async () => {

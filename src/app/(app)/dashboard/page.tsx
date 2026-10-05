@@ -70,10 +70,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     canSeeWikiQueue ? listUnpublishedArticles(supabase) : Promise.resolve([]),
     getProjectStats(supabase),
     getWikiStats(supabase),
-    getEvalStats(supabase),
+    // Ember Readiness, Stage 1: evaluation runs are platform-admin work.
+    isAdmin ? getEvalStats(supabase) : Promise.resolve(null),
     getAgentStats(supabase),
     getTrendingStats(supabase),
-    canSeeWikiQueue ? getNeedsAttention(supabase) : Promise.resolve([]),
+    canSeeWikiQueue ? getNeedsAttention(supabase, { includeEvalRuns: isAdmin }) : Promise.resolve([]),
     canSeeWikiQueue ? listUpcomingScheduledPresentations(supabase) : Promise.resolve([]),
     canSeeNotes ? listNotesForUser(supabase, user!.id) : Promise.resolve([]),
     canSeeSharedLinks ? listRecentSharedLinks(supabase) : Promise.resolve([]),
@@ -117,7 +118,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const summaryCards = [
     { label: 'Projects', href: '/projects', value: projectStats.total, subtitle: `${projectStats.active} active` },
     { label: 'Knowledge', href: '/wiki', value: wikiStats.total, subtitle: `${wikiStats.approved} approved` },
-    { label: 'Evaluations', href: '/evals', value: evalStats.totalRuns, subtitle: `${evalStats.needReview} need review` },
+    ...(evalStats
+      ? [{ label: 'Evaluations', href: '/evals', value: evalStats.totalRuns, subtitle: `${evalStats.needReview} need review` }]
+      : []),
     { label: 'Agents', href: '/agents', value: agentStats.total, subtitle: `${agentStats.active} active` },
     { label: 'Trending', href: '/trending', value: trendingStats.total, subtitle: `${trendingStats.active} active` },
   ]
@@ -163,7 +166,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+          <div className={`grid grid-cols-2 gap-4 ${evalStats ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
             {summaryCards.map((card) => (
               <Link key={card.label} href={card.href} className="rounded border border-zinc-200 bg-white p-4 hover:border-zinc-400">
                 <div className="text-xs uppercase tracking-wide text-zinc-500">{card.label}</div>

@@ -86,7 +86,11 @@ export async function createAndRunEvalAction(input: {
   name: string
   config: EvalRunConfig
 }) {
-  const { user, profile, supabase } = await requireRole('consultant')
+  // Platform-admin only (Ember Readiness, Stage 1 --
+  // docs/dev-request-ember-readiness-and-knowledge-gaps.md). An admin may
+  // test-run a draft dataset before it is activated. RLS enforces the
+  // same boundary independently (20261012100001_eval_operations_admin_only.sql).
+  const { user, supabase } = await requireRole('admin')
 
   const { data: dataset, error: datasetError } = await supabase
     .from('eval_datasets')
@@ -94,14 +98,6 @@ export async function createAndRunEvalAction(input: {
     .eq('id', input.datasetId)
     .single()
   if (datasetError || !dataset) throw datasetError ?? new Error('Dataset not found')
-
-  // Consultants may only run against a published benchmark, never a draft
-  // still being authored -- curator/admin keep the ability to test-run
-  // against a draft before activating it. RLS enforces the same boundary
-  // independently (20260810100004_eval_consultant_access.sql).
-  if (profile.role === 'consultant' && dataset.status !== 'active') {
-    throw new EvalValidationError('This benchmark is not active yet')
-  }
 
   const { data: run, error: runError } = await supabase
     .from('eval_runs')
@@ -132,7 +128,7 @@ export async function createAndRunEvalAction(input: {
 }
 
 export async function markBaselineAction(runId: string, datasetId: string) {
-  const { supabase } = await requireRole('curator')
+  const { supabase } = await requireRole('admin')
 
   await supabase.from('eval_runs').update({ is_baseline: false }).eq('dataset_id', datasetId).eq('is_baseline', true)
   const { error } = await supabase.from('eval_runs').update({ is_baseline: true }).eq('id', runId)
@@ -154,7 +150,7 @@ export interface HumanReviewInput {
 // comment in the migration. This is the one place a human's judgment is
 // recorded, alongside the automated evaluation, not instead of it.
 export async function submitHumanReviewAction(resultId: string, runId: string, input: HumanReviewInput) {
-  const { user, supabase } = await requireRole('curator')
+  const { user, supabase } = await requireRole('admin')
 
   const { error } = await supabase
     .from('eval_results')

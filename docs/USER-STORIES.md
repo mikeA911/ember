@@ -1,6 +1,6 @@
 # Ember — User Stories by Role and Module
 
-**Status:** Living reference; describes behavior implemented in the repository as of 4 October 2026
+**Status:** Living reference; describes behavior implemented in the repository as of 5 October 2026
 **Audience:** Product, design, QA, onboarding leads and anyone writing acceptance tests
 **Related:** `docs/CURRENT-ARCHITECTURE.md`, `docs/ROADMAP.md`, `docs/workbench-handbook-how-kb-sandbox-is-organized.md`
 
@@ -24,7 +24,7 @@ Ember has two separate authorization tiers: a **platform role** (`profiles.role`
 |---|---|---|---|
 | **Platform Admin** | `admin` | Any (bypasses Project membership) | Operates the instance: users, AI providers, external access, final approval of canonical knowledge and publication. |
 | **Curator** | `curator` | `owner` or `curator` | Governs knowledge and Projects: curates sources, drafts the Wiki, defines benchmarks, manages members, reviews and approves work. |
-| **Consultant** | `consultant` | `consultant` | Does the work: converses with Ember, runs evaluations, performs Workstreams, attaches evidence and submits sources for review. |
+| **Consultant** | `consultant` | `consultant` | Does the work: converses with Ember, performs Workstreams, attaches evidence and submits sources for review. |
 | **Viewer** | `member` | `viewer` | Participates read-only: reads approved knowledge and Project material, asks Ember questions, keeps personal notes. |
 
 Notes on the mapping:
@@ -74,7 +74,7 @@ Notes on the mapping:
 | WST Workstreams and presentations | ○ | ● | ● | ● |
 | ASM Assessments | ○ | ● | ● | ● |
 | MTH Methods | ○ | ● | ○ | ● |
-| EVL Evaluations | ○ | ● | ● | ○ |
+| EVL Evaluations | ● | ● | — | — |
 | AGT Graphs, agents and registry | ○ | ● | ● | ○ |
 | PUB Publishing, blog and trending | ● | ● | ○ | ● |
 | FBK Feedback and roadmap | ● | ○ | ○ | ● |
@@ -325,17 +325,7 @@ As a Consultant, I want to complete a system assessment's questions and save my 
 
 ### EVL — Evaluations
 
-**CON-EVL-01 — Run an evaluation**
-As a Consultant, I want to run an active benchmark dataset against a chosen configuration (single pass, graph or Agent; chunks, Wiki or both; generation, embedding and judge models), so that a change is judged on evidence rather than impression.
-- Consultants may run only **active** datasets.
-- The run snapshots its full configuration so it stays interpretable after the registry changes.
-- A failed case still produces a result row with a structured error.
-
-**CON-EVL-02 — Inspect results and traces**
-As a Consultant, I want to drill into each case's retrieved evidence, metrics (Hit@K, Recall@K, MRR, grounding, outcome), judge output and graph trace, so that I can see why a configuration passed or failed.
-
-**CON-EVL-03 — Compare against the baseline**
-As a Consultant, I want to compare a run with the dataset's baseline run, so that I know whether my change helped.
+Consultants have no evaluation stories. Running evaluations, reading results and marking baselines moved to the Platform Admin on 5 October 2026 (Ember Readiness, Stage 1); see [ADM-EVL](#evl--evaluations-2).
 
 ### AGT — Graphs, agents and agent registry
 
@@ -346,8 +336,8 @@ As a Consultant, I want to create an Agent from an Agent Template with its purpo
 **CON-AGT-02 — Ask an Agent a question**
 As a Consultant, I want to ask the RAG Answer Agent a question and see its answer and trace, so that I can test it on real questions.
 
-**CON-AGT-03 — Run an Agent's evaluation suite**
-As a Consultant, I want to run an Agent against a benchmark from its detail page, so that its performance is comparable to other runs.
+**CON-AGT-03 — Run an Agent's evaluation suite** *(Platform Admin only since 5 October 2026)*
+As a Platform Admin, I want to run an Agent against a benchmark from its detail page, so that its performance is comparable to other runs. The **Run evaluation suite** button is hidden from everyone else; see [ADM-EVL-02](#evl--evaluations-2).
 
 **CON-AGT-04 — Inspect graphs**
 As a Consultant, I want to view each graph's versions and flow, so that I understand how a retry loop is configured.
@@ -531,21 +521,13 @@ As a Project Curator, I want to create a Workstream from a published Method in m
 ### EVL — Evaluations
 
 **CUR-EVL-01 — Build a benchmark dataset**
-As a Curator, I want to create a dataset and add cases with a question, expected answer, expected concepts, expected chunks and articles, criteria, tags and difficulty, so that AI configurations can be scored.
+As a Curator, I want to create a dataset and add cases with a question, expected answer, expected concepts, expected chunks and articles, criteria, tags and difficulty, so that Ember can be checked against questions whose correct answers I know.
+- A Project curator manages their own Project's dataset and its draft cases even when their platform role is consultant.
 
 **CUR-EVL-02 — Activate or archive a dataset**
-As a Curator, I want to activate a dataset (it needs at least one case) and archive it later, so that consultants have a stable benchmark.
+As a Curator, I want to activate a dataset (it needs at least one case) and archive it later, so that the platform admin has a stable benchmark to run.
 - Once a dataset leaves draft, its cases are frozen.
-
-**CUR-EVL-03 — Run draft datasets**
-As a Curator, I want to run a dataset while it is still in draft, so that I can check the cases before activating it.
-
-**CUR-EVL-04 — Mark a baseline**
-As a Curator, I want to mark one run as the dataset's baseline, so that later runs have a reference.
-
-**CUR-EVL-05 — Add a human review**
-As a Curator, I want to record my own scores and failure classification for a result, so that human judgement sits next to the automated metrics.
-- Human review never overwrites the automated scores.
+- Curators no longer run datasets, mark baselines or record human review (Platform Admin, [ADM-EVL](#evl--evaluations-2)).
 
 ### AGT — Graphs, agents and agent registry
 
@@ -614,6 +596,31 @@ As a Platform Admin, I want to archive an article, so that outdated knowledge st
 **ADM-WIK-03 — Make an article public**
 As a Platform Admin, I want to make an approved article public or private, so that only content safe for anonymous readers is disclosed.
 - Approved and public are separate decisions.
+
+### EVL — Evaluations
+
+AI evaluation is evidence that Ember understands a Project's context before it suggests anything. Running it is a platform decision, like choosing the default model (Ember Readiness, Stage 1 — `docs/dev-request-ember-readiness-and-knowledge-gaps.md`).
+
+**ADM-EVL-01 — See Ember readiness across datasets**
+As a Platform Admin, I want one view of every non-archived dataset with its Project, number of questions and latest completed run (Hit@K, outcome score, results awaiting review), so that I know which Projects Ember has been checked against and which need a run.
+- Admin → **Ember readiness**.
+- Failed runs and runs awaiting review are called out.
+
+**ADM-EVL-02 — Run an evaluation**
+As a Platform Admin, I want to run a dataset against a chosen configuration (single pass, graph or Agent; chunks, Wiki or both; generation, embedding and judge models), including a draft dataset before it is activated, so that a change is judged on evidence rather than impression.
+- Only platform admins can create runs, in the Server Action and in RLS.
+- The run snapshots its full configuration so it stays interpretable after the registry changes.
+- A failed case still produces a result row with a structured error.
+
+**ADM-EVL-03 — Inspect results and traces**
+As a Platform Admin, I want to drill into each case's retrieved evidence, metrics (Hit@K, Recall@K, MRR, grounding, outcome), judge output and graph trace, so that I can see why a configuration passed or failed.
+
+**ADM-EVL-04 — Mark a baseline and compare**
+As a Platform Admin, I want to mark one run as the dataset's baseline and compare later runs with it, so that I know whether a model, prompt or retrieval change helped.
+
+**ADM-EVL-05 — Add a human review**
+As a Platform Admin, I want to record my own scores and failure classification for a result, so that human judgement sits next to the automated metrics.
+- Human review never overwrites the automated scores.
 
 ### PUB — Publishing, blog and trending
 
