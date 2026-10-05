@@ -58,7 +58,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the detailed, up-to-date status of ea
 
 2. Copy `.env.example` to `.env.local` and fill in your Supabase project's URL/keys, plus the API key for at least one AI provider (only the key for a provider you actually enable in the admin AI Config page is required).
 
-3. Apply the database schema: the SQL files under `supabase/migrations/` are the source of truth. On a fresh project, paste `supabase/combined_migration.sql` (every migration in order, in one transaction) into the Supabase SQL Editor, then run `supabase/migration_status_check.sql` there to confirm each migration's objects exist. Both files are generated — run `npm run db:build-sql` after adding a migration. For an existing project, apply only the new files in order via the SQL Editor or `scripts/run-migrations.mjs`.
+3. Apply the database schema: the SQL files under `supabase/migrations/` are the source of truth. On a fresh project, paste `supabase/combined_migration.sql` (every migration in order, in one transaction) into the Supabase SQL Editor, then run `supabase/migration_status_check.sql` there to confirm each migration's objects exist. Both files are generated — run `npm run db:build-sql` after adding a migration. For an existing project, apply only the new files in order via the SQL Editor or `scripts/run-migrations.mjs`, then run `supabase/migration_status_check_recent.sql`: the same check for only the last 10 migrations, short enough to load quickly in the SQL Editor.
 
 4. Run the development server:
 
