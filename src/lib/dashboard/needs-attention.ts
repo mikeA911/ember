@@ -16,7 +16,12 @@ export interface NeedsAttentionItem {
 // single SQL query, since "needs attention" spans unrelated tables with
 // different meanings of "pending." Items with count 0 are still returned
 // (not filtered here) so the UI decides how to render an all-clear state.
-export async function getNeedsAttention(supabase: SupabaseClient<Database>): Promise<NeedsAttentionItem[]> {
+// includeEvalRuns: failed evaluation runs are only actionable by a platform
+// admin (Ember Readiness, Stage 1), so other viewers never get that line.
+export async function getNeedsAttention(
+  supabase: SupabaseClient<Database>,
+  { includeEvalRuns }: { includeEvalRuns: boolean }
+): Promise<NeedsAttentionItem[]> {
   const [
     { data: submittedDocs },
     unpublishedArticles,
@@ -28,7 +33,7 @@ export async function getNeedsAttention(supabase: SupabaseClient<Database>): Pro
   ] = await Promise.all([
     supabase.from('documents').select('id').eq('processing_status', 'submitted'),
     listUnpublishedArticles(supabase),
-    supabase.from('eval_runs').select('id').eq('status', 'failed'),
+    includeEvalRuns ? supabase.from('eval_runs').select('id').eq('status', 'failed') : Promise.resolve({ data: null }),
     listProjectsWithDraftUpdates(supabase),
     listTrendingUnderReview(supabase),
     listProjectsWithMissingAuthorities(supabase),
@@ -40,7 +45,7 @@ export async function getNeedsAttention(supabase: SupabaseClient<Database>): Pro
   return [
     { label: 'documents sent for optional admin sign-off', count: (submittedDocs ?? []).length, href: '/upload' },
     { label: 'Wiki articles awaiting approval', count: unpublishedArticles.length, href: '/wiki' },
-    { label: 'failed evaluation runs', count: (failedRuns ?? []).length, href: '/evals' },
+    ...(includeEvalRuns ? [{ label: 'failed evaluation runs', count: (failedRuns ?? []).length, href: '/evals' }] : []),
     { label: 'unpublished project updates', count: draftProjects.length, href: '/projects' },
     { label: 'Trending items under review', count: trendingUnderReview.length, href: '/trending' },
     { label: 'projects with a governance authority needed', count: projectsMissingAuthorities.length, href: '/projects' },

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { SectionHero } from '@/components/SectionHero'
 
@@ -26,14 +27,21 @@ export default async function EvalsPage() {
     ? await supabase.from('profiles').select('role').eq('id', user.id).single()
     : { data: null }
   const canAuthor = viewerProfile?.role === 'curator' || viewerProfile?.role === 'admin'
+  // Ember Readiness, Stage 1: running evals and reading runs is platform-
+  // admin work (reached from Admin -> Ember readiness). Curators still come
+  // here to find and author datasets; everyone else goes back to Ember.
+  const isAdmin = viewerProfile?.role === 'admin'
+  if (!canAuthor) redirect('/dashboard')
 
   const [{ data: datasets }, { data: runs }] = await Promise.all([
     supabase.from('eval_datasets').select('*').order('created_at', { ascending: false }),
-    supabase
-      .from('eval_runs')
-      .select('id, name, status, dataset_id, is_baseline, created_at, completed_at')
-      .order('created_at', { ascending: false })
-      .limit(20),
+    isAdmin
+      ? supabase
+          .from('eval_runs')
+          .select('id, name, status, dataset_id, is_baseline, created_at, completed_at')
+          .order('created_at', { ascending: false })
+          .limit(20)
+      : Promise.resolve({ data: [] }),
   ])
 
   const datasetNameById = new Map((datasets ?? []).map((d) => [d.id, d.name]))
@@ -70,49 +78,51 @@ export default async function EvalsPage() {
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Recent runs</h2>
-        <div className="rounded border border-zinc-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="border-b border-zinc-200 text-left text-zinc-500">
-              <tr>
-                <th className="px-4 py-2 font-medium">Run</th>
-                <th className="px-4 py-2 font-medium">Dataset</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(runs ?? []).map((r) => (
-                <tr key={r.id} className="border-b border-zinc-100 last:border-0">
-                  <td className="px-4 py-3">
-                    <Link href={`/evals/runs/${r.id}`} className="font-medium underline">
-                      {r.name || r.id.slice(0, 8)}
-                    </Link>
-                    {r.is_baseline && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">baseline</span>}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600">{datasetNameById.get(r.dataset_id) ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${RUN_STATUS_STYLES[r.status]}`}>{r.status}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link href={`/evals/runs/new?dataset=${r.dataset_id}`} className="text-xs underline">
-                      Run again
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              {(runs ?? []).length === 0 && (
+      {isAdmin && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Recent runs</h2>
+          <div className="rounded border border-zinc-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="border-b border-zinc-200 text-left text-zinc-500">
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-zinc-500">
-                    No runs yet.
-                  </td>
+                  <th className="px-4 py-2 font-medium">Run</th>
+                  <th className="px-4 py-2 font-medium">Dataset</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="px-4 py-2 font-medium"></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {(runs ?? []).map((r) => (
+                  <tr key={r.id} className="border-b border-zinc-100 last:border-0">
+                    <td className="px-4 py-3">
+                      <Link href={`/evals/runs/${r.id}`} className="font-medium underline">
+                        {r.name || r.id.slice(0, 8)}
+                      </Link>
+                      {r.is_baseline && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">baseline</span>}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600">{datasetNameById.get(r.dataset_id) ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${RUN_STATUS_STYLES[r.status]}`}>{r.status}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Link href={`/evals/runs/new?dataset=${r.dataset_id}`} className="text-xs underline">
+                        Run again
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+                {(runs ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-zinc-500">
+                      No runs yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   )
 }

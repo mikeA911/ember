@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { summarizeResults } from '@/lib/eval/scoring'
@@ -29,7 +29,8 @@ export default async function EvalRunPage({ params }: { params: Promise<{ id: st
   const { data: viewerProfile } = user
     ? await supabase.from('profiles').select('role').eq('id', user.id).single()
     : { data: null }
-  const canAuthor = viewerProfile?.role === 'curator' || viewerProfile?.role === 'admin'
+  // Ember Readiness, Stage 1: eval runs are platform-admin work.
+  if (viewerProfile?.role !== 'admin') redirect('/dashboard')
 
   const { data: run } = await supabase.from('eval_runs').select('*').eq('id', id).single()
   if (!run) notFound()
@@ -76,7 +77,7 @@ export default async function EvalRunPage({ params }: { params: Promise<{ id: st
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {dataset?.project_id && user && viewerProfile?.role !== 'anonymous' && (
+          {dataset?.project_id && (
             <Link
               href={`/projects/${dataset.project_id}/notes?contextType=eval_run&contextId=${run.id}`}
               className="text-sm underline"
@@ -84,7 +85,7 @@ export default async function EvalRunPage({ params }: { params: Promise<{ id: st
               + Note about this run
             </Link>
           )}
-          {canAuthor && run.status === 'completed' && !run.is_baseline && <BaselineButton runId={run.id} datasetId={run.dataset_id} />}
+          {run.status === 'completed' && !run.is_baseline && <BaselineButton runId={run.id} datasetId={run.dataset_id} />}
         </div>
       </div>
 

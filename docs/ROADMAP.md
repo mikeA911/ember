@@ -130,6 +130,7 @@ Status terms used below:
 - The Assistant can select generation-capable models from the AI registry rather than relying on hard-coded model names.
 - Assistant messages retain durable provider/model snapshots, allowing model changes within one conversation without rewriting history.
 - Guided-method reasoning has been tested against representative requirement-resolution scenarios.
+- Ember Readiness, Stage 1: running evaluations, marking baselines and human review are now platform-admin work, enforced in the Server Actions and RLS; Admin → **Ember readiness** lists every dataset with its Project and latest run, and Evals is removed from non-admin navigation and dashboards. Curators keep authoring test questions (5 Oct).
 
 ### Validate
 
@@ -141,7 +142,7 @@ Status terms used below:
 - Define a pre-beta Assistant evaluation rubric covering correctness, grounding, method fit, prerequisite detection, safe action boundaries, provenance, latency, and recovery from tool failure.
 - Record basic Wizard/method outcomes so the product can learn which guided methods work in practice.
 - Establish the evaluation criteria for the first external pilot.
-- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): move eval operations (runs, baselines, human review) to the admin dashboard as platform-admin work; add a per-Project Ember Readiness section showing curator confidence, the measured eval score and open knowledge gaps; let Project members report Ember failures; detect knowledge gaps automatically in Project-bound chat and route them to the Project's curators; let a resolved gap become a draft eval case.
+- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): Stage 1 is done (see Recent internal development). Remaining: a per-Project Ember Readiness section showing curator confidence, the measured eval score and open knowledge gaps; let Project members report Ember failures; detect knowledge gaps automatically in Project-bound chat and route them to the Project's curators; let a resolved gap become a draft eval case.
 
 ### Future
 

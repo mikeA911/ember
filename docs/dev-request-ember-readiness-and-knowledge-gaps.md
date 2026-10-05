@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed. Companion to `docs/dev-request-solution-conformance-and-acceptance-evaluation.md`. Worked example: the `cebu-ng911` Project.
+Stage 1 (admin dashboard changes) built 5 October 2026; Stages 2–4 proposed. Companion to `docs/dev-request-solution-conformance-and-acceptance-evaluation.md`. Worked example: the `cebu-ng911` Project.
 
 ## Problem
 
@@ -116,6 +116,15 @@ Any member may attach a candidate source to a gap; only curators approve it into
 - Remove **Evals** from the main navigation and the dashboard tile for non-admins. Replace the tile with the Readiness section.
 - Restrict creating eval runs, marking baselines and human review to platform admins (Server Actions and RLS). Hide the Agent page's **Run evaluation suite** button from non-admins.
 - Project curators keep authoring draft cases for their own Projects' datasets, since they know the correct answers. The Project page links to that dataset's case editor, not to runs.
+
+**As built (Stage 1, 5 October 2026):** the eval pages stay at their existing `/evals` routes rather than moving under `/admin`, so existing links keep working; `/evals/runs/*` redirects non-admins and `/evals` shows curators their datasets only. Admin → **Ember readiness** lists every non-archived dataset with its Project, question count and latest completed run, and links into those pages. Activating and archiving a dataset stays with curators. The per-Project readiness columns and cross-Project gap trends arrive with Stages 2 and 3.
+
+## Delivery stages
+
+1. **Admin move** — eval runs, baselines and human review become platform-admin work (Server Actions and RLS); Evals leaves non-admin navigation and dashboards; Admin → Ember readiness. *Built.*
+2. **Readiness section** — curator confidence and verdict with history, measured score and knowledge coverage on Project pages and the non-admin dashboard.
+3. **Failure reports and the curator gap queue** — including promotion of a resolved gap to a draft eval case.
+4. **Automatic gap detection** — `knowledgeCoverage`, the retrieval signal, grouping and curator notification.
 
 ## Data model (indicative)
 

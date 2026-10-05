@@ -67,7 +67,7 @@ Do not copy the entire workflow into every release note. Update the workflow her
 | Blog contribution | `/contribute/blog` | Draft and submit articles | Curator and admin |
 | Public Blog | `/blog` | Read published articles | Public |
 | Trending | `/trending` | Share and examine external material before it becomes knowledge | Signed-in users |
-| Explore: Evals | `/evals` | Evaluate models, retrieval, or other AI behavior | Signed-in; data is access-scoped |
+| Explore: Evals | `/evals` | Check whether Ember answers a Project's test questions correctly | Platform admin (also Admin → **Ember readiness**); curators reach their datasets from a Project or `/evals` |
 | Explore: Graphs | `/graphs` | Inspect agent and Method flow visualizations | Signed-in users |
 | Explore: Agents | `/agents` | View and use available agents, including Ember | Signed-in users |
 | Explore: Agent Registry | `/agent-registry` | Register and inspect externally implemented agents | Signed-in non-anonymous users |
@@ -99,7 +99,7 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Users and authority:** Admin and curator. A signed-in `consultant` or `member` (an ordinary Project member) instead lands on the Ember-first home described in the next entry -- this summary view is no longer what that role sees at `/dashboard`.
 - **Prerequisites:** Signed-in admin or curator session.
 - **Start:** `/dashboard`
-- **Navigation:** Use the summary cards for Projects, Knowledge, Evaluations, Agents, or Trending; use **Sources & Curation** to open `/upload`. As of 2026-09-04, a **Continue where you left off** callout (the Project behind the viewer's most recent conversation) and a **Your projects** list (every active membership, role badge, most-recently-worked-on first) appear right below the summary cards -- the same "land somewhere useful, not just stats" shortcut the Ember-first home already had.
+- **Navigation:** Use the summary cards for Projects, Knowledge, Evaluations (platform admin only), Agents, or Trending; use **Sources & Curation** to open `/upload`. As of 2026-09-04, a **Continue where you left off** callout (the Project behind the viewer's most recent conversation) and a **Your projects** list (every active membership, role badge, most-recently-worked-on first) appear right below the summary cards -- the same "land somewhere useful, not just stats" shortcut the Ember-first home already had.
 - **Outcome:** A role-aware summary of accessible work and direct links to the corresponding areas, including straight back into the viewer's own Projects without a trip to `/projects`.
 - **Ember guidance:** Ember may explain the cards and provide stable links. It should mention that counts and attention items depend on access and role. Ember has no dedicated tool for "Your projects"/"Continue where you left off" -- point the user to `/dashboard` if asked how to get back to a Project quickly.
 - **Boundaries:** Wiki review queues and governance attention items are limited to curator/admin users. Shared links and personal notes are shown only to eligible signed-in users. Dashboard totals do not authorize access to an underlying item. "Your projects" only ever lists the viewer's own active memberships -- never an org-wide list (that stays `/projects/portfolio`'s job).
@@ -417,15 +417,17 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 
 ### Evals
 
-- **Intent:** Measure model, retrieval, or workflow quality using repeatable datasets and runs.
-- **Start:** `/evals`
-- **Navigation:** Explore → **Evals**.
-- **Ember guidance:** Explain available evaluation concepts and direct the user to the relevant dataset or run only when authorized.
-- **Exposure:** Results are candidates for read access; creating or running evaluations requires scoped controls.
-- **Users and authority:** Curators and admins create datasets and cases, run draft datasets, mark baselines and record human reviews; consultants run active datasets only; viewers have no access. Project-scoped datasets are visible only to Project members.
-- **Verification:** Header and evaluation routes; code verified 2026-08-28; authority re-checked against `docs/USER-STORIES.md` 2026-10-05. Detailed workflows remain to be catalogued.
+- **Intent:** Check whether Ember (or an Agent) finds the right evidence and answers correctly, using datasets of test questions with known answers and sources.
+- **Users and authority:** Platform admins run evaluations (including draft datasets), read runs and results, mark baselines and record human review. Platform curators, and Project curators for their own Project's dataset, create datasets and author draft cases, and activate or archive datasets. Consultants and viewers have no evaluation access.
+- **Start:** Admin → **Ember readiness** (admin), or `/evals`.
+- **Navigation:** Admin: **Admin** → **Ember readiness** for every dataset's latest run, or Explore → **Evals**. Curator: open the Project and follow its dataset link under **Evals**, or go to `/evals` (datasets only, no runs). The Agent page's **Run evaluation suite** button is admin-only.
+- **Outcome:** An admin sees per dataset the Project, number of questions, latest completed run (Hit@K, outcome score), results awaiting review, and failed runs; a curator sees and edits the dataset's test questions.
+- **Ember guidance:** Explain what evals measure and send curators to their dataset to add test questions. Do not offer to run an evaluation or show results to anyone but a platform admin.
+- **Boundaries:** Once a dataset leaves draft its cases are frozen (RLS). Run, baseline and review writes are admin-only in both the Server Actions and RLS (`20261012100001_eval_operations_admin_only.sql`); `/evals/runs/*` redirects non-admins to `/dashboard`.
 - **What evals measure:** Evals measure Ember and Agents (whether answers retrieve the right evidence and stay grounded), not a Project's delivered solution. Ember should not describe an eval score as evidence that a client system conforms to a standard.
-- **Planned, not yet available:** `docs/dev-request-ember-readiness-and-knowledge-gaps.md` proposes moving runs, baselines and human review to the admin dashboard, adding a per-Project **Ember Readiness** section (curator confidence, measured score, open knowledge gaps), failure reports from Ember answers, and automatic knowledge-gap reports to Project curators. `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` proposes a separate **Solution evaluation** area for requirements, verification evidence and conformance decisions. Until these ship, Ember must not tell users these features exist or direct them to them; if a user reports that Ember could not answer from Project knowledge, suggest they tell a Project curator or submit a candidate source.
+- **Exposure:** Results are candidates for admin read access only; running evaluations stays a UI action.
+- **Verification:** Code verified 2026-10-05 (Ember Readiness, Stage 1). Detailed workflows remain to be catalogued.
+- **Planned, not yet available:** `docs/dev-request-ember-readiness-and-knowledge-gaps.md` Stages 2–4 add a per-Project **Ember Readiness** section (curator confidence, measured score, open knowledge gaps), failure reports from Ember answers, and automatic knowledge-gap reports to Project curators. `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` proposes a separate **Solution evaluation** area for requirements, verification evidence and conformance decisions. Until these ship, Ember must not tell users these features exist or direct them to them; if a user reports that Ember could not answer from Project knowledge, suggest they tell a Project curator or submit a candidate source.
 
 ### Graphs
 

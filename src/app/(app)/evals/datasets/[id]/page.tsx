@@ -24,7 +24,9 @@ export default async function EvalDatasetPage({ params }: { params: Promise<{ id
     supabase.from('wiki_articles').select('id, title, slug').eq('status', 'approved').order('title'),
   ])
 
-  const canRun = canAuthor || dataset.status === 'active'
+  // Ember Readiness, Stage 1: only platform admins run evaluations; curators
+  // keep authoring this dataset's cases.
+  const canRun = viewerProfile?.role === 'admin'
 
   return (
     <div className="flex flex-col gap-6">

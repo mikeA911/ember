@@ -17,6 +17,10 @@ const consultantRunUpdateRlsSql = fs.readFileSync(
   path.join(process.cwd(), 'supabase/migrations/20260810100005_eval_runs_update_consultant.sql'),
   'utf-8'
 )
+const adminOnlyRlsSql = fs.readFileSync(
+  path.join(process.cwd(), 'supabase/migrations/20261012100001_eval_operations_admin_only.sql'),
+  'utf-8'
+)
 const consultantVectorRlsSql = fs.readFileSync(
   path.join(process.cwd(), 'supabase/migrations/20260810100006_consultant_vector_read_access.sql'),
   'utf-8'
@@ -109,5 +113,42 @@ describe('Evaluation consultant vector-read RLS (additive)', () => {
       expect(consultantVectorRlsSql).toMatch(new RegExp(`create policy "${table}_select_consultant" on ${table}`))
     }
     expect(consultantVectorRlsSql).toMatch(/role = 'consultant'/)
+  })
+})
+
+describe('Evaluation operations admin-only RLS (Ember Readiness, Stage 1)', () => {
+  // Running evals, marking a baseline and human review are platform-admin
+  // work. Every insert/update policy that let curators or consultants write
+  // eval_runs / eval_results is dropped and replaced by an is_admin one.
+  it('drops every curator and consultant write policy on eval_runs and eval_results', () => {
+    for (const policy of [
+      'eval_runs_insert_staff',
+      'eval_runs_update_staff',
+      'eval_runs_insert_active_consultant',
+      'eval_runs_update_own_consultant',
+      'eval_results_insert_staff',
+      'eval_results_update_staff',
+      'eval_results_insert_active_consultant',
+    ]) {
+      expect(adminOnlyRlsSql).toMatch(new RegExp(`drop policy if exists "${policy}"`))
+    }
+  })
+
+  it('gates eval_runs and eval_results inserts and updates to platform admins', () => {
+    for (const table of ['eval_runs', 'eval_results']) {
+      expect(adminOnlyRlsSql).toMatch(
+        new RegExp(`create policy "${table}_insert_admin" on ${table}\\s+for insert with check \\(is_admin\\(auth\\.uid\\(\\)\\)\\)`)
+      )
+      expect(adminOnlyRlsSql).toMatch(
+        new RegExp(
+          `create policy "${table}_update_admin" on ${table}\\s+for update using \\(is_admin\\(auth\\.uid\\(\\)\\)\\) with check \\(is_admin\\(auth\\.uid\\(\\)\\)\\)`
+        )
+      )
+    }
+  })
+
+  it('leaves dataset and case authoring alone', () => {
+    const statements = adminOnlyRlsSql.split('\n').filter((l) => !l.trimStart().startsWith('--'))
+    expect(statements.join('\n')).not.toMatch(/eval_datasets|eval_cases/)
   })
 })
