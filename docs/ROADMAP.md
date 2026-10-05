@@ -1,7 +1,7 @@
 # KB Sandbox Roadmap
 
 **Status:** Living internal roadmap; the public About page no longer mirrors it verbatim (see note below)  
-**Last updated:** 4 October 2026
+**Last updated:** 5 October 2026
 
 ## How to read this roadmap
 
@@ -10,6 +10,8 @@ This document is the durable internal source of truth for the M1–M10 milestone
 **2026-08-29:** The public About page's "Roadmap" section (the M1–M10 milestone table with Live/Planned status) was replaced with a "What makes KB Sandbox different" section -- twenty differentiators plus a positioning statement, aimed at a general/prospect audience rather than an internal build-status view. The About page is no longer the roadmap's public display surface; this document is now the primary place the M1–M10 structure and status are recorded. The "Public status" column below keeps its Live/Planned values as a record of each milestone's actual delivery state, not as a claim about what's shown publicly.
 
 **2026-10-04:** Added the work delivered between late August and early October 2026: Builder mode and agencies, Workstream promotion and presentations, Methods, the Builder Ontology, working knowledge, Project creation approval and the Live status, Project evidence access, the Agent Gateway and the read-only external MCP server. Dates in parentheses are when each item landed in the repository. The product is now presented as **Ember**; "KB Sandbox" remains the codebase and roadmap name.
+
+**2026-10-05:** Added two proposed dev requests: Ember Readiness and knowledge gaps (M3) and solution conformance and acceptance evaluation (M7). They separate *AI evaluation* (does Ember understand a Project well enough to be trusted?) from *solution evaluation* (does the Project's delivered solution meet its standards and contract?). Both are Next items; neither is built.
 
 Each milestone can continue to gain capabilities after its core is live. Internal work is placed under the public milestone whose product outcome it advances, even when the work spans several technical layers.
 
@@ -139,6 +141,7 @@ Status terms used below:
 - Define a pre-beta Assistant evaluation rubric covering correctness, grounding, method fit, prerequisite detection, safe action boundaries, provenance, latency, and recovery from tool failure.
 - Record basic Wizard/method outcomes so the product can learn which guided methods work in practice.
 - Establish the evaluation criteria for the first external pilot.
+- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): move eval operations (runs, baselines, human review) to the admin dashboard as platform-admin work; add a per-Project Ember Readiness section showing curator confidence, the measured eval score and open knowledge gaps; let Project members report Ember failures; detect knowledge gaps automatically in Project-bound chat and route them to the Project's curators; let a resolved gap become a draft eval case.
 
 ### Future
 
@@ -286,6 +289,7 @@ Status terms used below:
 - Replace free-text-only guardrails with reusable, versioned guardrail templates where runtime enforcement is meaningful.
 - Define the confirmation and approval policy for each Assistant tool.
 - Define retention and privacy boundaries for demand events, conversations, project knowledge, tool records, and model provenance.
+- **Solution conformance and acceptance evaluation** (`docs/dev-request-solution-conformance-and-acceptance-evaluation.md`): govern evaluation of a Project's delivered solution, separate from AI evaluation. Requirements traced to standards (e.g. NENA), regulation, contract and vendor claims; verification methods with explicit pass criteria; append-only verification records with artifact evidence; frozen evaluation baselines; conformance decisions and waivers through existing approval policies; re-verification during management and maintenance. Worked example: `cebu-ng911`.
 - Extend the AI-processing sensitivity gate to the remaining outbound AI call sites (evaluation judging/generation/retrieval, journal generation, curator enrichment, embedding calls) using the shared policy service already built -- deferred pending customer feedback on priority.
 
 ### Future
@@ -438,3 +442,5 @@ These priorities span the roadmap but should remain attached to the public miles
 - User stories by role and module: `docs/USER-STORIES.md`
 - Builder product: `docs/dev-request-kb-sandbox-builder-product.md`
 - External MCP server: `docs/dev-request-ember-external-mcp-server.md`
+- Ember Readiness and knowledge gaps: `docs/dev-request-ember-readiness-and-knowledge-gaps.md`
+- Solution conformance and acceptance evaluation: `docs/dev-request-solution-conformance-and-acceptance-evaluation.md`

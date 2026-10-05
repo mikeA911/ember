@@ -422,7 +422,10 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Navigation:** Explore → **Evals**.
 - **Ember guidance:** Explain available evaluation concepts and direct the user to the relevant dataset or run only when authorized.
 - **Exposure:** Results are candidates for read access; creating or running evaluations requires scoped controls.
-- **Verification:** Header and evaluation routes; code verified 2026-08-28. Detailed workflows remain to be catalogued.
+- **Users and authority:** Curators and admins create datasets and cases, run draft datasets, mark baselines and record human reviews; consultants run active datasets only; viewers have no access. Project-scoped datasets are visible only to Project members.
+- **Verification:** Header and evaluation routes; code verified 2026-08-28; authority re-checked against `docs/USER-STORIES.md` 2026-10-05. Detailed workflows remain to be catalogued.
+- **What evals measure:** Evals measure Ember and Agents (whether answers retrieve the right evidence and stay grounded), not a Project's delivered solution. Ember should not describe an eval score as evidence that a client system conforms to a standard.
+- **Planned, not yet available:** `docs/dev-request-ember-readiness-and-knowledge-gaps.md` proposes moving runs, baselines and human review to the admin dashboard, adding a per-Project **Ember Readiness** section (curator confidence, measured score, open knowledge gaps), failure reports from Ember answers, and automatic knowledge-gap reports to Project curators. `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` proposes a separate **Solution evaluation** area for requirements, verification evidence and conformance decisions. Until these ship, Ember must not tell users these features exist or direct them to them; if a user reports that Ember could not answer from Project knowledge, suggest they tell a Project curator or submit a candidate source.
 
 ### Graphs
 
@@ -497,6 +500,7 @@ The following areas need deeper workflow-level verification in later passes:
 - project knowledge-base and Wiki attachment/reuse;
 - project-bound Ember conversations, artifacts, and recovery;
 - assessments, datasets, evaluation runs, and result approval;
+- Ember Readiness, knowledge gaps and solution evaluation, once built (see the Evals entry);
 - agent graph and external registry detail views;
 - profile, journals, and feedback/problem reporting;
 - owner Roadmap access and export; and
