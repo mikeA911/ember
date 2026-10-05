@@ -4,6 +4,7 @@ import { AuthError } from '@/lib/auth'
 import { getActiveProjectRole, type WorkbenchCallerContext } from '@/lib/workbench/context'
 import { createProjectNote } from '@/lib/projects/notes'
 import { listMessages } from '@/lib/chat/conversations'
+import { embedKnowledgeGap } from './knowledge-gap-embedding'
 import type { Database, KnowledgeGapFailureKind, KnowledgeGapStatus, ProjectKnowledgeGap } from '@/types/database'
 
 // Ember Readiness, Stage 3 (docs/dev-request-ember-readiness-and-knowledge-
@@ -90,8 +91,16 @@ async function notifyCurators(ctx: WorkbenchCallerContext, projectId: string, ga
   )
 }
 
+// Failure reports are embedded too, so later detections of the same question
+// group with them (best effort -- without an embedding they still group by
+// word overlap).
 async function insertGap(ctx: WorkbenchCallerContext, row: Database['public']['Tables']['project_knowledge_gaps']['Insert']): Promise<string> {
-  const { data, error } = await ctx.supabase.from('project_knowledge_gaps').insert(row).select('id').single()
+  const embedding = await embedKnowledgeGap(ctx, row.project_id as string, row.question as string, row.missing_topic)
+  const { data, error } = await ctx.supabase
+    .from('project_knowledge_gaps')
+    .insert({ ...row, embedding: embedding?.embedding ?? null, embedding_model: embedding?.model ?? null })
+    .select('id')
+    .single()
   if (error || !data) throw error ?? new Error('Could not save the report')
   return data.id
 }

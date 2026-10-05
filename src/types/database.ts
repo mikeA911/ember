@@ -839,7 +839,11 @@ export type ProjectKnowledgeGapInsert = Pick<ProjectKnowledgeGap, 'project_id' |
       | 'answer_model'
       | 'cited_sources'
     >
-  >
+  > & {
+    // AI-based grouping (20261018100001): pgvector, sent as a number array.
+    embedding?: number[] | null
+    embedding_model?: string | null
+  }
 
 export type ProjectKnowledgeGapUpdate = Partial<
   Pick<
@@ -3491,7 +3495,16 @@ interface DatabaseDefinition {
       mcp_rate_hit: { Args: { p_user_id: string; p_client_id: string; p_minute_limit: number; p_day_limit: number }; Returns: boolean }
       project_ember_readiness_signals: { Args: { pids: string[] }; Returns: ProjectEmberReadinessSignals[] }
       record_automatic_knowledge_gap: {
-        Args: { p_message_id: string; p_question: string; p_missing_topic: string | null; p_signal: KnowledgeGapSignal }
+        Args: {
+          p_message_id: string
+          p_question: string
+          p_missing_topic: string | null
+          p_signal: KnowledgeGapSignal
+          // AI-based grouping (20261018100001); omitted -> word overlap only.
+          p_embedding?: number[] | null
+          p_embedding_model?: string | null
+          p_min_similarity?: number
+        }
         Returns: { gap_id: string; occurrence_id: string; is_new: boolean; occurrence_count: number }[]
       }
       withdraw_knowledge_gap_occurrence: { Args: { p_occurrence_id: string }; Returns: void }

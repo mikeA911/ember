@@ -9,6 +9,7 @@ export const AI_TASKS = {
   chat: 'Ember chat',
   conversation_summary: 'Conversation summary',
   knowledge_search: 'Project knowledge search (in chat)',
+  knowledge_gap_grouping: 'Knowledge gap grouping',
   chunk_enrichment: 'Chunk enrichment',
   chunk_embedding: 'Chunk embedding',
   wiki_draft: 'Wiki draft',

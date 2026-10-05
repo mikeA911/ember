@@ -146,7 +146,7 @@ Status terms used below:
 - Define a pre-beta Assistant evaluation rubric covering correctness, grounding, method fit, prerequisite detection, safe action boundaries, provenance, latency, and recovery from tool failure.
 - Record basic Wizard/method outcomes so the product can learn which guided methods work in practice.
 - Establish the evaluation criteria for the first external pilot.
-- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): all four stages are done (see Recent internal development). Remaining follow-ups: cross-Project gap trends on the admin dashboard, and embedding-based grouping if word-overlap grouping proves too coarse.
+- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): all four stages are done (see Recent internal development). Remaining follow-up: cross-Project gap trends on the admin dashboard. Gap grouping is now AI-based (embeddings, word overlap as fallback).
 
 ### Future
 
