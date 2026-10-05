@@ -12,6 +12,8 @@ const {
   resolveKnowledgeGap,
   promoteKnowledgeGapToEvalCase,
   convertKnowledgeGapToFeedback,
+  addKnowledgeGapOccurrenceDetails,
+  withdrawKnowledgeGapOccurrence,
   KnowledgeGapValidationError,
 } = await import('./knowledge-gaps')
 
@@ -300,6 +302,43 @@ describe('convertKnowledgeGapToFeedback', () => {
     expect(report).toMatchObject({ reporter_id: 'admin-1', type: 'bug', project_id: 'p1' })
     expect(report.description).toContain('How are Mitel SIP trunks configured?')
     expect(updates(supabase, 'project_knowledge_gaps')[0]).toMatchObject({ feedback_report_id: 'fb-1', status: 'product_issue', resolved_by: 'admin-1' })
+  })
+})
+
+describe('addKnowledgeGapOccurrenceDetails (Stage 4)', () => {
+  it('saves the asker’s note and suggested source on their own detection', async () => {
+    const { supabase, ctx } = makeCtx({ project_knowledge_gap_occurrences: [{ data: { project_id: 'p1' }, error: null }] })
+    expect(await addKnowledgeGapOccurrenceDetails(ctx, 'occ-1', { note: ' Port numbers ', suggestedSource: 'Mitel guide' })).toEqual({ projectId: 'p1' })
+    expect(updates(supabase, 'project_knowledge_gap_occurrences')[0]).toEqual({ note: 'Port numbers', suggested_source: 'Mitel guide' })
+    expect(supabase._calls).toContainEqual({ table: 'project_knowledge_gap_occurrences', method: 'eq', args: { column: 'user_id', value: 'user-1' } })
+  })
+
+  it('needs at least one detail, and fails clearly when the detection is not theirs', async () => {
+    const empty = makeCtx({})
+    await expect(addKnowledgeGapOccurrenceDetails(empty.ctx, 'occ-1', { note: ' ', suggestedSource: '' })).rejects.toThrow('Add a detail')
+    const notMine = makeCtx({ project_knowledge_gap_occurrences: [{ data: null, error: null }] })
+    await expect(addKnowledgeGapOccurrenceDetails(notMine.ctx, 'occ-1', { note: 'x', suggestedSource: '' })).rejects.toThrow('could not be found')
+  })
+})
+
+describe('withdrawKnowledgeGapOccurrence (Stage 4)', () => {
+  function withRpc(error: { message: string } | null) {
+    const fake = createFakeSupabase({ project_knowledge_gap_occurrences: [{ data: { project_id: 'p1' }, error: null }] })
+    const rpc = async () => ({ data: null, error })
+    return { user: { id: 'user-1' }, profile: { role: 'member' }, supabase: { ...fake, rpc } } as unknown as WorkbenchCallerContext
+  }
+
+  it('withdraws through the database function', async () => {
+    expect(await withdrawKnowledgeGapOccurrence(withRpc(null), 'occ-1')).toEqual({ projectId: 'p1' })
+  })
+
+  it('explains when a curator is already working on it, or it is too late', async () => {
+    await expect(withdrawKnowledgeGapOccurrence(withRpc({ message: 'withdraw_knowledge_gap_occurrence: a curator is already working on this gap' }), 'occ-1')).rejects.toThrow(
+      'A curator is already working on this gap'
+    )
+    await expect(withdrawKnowledgeGapOccurrence(withRpc({ message: 'withdraw_knowledge_gap_occurrence: nothing to withdraw' }), 'occ-1')).rejects.toThrow(
+      'can no longer be withdrawn'
+    )
   })
 })
 

@@ -72,6 +72,9 @@ export interface DisplayMessage {
   // The persisted assistant row -- what "Report a problem with this answer"
   // points at (Ember Readiness, Stage 3).
   messageId?: string
+  // Stage 4: this answer was filed as a knowledge gap -- the caller's own
+  // detection, if it still exists (not withdrawn).
+  knowledgeGap?: { occurrenceId: string; createdAt: string; hasDetails: boolean }
 }
 
 // Turns persisted rows back into the same shape ChatPanel renders live.
@@ -89,6 +92,26 @@ export async function toDisplayMessages(
   ctx: WorkbenchCallerContext
 ): Promise<DisplayMessage[]> {
   const out: DisplayMessage[] = []
+
+  // Stage 4: the caller's own knowledge-gap detections on these answers.
+  // Best effort -- history still renders if this read fails.
+  const assistantIds = rows.filter((r) => r.role === 'assistant').map((r) => r.id)
+  const gapByMessageId = new Map<string, NonNullable<DisplayMessage['knowledgeGap']>>()
+  if (assistantIds.length > 0) {
+    try {
+      const { data: occurrences } = await ctx.supabase
+        .from('project_knowledge_gap_occurrences')
+        .select('id, message_id, created_at, note, suggested_source')
+        .eq('user_id', ctx.user.id)
+        .in('message_id', assistantIds)
+      for (const o of occurrences ?? []) {
+        if (o.message_id) gapByMessageId.set(o.message_id, { occurrenceId: o.id, createdAt: o.created_at, hasDetails: !!(o.note || o.suggested_source) })
+      }
+    } catch (err) {
+      console.error('Could not read knowledge-gap detections for this conversation', err)
+    }
+  }
+
   let pendingTools = new Set<string>()
   let pendingCreatedRefs: CreatedRecordRef[] = []
   let pendingInvocationIds: string[] = []
@@ -150,6 +173,7 @@ export async function toDisplayMessages(
     out.push({
       role: 'assistant',
       messageId: row.id,
+      ...(gapByMessageId.has(row.id) ? { knowledgeGap: gapByMessageId.get(row.id) } : {}),
       content: row.content ?? '',
       providerDisplayName: names?.providerDisplayName ?? row.provider ?? undefined,
       modelDisplayName: names?.modelDisplayName ?? row.model ?? undefined,

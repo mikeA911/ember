@@ -22,7 +22,13 @@ const tavilyApiKeyMock = vi.fn()
 const runSearchMyWorkingKnowledgeMock = vi.fn()
 const runSearchSharedWorkingKnowledgeMock = vi.fn()
 const runSaveWorkingKnowledgeMock = vi.fn()
+const recordKnowledgeGapMock = vi.fn()
 
+// Stage 4: the real detection rules run; only the database write is mocked.
+vi.mock('./knowledge-gap-detection', async () => {
+  const actual = await vi.importActual<typeof import('./knowledge-gap-detection')>('./knowledge-gap-detection')
+  return { ...actual, recordKnowledgeGap: (...args: unknown[]) => recordKnowledgeGapMock(...args) }
+})
 vi.mock('./web-search-tool', () => ({
   SEARCH_WEB_TOOL: { name: 'search_web', description: '', parameters: {} },
   SEARCH_WEB_TOOL_NAME: 'search_web',
@@ -201,6 +207,8 @@ beforeEach(() => {
   runSearchMyWorkingKnowledgeMock.mockReset()
   runSearchSharedWorkingKnowledgeMock.mockReset()
   runSaveWorkingKnowledgeMock.mockReset()
+  recordKnowledgeGapMock.mockReset()
+  recordKnowledgeGapMock.mockResolvedValue({ gapId: 'gap-1', occurrenceId: 'occ-1', isNew: true, occurrenceCount: 1 })
   // Unset by default -- matches most tests' expectation that search_web is
   // simply absent unless a test opts in.
   tavilyApiKeyMock.mockReturnValue(undefined)
@@ -1201,3 +1209,75 @@ describe('runAssistantTurn -- Live client Project (Sandz-hosted AI only)', () =>
     expect(resolveChatProviderMock).toHaveBeenCalledWith(expect.anything(), undefined, expect.anything(), { selfHostedOnly: false })
   })
 })
+
+// Ember Readiness, Stage 4 (docs/dev-request-ember-readiness-and-knowledge-
+// gaps.md): a Project answer not grounded in the Project's knowledge files
+// a knowledge gap; general chat and grounded answers never do.
+describe('runAssistantTurn -- knowledge gap detection', () => {
+  function projectCtx() {
+    const ctx = fakeCtx()
+    const originalFrom = ctx.supabase.from.bind(ctx.supabase)
+    ctx.supabase.from = ((table: string) => {
+      if (table === 'projects') {
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: async () => ({ data: { id: 'proj-1', name: 'cebu-ng911', goal: null, information_sensitivity: null }, error: null }) }),
+          }),
+        }
+      }
+      if (table === 'project_knowledge_bases' || table === 'project_wiki_articles') {
+        return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
+      }
+      return originalFrom(table as never)
+    }) as unknown as typeof ctx.supabase.from
+    createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
+    return ctx
+  }
+
+  function respondWith(knowledgeCoverage?: { status: string; missingTopic?: string }) {
+    generateChatMock.mockResolvedValue({
+      message: {
+        role: 'assistant',
+        content: '',
+        toolCalls: [
+          {
+            id: 'call-1',
+            name: 'present_assistant_response',
+            arguments: { schemaVersion: '1.0', message: "This project's knowledge doesn't cover Mitel SIP trunks.", ...(knowledgeCoverage ? { knowledgeCoverage } : {}) },
+          },
+        ],
+      },
+      model: 'test-model',
+      usage: { inputTokens: 5, outputTokens: 5 },
+    })
+  }
+
+  it('files a gap when Ember declares the answer is not in the Project knowledge, and returns it to the UI', async () => {
+    respondWith({ status: 'not_in_project_knowledge', missingTopic: 'Mitel SIP trunk configuration' })
+
+    const result = await runAssistantTurn(projectCtx(), null, 'How are Mitel SIP trunks configured?', undefined, 'proj-1')
+
+    expect(recordKnowledgeGapMock).toHaveBeenCalledWith(expect.anything(), {
+      projectId: 'proj-1',
+      messageId: 'msg-saved',
+      question: 'How are Mitel SIP trunks configured?',
+      missingTopic: 'Mitel SIP trunk configuration',
+      signal: 'declared',
+    })
+    expect(result.knowledgeGap).toEqual({ gapId: 'gap-1', occurrenceId: 'occ-1', isNew: true, occurrenceCount: 1 })
+  })
+
+  it('files nothing when Ember says the Project knowledge answered it', async () => {
+    respondWith({ status: 'answered' })
+    const result = await runAssistantTurn(projectCtx(), null, 'Hi!', undefined, 'proj-1')
+    expect(recordKnowledgeGapMock).not.toHaveBeenCalled()
+    expect(result.knowledgeGap).toBeUndefined()
+  })
+
+  it('never files a gap from general (unbound) chat', async () => {
+    respondWith({ status: 'not_in_project_knowledge', missingTopic: 'anything' })
+    await runAssistantTurn(fakeCtx(), null, 'How are Mitel SIP trunks configured?')
+    expect(recordKnowledgeGapMock).not.toHaveBeenCalled()
+  })
+})
+

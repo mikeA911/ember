@@ -240,3 +240,29 @@ describe('project_ember_readiness migration', () => {
     expect(sql).toMatch(/grant execute on function project_ember_readiness_signals\(uuid\[\]\) to authenticated/)
   })
 })
+
+describe('workstream knowledge in Project search (20261016100001)', () => {
+  const sql = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20261016100001_workstream_knowledge_in_project_search.sql'), 'utf-8')
+
+  it('lets Project members read knowledge bases attached to the Project or one of its workstreams, with strict membership', () => {
+    const fn = sql.slice(sql.indexOf('create or replace function knowledge_base_readable_via_project('))
+    expect(fn).toMatch(/from project_knowledge_bases pkb\s+where pkb\.knowledge_base_id = p_kb_id and is_project_member_strict\(pkb\.project_id, uid\)/)
+    expect(fn).toMatch(/from workstream_knowledge_bases wkb\s+join project_workstreams w on w\.id = wkb\.workstream_id\s+where wkb\.knowledge_base_id = p_kb_id and is_project_member_strict\(w\.project_id, uid\)/)
+  })
+
+  it('keeps evidence-access restrictions on every read path it widens', () => {
+    for (const policy of ['knowledge_sources_select_staff_or_owner_or_project_member', 'documents_select_staff_or_owner_or_project_member', 'kb_vectors_select_scoped']) {
+      const body = sql.slice(sql.indexOf(`create policy "${policy}"`))
+      expect(body.slice(0, 900)).toMatch(/has_evidence_access\('knowledge_source'/)
+      expect(body.slice(0, 900)).toMatch(/knowledge_base_readable_via_project\(kb\.id, auth\.uid\(\)\)/)
+    }
+  })
+
+  it('counts readiness coverage over exactly the Project search scope', () => {
+    const fn = sql.slice(sql.indexOf('create or replace function project_ember_readiness_signals('))
+    expect(fn).toMatch(/from workstream_knowledge_bases wkb/)
+    expect(fn).not.toMatch(/\bkb\.project_id/)
+    expect(fn).not.toMatch(/w\.knowledge_base_id = pk\.kb_id/)
+  })
+})
+

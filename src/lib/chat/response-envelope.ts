@@ -82,8 +82,19 @@ export const AssistantResponseEnvelopeSchema = z.object({
     .max(8)
     .optional(),
   suggestedPrompts: z.array(z.string().max(160)).max(4).optional(),
+  // Ember Readiness, Stage 4: in a Project conversation, whether this answer
+  // is grounded in the Project's own approved knowledge. 'partial' or
+  // 'not_in_project_knowledge' files a knowledge gap for the Project's
+  // curators (src/lib/chat/knowledge-gap-detection.ts).
+  knowledgeCoverage: z
+    .object({
+      status: z.enum(['answered', 'partial', 'not_in_project_knowledge']),
+      missingTopic: z.string().max(200).optional(),
+    })
+    .optional(),
 })
 export type AssistantResponseEnvelope = z.infer<typeof AssistantResponseEnvelopeSchema>
+export type KnowledgeCoverage = NonNullable<AssistantResponseEnvelope['knowledgeCoverage']>
 
 // The shape actually persisted to chat_messages.response_payload. Citations
 // are permanently filtered here to only those verified present in this
@@ -122,6 +133,7 @@ export interface PersistedAssistantEnvelope {
   }[]
   nextSteps?: AssistantResponseEnvelope['nextSteps']
   suggestedPrompts?: string[]
+  knowledgeCoverage?: KnowledgeCoverage
 }
 export type CitationSourceType = z.infer<typeof CitationSourceTypeSchema>
 
@@ -151,6 +163,7 @@ export const PersistedAssistantEnvelopeSchema: z.ZodType<PersistedAssistantEnvel
     .optional(),
   nextSteps: AssistantResponseEnvelopeSchema.shape.nextSteps,
   suggestedPrompts: z.array(z.string()).optional(),
+  knowledgeCoverage: AssistantResponseEnvelopeSchema.shape.knowledgeCoverage,
 })
 
 // The shape actually handed to the client for rendering: links/documents/

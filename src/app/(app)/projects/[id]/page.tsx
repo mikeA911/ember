@@ -15,7 +15,7 @@ import { listKnowledgeBasesForProject, listSourcesForKnowledgeBases, getSourceRe
 import { listArticlesForProject } from '@/lib/wiki/project-links'
 import { getProjectReadiness } from '@/lib/projects/ember-readiness'
 import { EmberReadinessSection } from '@/components/projects/EmberReadinessSection'
-import { listKnowledgeGaps } from '@/lib/projects/knowledge-gaps'
+import { listKnowledgeGaps, listKnowledgeGapOccurrences } from '@/lib/projects/knowledge-gaps'
 import { KnowledgeGapsSection } from '@/components/projects/KnowledgeGapsSection'
 import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton, PendingReviewBadge } from '@/components/projects/KnowledgeBaseAttachManager'
 import { getOrganizationExplorer } from '@/lib/projects/explorer'
@@ -166,6 +166,7 @@ export default async function ProjectPage({
     { data: projectArtifacts },
     emberReadiness,
     knowledgeGaps,
+    knowledgeGapOccurrences,
   ] = await Promise.all([
     listKnowledgeBasesForProject(supabase, id),
     supabase.from('eval_datasets').select('id, name, status').eq('project_id', id),
@@ -238,6 +239,14 @@ export default async function ProjectPage({
           return null
         })
       : Promise.resolve(null),
+    // Stage 4: detections grouped under each gap; same hide-on-failure rule
+    // (an empty list just means no grouped questions are shown).
+    user
+      ? listKnowledgeGapOccurrences(supabase, id).catch((err) => {
+          console.error('Knowledge gap occurrences unavailable', err)
+          return []
+        })
+      : Promise.resolve([]),
   ])
   const statusHistoryActorIds = [...new Set((statusHistory ?? []).map((h) => h.actor_id).filter((x): x is string => !!x))]
 
@@ -396,6 +405,39 @@ export default async function ProjectPage({
   const { data: promotedCases } =
     promotedCaseIds.length > 0 ? await supabase.from('eval_cases').select('id, dataset_id').in('id', promotedCaseIds) : { data: [] }
   const evalCaseDatasetById = new Map((promotedCases ?? []).map((c) => [c.id, c.dataset_id]))
+
+  // What a curator can resolve a gap with: sources in the Project's own
+  // knowledge bases and in its workstreams' (both are Project knowledge for
+  // Ember's search), each marked searchable once it has an approved chunk.
+  // Only fetched for someone who can work the queue.
+  const gapResolutionSources: { id: string; title: string; context: string | null; searchable: boolean }[] = []
+  if (knowledgeGaps && canCurateWorkstreams) {
+    const { data: workstreamKbLinks } = await supabase
+      .from('workstream_knowledge_bases')
+      .select('knowledge_base_id, workstream:project_workstreams!inner(project_id, name)')
+      .eq('workstream.project_id', project.id)
+    const workstreamNameByKbId = new Map<string, string>()
+    for (const link of workstreamKbLinks ?? []) {
+      const workstream = link.workstream as unknown as { name: string } | null
+      if (workstream && !workstreamNameByKbId.has(link.knowledge_base_id)) workstreamNameByKbId.set(link.knowledge_base_id, workstream.name)
+    }
+    const projectSources = [...sourcesByKbId.values()].flat()
+    const projectSourceIds = new Set(projectSources.map((src) => src.id))
+    const workstreamSources = (await listSourcesForKnowledgeBases(supabase, [...workstreamNameByKbId.keys()])).filter((src) => !projectSourceIds.has(src.id))
+    const workstreamReviewCounts = await getSourceReviewCounts(workstreamSources.map((src) => src.documentId).filter((x): x is string => !!x))
+    const isSearchable = (documentId: string | null) =>
+      !!documentId && ((reviewCountsByDocumentId.get(documentId) ?? workstreamReviewCounts.get(documentId))?.approved ?? 0) > 0
+    for (const src of projectSources) {
+      if (src.lifecycleStatus === 'active') gapResolutionSources.push({ id: src.id, title: src.title, context: null, searchable: isSearchable(src.documentId) })
+    }
+    for (const src of workstreamSources) {
+      if (src.lifecycleStatus === 'active') {
+        gapResolutionSources.push({ id: src.id, title: src.title, context: workstreamNameByKbId.get(src.knowledgeBaseId) ?? null, searchable: isSearchable(src.documentId) })
+      }
+    }
+  }
+  const occurrencesByGapId = new Map<string, typeof knowledgeGapOccurrences>()
+  for (const o of knowledgeGapOccurrences) occurrencesByGapId.set(o.gap_id, [...(occurrencesByGapId.get(o.gap_id) ?? []), o])
   const directoryMembers = (activeMembers ?? []).map((m) => ({
     membershipId: m.id,
     userId: m.user_id,
@@ -745,9 +787,11 @@ export default async function ProjectPage({
           gaps={knowledgeGaps}
           isCurator={canCurateWorkstreams}
           nameForUser={(userId) => (userId ? memberEmailById.get(userId) || 'a former member' : 'a former member')}
-          sources={[...sourcesByKbId.values()].flat().map((src) => ({ id: src.id, title: src.title }))}
+          sources={gapResolutionSources}
+          submittableArtifacts={(submittableArtifacts ?? []).map((a) => ({ id: a.id, title: a.title }))}
           articles={effectiveLinkedArticles.flatMap((l) => (l.article ? [{ id: l.article.id, title: l.article.title }] : []))}
           evalCaseDatasetById={evalCaseDatasetById}
+          occurrencesByGapId={occurrencesByGapId}
         />
       )}
 

@@ -793,8 +793,33 @@ export interface ProjectKnowledgeGap {
   feedback_report_id: string | null
   resolved_by: string | null
   resolved_at: string | null
+  // Stage 4 (20261015100001_knowledge_gap_detection.sql): how many times
+  // the question has come up, including grouped detections.
+  occurrence_count: number
+  last_occurred_at: string
   created_at: string
   updated_at: string
+}
+
+// Stage 4: one row per detection grouped under a gap. Visible to the person
+// who asked and the Project's curators/admins. Written only through
+// record_automatic_knowledge_gap / withdraw_knowledge_gap_occurrence; the
+// asker may add a note and a suggested source.
+export type KnowledgeGapSignal = 'declared' | 'no_project_evidence'
+
+export interface ProjectKnowledgeGapOccurrence {
+  id: string
+  gap_id: string
+  project_id: string
+  user_id: string
+  conversation_id: string | null
+  message_id: string | null
+  question: string
+  missing_topic: string | null
+  signal: KnowledgeGapSignal
+  note: string | null
+  suggested_source: string | null
+  created_at: string
 }
 
 export type ProjectKnowledgeGapInsert = Pick<ProjectKnowledgeGap, 'project_id' | 'question' | 'reported_by'> &
@@ -3248,6 +3273,12 @@ interface DatabaseDefinition {
         Update: ProjectKnowledgeGapUpdate
         Relationships: []
       }
+      project_knowledge_gap_occurrences: {
+        Row: ProjectKnowledgeGapOccurrence
+        Insert: never
+        Update: Partial<Pick<ProjectKnowledgeGapOccurrence, 'note' | 'suggested_source'>>
+        Relationships: []
+      }
       project_ember_readiness: {
         Row: ProjectEmberReadiness
         Insert: Omit<ProjectEmberReadiness, 'id' | 'set_at' | 'measured_score_at_set'>
@@ -3362,6 +3393,11 @@ interface DatabaseDefinition {
       decrement_approved_chunks: { Args: { doc_id: string }; Returns: void }
       mcp_rate_hit: { Args: { p_user_id: string; p_client_id: string; p_minute_limit: number; p_day_limit: number }; Returns: boolean }
       project_ember_readiness_signals: { Args: { pids: string[] }; Returns: ProjectEmberReadinessSignals[] }
+      record_automatic_knowledge_gap: {
+        Args: { p_message_id: string; p_question: string; p_missing_topic: string | null; p_signal: KnowledgeGapSignal }
+        Returns: { gap_id: string; occurrence_id: string; is_new: boolean; occurrence_count: number }[]
+      }
+      withdraw_knowledge_gap_occurrence: { Args: { p_occurrence_id: string }; Returns: void }
       match_documents: {
         Args: {
           query_embedding: number[]

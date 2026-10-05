@@ -133,6 +133,8 @@ Status terms used below:
 - Ember Readiness, Stage 1: running evaluations, marking baselines and human review are now platform-admin work, enforced in the Server Actions and RLS; Admin → **Ember readiness** lists every dataset with its Project and latest run, and Evals is removed from non-admin navigation and dashboards. Curators keep authoring test questions (5 Oct).
 - Ember Readiness, Stage 2: every Project page and dashboard shows how ready Ember is for each Project -- the curator's confidence, verdict and reason (append-only history, review date) beside the measured score from the latest admin run and the Project's knowledge coverage, with review-due and disagreement notices (5 Oct).
 - Ember Readiness, Stage 3: Project members report Ember failures ("Report a problem" under an answer attaches the question, answer, sources and model automatically); the Project's curators triage, resolve by linking the source or Wiki article that now covers it, turn the question into a draft test question, or move a product problem to the feedback board. Open-gap counts appear in readiness (5 Oct).
+- Ember Readiness, Stage 4: in Project chat Ember flags answers it couldn't ground in the Project's knowledge (its own declaration, or an empty Project search) and files them as knowledge gaps, grouping repeated questions; the person who asked can add details or withdraw it, and curators get one note per new gap plus milestone digests (5 Oct).
+- Project knowledge scope: knowledge bases attached to a Project's workstreams now count as Project evidence in Ember's search and in readiness coverage (member read access extended accordingly, evidence-access restrictions unchanged); the gap Resolve form shows which sources are searchable and how to submit an approved artifact as a source (5 Oct).
 
 ### Validate
 
@@ -144,7 +146,7 @@ Status terms used below:
 - Define a pre-beta Assistant evaluation rubric covering correctness, grounding, method fit, prerequisite detection, safe action boundaries, provenance, latency, and recovery from tool failure.
 - Record basic Wizard/method outcomes so the product can learn which guided methods work in practice.
 - Establish the evaluation criteria for the first external pilot.
-- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): Stages 1–3 are done (see Recent internal development). Remaining (Stage 4): detect knowledge gaps automatically in Project-bound chat, group repeated questions and route them to the Project's curators.
+- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): all four stages are done (see Recent internal development). Remaining follow-ups: cross-Project gap trends on the admin dashboard, and embedding-based grouping if word-overlap grouping proves too coarse.
 
 ### Future
 

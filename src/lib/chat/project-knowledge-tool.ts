@@ -22,7 +22,7 @@ const InputSchema = z.object({ query: z.string(), limit: z.number().int().min(1)
 export const SEARCH_PROJECT_KNOWLEDGE_TOOL: ToolSpec = {
   name: SEARCH_PROJECT_KNOWLEDGE_TOOL_NAME,
   description:
-    "Semantic search over THIS project's own approved knowledge -- its attached knowledge base source documents and any Wiki articles attached specifically to it. Results are tagged layer:'project' (this project's own evidence, prefer this) or layer:'platform' (general shared knowledge, used only to fill gaps). The project is fixed for this conversation -- there is no project parameter to set. Prefer this over search_wiki when it's available.",
+    "Semantic search over THIS project's own approved knowledge -- source documents in knowledge bases attached to the project or to one of its workstreams, and any Wiki articles attached specifically to it. Results are tagged layer:'project' (this project's own evidence, prefer this) or layer:'platform' (general shared knowledge, used only to fill gaps). The project is fixed for this conversation -- there is no project parameter to set. Prefer this over search_wiki when it's available.",
   parameters: z.toJSONSchema(InputSchema),
 }
 
@@ -46,16 +46,25 @@ export interface ProjectKnowledgeHit {
 // (src/lib/eval/retrieval.ts) so both use the exact same "what does this
 // project actually have attached" membership logic rather than two
 // independently-maintained copies of it.
+//
+// Knowledge bases attached to one of the Project's workstreams count as the
+// Project's own (layer 'project') too: curated workstream knowledge is
+// Project knowledge. Their approved chunks are readable by Project members
+// since 20261016100001_workstream_knowledge_in_project_search.sql.
 export async function getProjectKnowledgeScopeIds(
   supabase: WorkbenchCallerContext['supabase'],
   projectId: string
 ): Promise<{ kbIds: Set<string>; articleIds: Set<string> }> {
-  const [{ data: kbLinks }, { data: articleLinks }] = await Promise.all([
+  const [{ data: kbLinks }, { data: workstreamKbLinks }, { data: articleLinks }] = await Promise.all([
     supabase.from('project_knowledge_bases').select('knowledge_base_id').eq('project_id', projectId),
+    supabase
+      .from('workstream_knowledge_bases')
+      .select('knowledge_base_id, workstream:project_workstreams!inner(project_id)')
+      .eq('workstream.project_id', projectId),
     supabase.from('project_wiki_articles').select('wiki_article_id').eq('project_id', projectId),
   ])
   return {
-    kbIds: new Set((kbLinks ?? []).map((l) => l.knowledge_base_id)),
+    kbIds: new Set([...(kbLinks ?? []), ...(workstreamKbLinks ?? [])].map((l) => l.knowledge_base_id)),
     articleIds: new Set((articleLinks ?? []).map((l) => l.wiki_article_id)),
   }
 }

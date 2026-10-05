@@ -179,4 +179,24 @@ describe('toDisplayMessages', () => {
     expect(result[1].toolsUsed).toEqual(['search_wiki'])
     expect(result[3].toolsUsed).toBeUndefined()
   })
+  it('marks an answer the caller had filed as a knowledge gap (Ember Readiness, Stage 4)', async () => {
+    const ctx = {
+      user: { id: 'user-1' },
+      profile: {},
+      supabase: createFakeSupabase({
+        project_knowledge_gap_occurrences: [
+          { data: [{ id: 'occ-1', message_id: 'm2', created_at: '2026-10-05T00:00:00Z', note: null, suggested_source: 'Mitel guide' }], error: null },
+        ],
+      }),
+    } as never
+    const rows = [
+      row({ id: 'm1', role: 'user', content: 'How are Mitel SIP trunks configured?' }),
+      row({ id: 'm2', role: 'assistant', content: 'Not in this project.' }),
+      row({ id: 'm3', role: 'user', content: 'Thanks' }),
+      row({ id: 'm4', role: 'assistant', content: 'You are welcome.' }),
+    ]
+    const result = await toDisplayMessages(rows, new Map(), ctx)
+    expect(result[1].knowledgeGap).toEqual({ occurrenceId: 'occ-1', createdAt: '2026-10-05T00:00:00Z', hasDetails: true })
+    expect(result[3].knowledgeGap).toBeUndefined()
+  })
 })

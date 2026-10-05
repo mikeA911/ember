@@ -64,6 +64,7 @@ export async function buildPersistedEnvelope(
   if (parsed.requirements?.length) persisted.requirements = parsed.requirements
   if (parsed.nextSteps?.length) persisted.nextSteps = parsed.nextSteps
   if (parsed.suggestedPrompts?.length) persisted.suggestedPrompts = parsed.suggestedPrompts
+  if (parsed.knowledgeCoverage) persisted.knowledgeCoverage = parsed.knowledgeCoverage
 
   const resolvedLinks = links.filter((l): l is NonNullable<typeof l> => l !== null)
   if (resolvedLinks.length) persisted.links = resolvedLinks

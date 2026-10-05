@@ -40,6 +40,7 @@ import { defaultNoteTitle } from '@/lib/chat/transcript'
 import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, WebSearchQueries, SuggestedPrompts } from './StructuredResponse'
 import { GatewayInvocationCard } from './GatewayInvocationCard'
 import { ReportAnswerForm } from './ReportAnswerForm'
+import { KnowledgeGapNotice } from './KnowledgeGapNotice'
 
 // Owner Roadmap and Ember Feedback Board, Phase 1. Only the three initial
 // Ember-facing choices -- 'usability'/'documentation' exist as later
@@ -512,6 +513,7 @@ export function ChatSession({
           createdRecords: result.createdRecords.length > 0 ? result.createdRecords : undefined,
           pendingGatewayInvocations: result.pendingGatewayInvocations.length > 0 ? result.pendingGatewayInvocations : undefined,
           messageId: result.messageId,
+          knowledgeGap: result.knowledgeGap ? { occurrenceId: result.knowledgeGap.occurrenceId, createdAt: new Date().toISOString(), hasDetails: false } : undefined,
         },
       ])
       // The model that actually served this turn is now known -- if the
@@ -1396,6 +1398,14 @@ export function ChatSession({
                 <SuggestedPrompts prompts={m.structured?.suggestedPrompts} onSelect={setInput} />
               </div>
               {m.pendingGatewayInvocations?.map((inv) => <GatewayInvocationCard key={inv.invocationId} invocation={inv} />)}
+              {m.knowledgeGap && (
+                <KnowledgeGapNotice
+                  key={m.knowledgeGap.occurrenceId}
+                  occurrenceId={m.knowledgeGap.occurrenceId}
+                  createdAt={m.knowledgeGap.createdAt}
+                  hasDetails={m.knowledgeGap.hasDetails}
+                />
+              )}
               {(m.providerDisplayName || (projectId && m.messageId && !feedbackCategory)) && (
               <div className="mt-0.5">
                 {m.providerDisplayName && (

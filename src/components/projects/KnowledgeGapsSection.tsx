@@ -1,10 +1,44 @@
-import type { ProjectKnowledgeGap } from '@/types/database'
-import { KnowledgeGapActions } from './KnowledgeGapActions'
+import type { ProjectKnowledgeGap, ProjectKnowledgeGapOccurrence } from '@/types/database'
+import { KnowledgeGapActions, type ResolutionSource } from './KnowledgeGapActions'
 import { ReportFailureForm } from './ReportFailureForm'
 import { FAILURE_KIND_LABELS, GAP_STATUS_LABELS, GAP_STATUS_STYLES } from './knowledge-gap-labels'
 import { formatReadinessDate } from './ember-readiness-labels'
 
 const OPEN = new Set(['new', 'needs_source', 'wiki_needed'])
+
+type OccurrenceRow = Pick<ProjectKnowledgeGapOccurrence, 'id' | 'user_id' | 'question' | 'note' | 'suggested_source' | 'created_at'>
+
+// Stage 4: the other ways people asked a grouped question, and any details
+// they added -- only rows that tell the curator something new.
+function GapOccurrences({
+  gap,
+  occurrences,
+  nameForUser,
+}: {
+  gap: ProjectKnowledgeGap
+  occurrences: OccurrenceRow[]
+  nameForUser: (userId: string | null) => string
+}) {
+  const informative = occurrences.filter((o) => o.question !== gap.question || o.note || o.suggested_source)
+  if (informative.length === 0) return null
+  return (
+    <details>
+      <summary className="cursor-pointer text-xs text-zinc-500">How people asked ({informative.length})</summary>
+      <ul className="mt-1 flex flex-col gap-1 text-xs text-zinc-700">
+        {informative.map((o) => (
+          <li key={o.id} className="rounded bg-zinc-50 p-1.5">
+            {o.question !== gap.question && <p>&ldquo;{o.question}&rdquo;</p>}
+            {o.note && <p>Note: {o.note}</p>}
+            {o.suggested_source && <p>Suggested source: {o.suggested_source}</p>}
+            <p className="text-zinc-500">
+              {nameForUser(o.user_id)}, {formatReadinessDate(o.created_at)}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
 
 // Ember Readiness, Stage 3: failure reports and the curators' knowledge-gap
 // queue. Every member can report; a reporter sees their own reports and how
@@ -17,18 +51,27 @@ export function KnowledgeGapsSection({
   isCurator,
   nameForUser,
   sources,
+  submittableArtifacts,
   articles,
   evalCaseDatasetById,
+  occurrencesByGapId,
 }: {
   projectId: string
   gaps: ProjectKnowledgeGap[]
   isCurator: boolean
   nameForUser: (userId: string | null) => string
-  // What a gap can be resolved with: this Project's sources and Wiki articles.
-  sources: { id: string; title: string }[]
+  // What a gap can be resolved with: sources in the Project's and its
+  // workstreams' knowledge bases (context = workstream name, searchable =
+  // has an approved chunk), and Wiki articles attached to the Project.
+  sources: ResolutionSource[]
+  // Approved workstream artifacts a curator could submit as a new source.
+  submittableArtifacts: { id: string; title: string }[]
   articles: { id: string; title: string }[]
   // eval_cases.id -> dataset id, for gaps already turned into test questions.
   evalCaseDatasetById: Map<string, string>
+  // Stage 4: detections grouped under each gap (all of them for a curator,
+  // only the viewer's own otherwise).
+  occurrencesByGapId: Map<string, OccurrenceRow[]>
 }) {
   const open = gaps.filter((g) => OPEN.has(g.status))
   const closed = gaps.filter((g) => !OPEN.has(g.status))
@@ -52,6 +95,13 @@ export function KnowledgeGapsSection({
           </span>
         </div>
         <p className="font-medium">{gap.question}</p>
+        {gap.missing_topic && <p className="text-xs text-zinc-600">Missing from the Project&rsquo;s knowledge: {gap.missing_topic}</p>}
+        {gap.occurrence_count > 1 && (
+          <p className="text-xs text-zinc-600">
+            Asked {gap.occurrence_count} times · last {formatReadinessDate(gap.last_occurred_at)}
+          </p>
+        )}
+        <GapOccurrences gap={gap} occurrences={occurrencesByGapId.get(gap.id) ?? []} nameForUser={nameForUser} />
         {gap.details && <p className="text-zinc-700">{gap.details}</p>}
         {gap.correct_answer && (
           <p className="text-zinc-700">
@@ -92,7 +142,9 @@ export function KnowledgeGapsSection({
             isOpen={isOpen}
             canPromote={!gap.eval_case_id && gap.status !== 'out_of_scope' && gap.status !== 'duplicate' && gap.status !== 'product_issue'}
             evalCaseDatasetId={gap.eval_case_id ? (evalCaseDatasetById.get(gap.eval_case_id) ?? null) : null}
+            projectId={projectId}
             sources={sources}
+            submittableArtifacts={submittableArtifacts}
             articles={articles}
             otherGaps={gaps.filter((g) => g.id !== gap.id && g.status !== 'duplicate').map((g) => ({ id: g.id, question: g.question }))}
           />
