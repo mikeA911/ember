@@ -243,6 +243,13 @@ As a Viewer, I want to tell my Project's curators when Ember gets something wron
 - Only in a Project conversation; the report goes to that Project's curators, not to the platform feedback board.
 - Every Project owner/curator gets a note.
 
+**VWR-EVL-05 — Know when Ember couldn't answer from the Project's knowledge**
+As a Viewer, I want Ember to tell me when it couldn't answer my question from this Project's knowledge, and pass that to the curators without my having to report it, so that gaps get filled even when nobody files a report.
+- Only in a Project conversation. Ember files it when it says the answer isn't (or is only partly) in the Project's knowledge, or when its Project search found nothing relevant and it made no statement either way. Greetings, questions about Ember and off-topic questions are not filed.
+- Under the answer: *"This looks like a gap in the Project's knowledge. It has been sent to the Project curators."*, with **Add details** (what I was looking for, a source I know of) and **Don't send** (within a day, until a curator has started on it).
+- If others have asked the same thing, my question is grouped with theirs rather than filed again.
+- Only I and the Project's curators see it.
+
 **VWR-EVL-04 — Follow my reports**
 As a Viewer, I want to see my own reports and what happened to them under **Knowledge gaps**, and get a note when one is resolved or closed, so that I know whether Ember can now answer.
 - I see only my own reports; other members see only the open-gap count.
@@ -563,6 +570,7 @@ As a Project Curator, I want to see every failure report for my Project, triage 
 - Open gaps are listed first; closed ones stay readable.
 - What was reported can't be edited, and nothing is deleted.
 - Resolving, or closing as out of scope or duplicate, sends the reporter a note.
+- Gaps Ember detected itself appear in the same queue as *Detected by Ember*, with the missing topic, how many times the question has come up, and the other wordings and details people added. I get one note when a gap is first detected and a digest note at 3, 10 and 25 occurrences, not one per question.
 
 **CUR-EVL-05 — Turn a gap into a test question** *(owner)*
 As a Project Curator, I want one click to add a gap's question, with its correct answer, to my Project's draft test questions, so that every later evaluation run checks it stays fixed.

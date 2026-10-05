@@ -2,7 +2,7 @@
 
 ## Status
 
-Stages 1 (admin dashboard changes), 2 (readiness section) and 3 (failure reports and the curator gap queue) built 5 October 2026; Stage 4 (automatic gap detection) proposed. Companion to `docs/dev-request-solution-conformance-and-acceptance-evaluation.md`. Worked example: the `cebu-ng911` Project.
+All four stages built 5 October 2026: admin dashboard changes, readiness section, failure reports and the curator gap queue, and automatic gap detection. Companion to `docs/dev-request-solution-conformance-and-acceptance-evaluation.md`. Worked example: the `cebu-ng911` Project.
 
 ## Problem
 
@@ -107,6 +107,15 @@ A gap is raised when (1) says `partial` or `not_in_project_knowledge`, or when (
 - Never raised for questions outside the Project's purpose (Ember marks these `answered` with an explanation that the question is out of scope).
 - The policy gate and evidence access apply. A gap record stores no more of the conversation than the question and Ember's summary, and is visible only to the reporter, the Project's curators and platform admins.
 
+**As built (Stage 4, 5 October 2026):**
+
+- **Declaration.** `knowledgeCoverage` (`status`, optional `missingTopic`) is part of the response envelope and persisted with the answer. The Project prompt tells Ember to set it for every answer about the Project's subject matter, and to set `answered` for greetings, questions about using Ember and out-of-scope questions.
+- **Decision** (`src/lib/chat/knowledge-gap-detection.ts`). A gap is filed when Ember declares `partial` or `not_in_project_knowledge`. When Ember makes no declaration, a gap is filed only if `search_project_knowledge` ran and found no Project-layer hit with similarity of at least 0.4, and the answer cites no Project evidence. **Deviation:** an explicit `answered` declaration suppresses the retrieval signal, because otherwise an out-of-scope question that triggered a search would be filed, contradicting the scope rule below.
+- **Recording and grouping** (`20261015100001_knowledge_gap_detection.sql`). `record_automatic_knowledge_gap()` is a `SECURITY DEFINER` function called in the asking user's session. It accepts only an Ember answer in the caller's own Project `chat` conversation while they are a member, is idempotent per answer, and groups with the most similar open gap in the Project (failure reports included) when similarity is at least 0.65. Otherwise it files a new gap with `origin = 'automatic'`. Every detection is a row in `project_knowledge_gap_occurrences`; gaps carry `occurrence_count` and `last_occurred_at`. **Deviation:** similarity is word overlap (Jaccard over lower-cased words with stop words removed and a light suffix trim), not embeddings. It is deterministic, needs no extra AI call and no change to the AI policy gate, and can be swapped later. In testing, rephrasings scored 0.67–0.80 and two different questions about the same system scored 0.60.
+- **The person who asked** sees *"This looks like a gap in the Project's knowledge. It has been sent to the Project curators."* under the answer (live and when the conversation is reopened), with **Add details** (a note and a suggested source on their own detection) and **Don't send** (within a day). Withdrawing the detection that started an untriaged gap removes it, or re-creates it from the next person's question so the asker's question does not stay on it. Once a curator has triaged it, the starting detection can no longer be withdrawn.
+- **Curators** get one Project note when a gap is first detected and a digest note when the same question has come up 3, 10 and 25 times. **Deviation:** milestone digests rather than a scheduled daily digest, because the app has no scheduler. The queue shows *Asked N times*, the missing topic, and *How people asked*: the other wordings plus any notes and suggested sources.
+- **Scope.** Never from unbound, feedback or journal conversations (enforced in the loop and in the database function). Detections are visible only to the person who asked and the Project's curators/admins; direct inserts and deletes on detections are refused. A failure to record never breaks the chat turn.
+
 ## Curator workflow
 
 A **Knowledge gaps** queue on the Project, combining automatic gaps and failure reports:
@@ -144,7 +153,7 @@ Any member may attach a candidate source to a gap; only curators approve it into
 1. **Admin move** — eval runs, baselines and human review become platform-admin work (Server Actions and RLS); Evals leaves non-admin navigation and dashboards; Admin → Ember readiness. *Built.*
 2. **Readiness section** — curator confidence and verdict with history, measured score and knowledge coverage on Project pages and the non-admin dashboard. *Built.*
 3. **Failure reports and the curator gap queue** — including promotion of a resolved gap to a draft eval case. *Built.*
-4. **Automatic gap detection** — `knowledgeCoverage`, the retrieval signal, grouping and curator notification.
+4. **Automatic gap detection** — `knowledgeCoverage`, the retrieval signal, grouping and curator notification. *Built.*
 
 ## Data model (indicative)
 

@@ -9,6 +9,8 @@ import {
   resolveKnowledgeGap,
   promoteKnowledgeGapToEvalCase,
   convertKnowledgeGapToFeedback,
+  addKnowledgeGapOccurrenceDetails,
+  withdrawKnowledgeGapOccurrence,
   KnowledgeGapValidationError,
   type FailureReportInput,
 } from '@/lib/projects/knowledge-gaps'
@@ -101,5 +103,28 @@ export async function convertKnowledgeGapToFeedbackAction(gapId: string): Promis
     return { reportNumber }
   } catch (err) {
     return { error: toError(err, 'Could not file the feedback report') }
+  }
+}
+
+// Stage 4: under an answer Ember filed as a knowledge gap.
+export async function addKnowledgeGapDetailsAction(occurrenceId: string, input: { note: string; suggestedSource: string }): Promise<{ error?: string }> {
+  const ctx = await requireUser()
+  try {
+    const { projectId } = await addKnowledgeGapOccurrenceDetails(ctx, occurrenceId, input)
+    revalidatePath(`/projects/${projectId}`)
+    return {}
+  } catch (err) {
+    return { error: toError(err, 'Could not add the details') }
+  }
+}
+
+export async function withdrawKnowledgeGapAction(occurrenceId: string): Promise<{ error?: string }> {
+  const ctx = await requireUser()
+  try {
+    const { projectId } = await withdrawKnowledgeGapOccurrence(ctx, occurrenceId)
+    if (projectId) revalidateProject(projectId)
+    return {}
+  } catch (err) {
+    return { error: toError(err, 'Could not withdraw it') }
   }
 }

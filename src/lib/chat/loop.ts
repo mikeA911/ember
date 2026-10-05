@@ -25,7 +25,8 @@ import { createConversation, listMessages, appendMessage } from './conversations
 import { composeWorkingContext } from './context'
 import { getConversationSummary, maybeRefreshSummary } from './summary'
 import { AssistantResponseEnvelopeSchema, PRESENT_RESPONSE_TOOL, PRESENT_RESPONSE_TOOL_NAME } from './response-envelope'
-import type { VerifiedAssistantEnvelope } from './response-envelope'
+import { detectKnowledgeGapSignal, recordKnowledgeGap, type RecordedKnowledgeGap } from './knowledge-gap-detection'
+import type { KnowledgeCoverage, VerifiedAssistantEnvelope } from './response-envelope'
 import {
   buildPersistedEnvelope,
   resolveEnvelopeForDisplay,
@@ -134,6 +135,8 @@ function buildProjectPromptAddendum(context: { name: string; goal: string | null
   const base = `\n\nThis conversation is bound to the Ember project "${context.name}"${context.goal ? ` (goal: ${context.goal})` : ''}. Its own knowledge scope: ${knowledgeScope}.
 
 You have an additional tool, search_project_knowledge, that searches this project's own attached knowledge first. Call it before search_wiki when you need evidence -- its results are tagged layer:'project' (this project's own approved evidence -- prefer this, it wins over general platform guidance when the two conflict) or layer:'platform' (general shared knowledge, used only to fill a genuine gap). If project evidence and platform guidance materially conflict, say so explicitly rather than silently merging them. If the project has no relevant attached knowledge for this question, say that plainly instead of presenting platform guidance as if it were project-specific evidence.
+
+In present_assistant_response, set knowledgeCoverage for every answer to a question about this project's subject matter: status 'answered' when this project's own knowledge (layer:'project' evidence you cite) supports the answer; 'partial' when it covers only part of it; 'not_in_project_knowledge' when it doesn't cover it at all -- even if you answered from platform guidance, web research or general knowledge. With 'partial' or 'not_in_project_knowledge', also set missingTopic: a few words naming what the project's knowledge is missing (e.g. "Mitel PBX SIP trunk configuration"). That automatically files a knowledge gap for the project's curators, so don't ask the user to report it. For greetings, small talk, questions about how to use Ember, or questions outside this project's purpose, set status 'answered' -- those are not gaps in this project's knowledge.
 
 Some evidence in this project may be access-restricted to specific people (e.g. customer pricing visible only to Sales/Finance) -- your tools only ever return what you're personally authorized to see, the same as any other user. If the user seems to expect something you can't retrieve, don't guess why or speculate about what might exist. Say plainly that the information isn't available in your current project access scope and suggest they ask the project owner or access steward to review their access -- never name or describe a restricted resource you can't actually see.
 
@@ -313,6 +316,10 @@ export interface AssistantTurnResult {
   // Readiness, Stage 3). Absent when nothing was persisted (provider error,
   // policy block).
   messageId?: string
+  // Ember Readiness, Stage 4: set when this answer was filed as a knowledge
+  // gap for the Project's curators -- the UI tells the user and offers
+  // "Add details" / "Don't send".
+  knowledgeGap?: RecordedKnowledgeGap
   // Set when `reply` is a friendly stand-in for a failed provider call
   // (rate limit, capacity, auth, ...) rather than a real assistant answer --
   // see the generateChat catch below. A normal AssistantTurnResult (not a
@@ -569,18 +576,48 @@ export async function runAssistantTurn(
   const retrievedWorkingKnowledgeIds = new Map<string, RetrievedWorkingKnowledgeHitInfo>()
   const createdRecordRefs: CreatedRecordRef[] = []
   const pendingGatewayInvocations: PendingGatewayInvocation[] = []
+  // Stage 4 gap detection: whether search_project_knowledge ran this turn
+  // and how relevant its best Project-layer hit was.
+  let projectSearchRan = false
+  let bestProjectSimilarity: number | null = null
 
   // Shared tail for every terminal path below: resolves the embedding model
   // display name, refreshes the conversation summary, and shapes the
   // return value. Never persists anything itself -- each caller appends its
   // own row first, since the content/response_payload differ per path.
-  async function finishTurn(reply: string, structured: VerifiedAssistantEnvelope | null, messageId: string): Promise<AssistantTurnResult> {
+  async function finishTurn(
+    reply: string,
+    structured: VerifiedAssistantEnvelope | null,
+    messageId: string,
+    coverage?: KnowledgeCoverage
+  ): Promise<AssistantTurnResult> {
     const usedEmbeddingRetrieval = toolsUsed.has('search_wiki') || toolsUsed.has(SEARCH_PROJECT_KNOWLEDGE_TOOL_NAME)
     const embeddingModelDisplayName = usedEmbeddingRetrieval ? (await getDefaultModel(ctx.supabase, 'embedding')).model.display_name : undefined
     await maybeRefreshSummary(ctx, conversation.id, contextOmittedMessages, projectContext ? projectContext.informationSensitivity : undefined, selfHostedOnly)
     const resolvedCreatedRecords = (await Promise.all(createdRecordRefs.map((ref) => resolveCreatedRecord(ctx, ref)))).filter(
       (r): r is ResolvedCreatedRecord => r !== null
     )
+    // Stage 4: only a Project chat conversation (never feedback, never
+    // unbound) can expose a gap in a Project's knowledge.
+    let knowledgeGap: RecordedKnowledgeGap | undefined
+    if (resolvedProjectId && !feedbackContext) {
+      const signal = detectKnowledgeGapSignal({
+        coverage,
+        projectSearchRan,
+        bestProjectSimilarity,
+        projectCitationCount: (structured?.citations ?? []).filter((c) => c.layer === 'project').length,
+      })
+      if (signal) {
+        knowledgeGap =
+          (await recordKnowledgeGap(ctx, {
+            projectId: resolvedProjectId,
+            messageId,
+            question: userMessage,
+            missingTopic: coverage?.missingTopic,
+            signal,
+          })) ?? undefined
+      }
+    }
     return {
       conversationId: conversation.id,
       reply,
@@ -595,6 +632,7 @@ export async function runAssistantTurn(
       createdRecords: resolvedCreatedRecords,
       pendingGatewayInvocations,
       messageId,
+      knowledgeGap,
     }
   }
 
@@ -638,7 +676,7 @@ export async function runAssistantTurn(
       responsePayload: persisted,
     })
     const structured = await resolveEnvelopeForDisplay(ctx, persisted)
-    return finishTurn(persisted.message, structured, saved.id)
+    return finishTurn(persisted.message, structured, saved.id, parsed.data.knowledgeCoverage)
   }
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
@@ -817,7 +855,11 @@ export async function runAssistantTurn(
           try {
             const output = await runSearchProjectKnowledge(ctx, resolvedProjectId, toolCall.arguments)
             toolResultText = JSON.stringify(output)
+            projectSearchRan = true
             for (const hit of output.results as ProjectKnowledgeHit[]) {
+              if (hit.layer === 'project' && (bestProjectSimilarity === null || hit.similarity > bestProjectSimilarity)) {
+                bestProjectSimilarity = hit.similarity
+              }
               const info: RetrievedHitInfo = { layer: hit.layer, documentVersionId: hit.documentVersionId }
               if (hit.sourceType === 'wiki_article') retrievedWikiArticleSlugs.set(hit.sourceId, info)
               else retrievedKnowledgeSourceIds.set(hit.sourceId, info)

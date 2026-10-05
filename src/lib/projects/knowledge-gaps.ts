@@ -69,18 +69,22 @@ async function notify(ctx: WorkbenchCallerContext, projectId: string, gapId: str
   }
 }
 
-async function notifyCurators(ctx: WorkbenchCallerContext, projectId: string, gapId: string, question: string) {
+// Every active Project owner/curator, except the actor.
+export async function notifyProjectCurators(ctx: WorkbenchCallerContext, projectId: string, gapId: string, subject: string, body: string) {
   const { data: curators } = await ctx.supabase
     .from('project_members')
     .select('user_id')
     .eq('project_id', projectId)
     .eq('status', 'active')
     .in('role', ['owner', 'curator'])
-  await notify(
+  await notify(ctx, projectId, gapId, (curators ?? []).map((c) => c.user_id), subject, body)
+}
+
+async function notifyCurators(ctx: WorkbenchCallerContext, projectId: string, gapId: string, question: string) {
+  await notifyProjectCurators(
     ctx,
     projectId,
     gapId,
-    (curators ?? []).map((c) => c.user_id),
     'Ember answer reported',
     `A team member reported a problem with an Ember answer: "${question.slice(0, 200)}". Review it in the Project's knowledge gaps.`
   )
@@ -368,4 +372,58 @@ export async function convertKnowledgeGapToFeedback(ctx: WorkbenchCallerContext,
   const now = new Date().toISOString()
   await updateGap(ctx, gapId, { feedback_report_id: report.id, status: 'product_issue', resolved_by: ctx.user.id, resolved_at: now })
   return { projectId: gap.project_id, reportNumber: report.report_number }
+}
+
+// Stage 4: the person who asked adds details to a detected gap ("Add
+// details"). RLS (project_knowledge_gap_occurrences_update_own) and its
+// trigger limit this to their own row's note and suggested source.
+export async function addKnowledgeGapOccurrenceDetails(
+  ctx: WorkbenchCallerContext,
+  occurrenceId: string,
+  input: { note: string; suggestedSource: string }
+): Promise<{ projectId: string }> {
+  const note = clean(input.note, MAX_TEXT)
+  const suggestedSource = clean(input.suggestedSource, MAX_TEXT)
+  if (!note && !suggestedSource) throw new KnowledgeGapValidationError('Add a detail or a source')
+  const { data, error } = await ctx.supabase
+    .from('project_knowledge_gap_occurrences')
+    .update({ note, suggested_source: suggestedSource })
+    .eq('id', occurrenceId)
+    .eq('user_id', ctx.user.id)
+    .select('project_id')
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new KnowledgeGapValidationError('That knowledge gap could not be found')
+  return { projectId: data.project_id }
+}
+
+// Stage 4: "Don't send" -- withdraw_knowledge_gap_occurrence() checks it is
+// the caller's own detection from the last day, and keeps a curator's work.
+export async function withdrawKnowledgeGapOccurrence(ctx: WorkbenchCallerContext, occurrenceId: string): Promise<{ projectId: string | null }> {
+  const { data: occurrence } = await ctx.supabase
+    .from('project_knowledge_gap_occurrences')
+    .select('project_id')
+    .eq('id', occurrenceId)
+    .maybeSingle()
+  const { error } = await ctx.supabase.rpc('withdraw_knowledge_gap_occurrence', { p_occurrence_id: occurrenceId })
+  if (error) {
+    if (error.message.includes('curator is already working')) {
+      throw new KnowledgeGapValidationError('A curator is already working on this gap, so it can no longer be withdrawn')
+    }
+    if (error.message.includes('nothing to withdraw')) throw new KnowledgeGapValidationError('This can no longer be withdrawn')
+    throw error
+  }
+  return { projectId: occurrence?.project_id ?? null }
+}
+
+// Stage 4: detections grouped under each gap, for the curator queue (RLS
+// returns every row to a curator, only their own to anyone else).
+export async function listKnowledgeGapOccurrences(supabase: SupabaseClient<Database>, projectId: string) {
+  const { data, error } = await supabase
+    .from('project_knowledge_gap_occurrences')
+    .select('id, gap_id, user_id, question, missing_topic, signal, note, suggested_source, created_at')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data ?? []
 }

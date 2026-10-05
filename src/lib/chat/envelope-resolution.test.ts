@@ -36,6 +36,20 @@ describe('buildPersistedEnvelope', () => {
     ])
   })
 
+  it('keeps Ember\'s knowledge-coverage declaration (Ember Readiness, Stage 4)', async () => {
+    const parsed = {
+      schemaVersion: '1.0' as const,
+      message: 'Not covered here.',
+      knowledgeCoverage: { status: 'not_in_project_knowledge' as const, missingTopic: 'Mitel SIP trunks' },
+    }
+    const persisted = await buildPersistedEnvelope({} as never, parsed, {
+      wikiArticleSlugs: new Map(),
+      knowledgeSourceIds: new Map(),
+      workingKnowledgeIds: new Map(),
+    })
+    expect(persisted.knowledgeCoverage).toEqual({ status: 'not_in_project_knowledge', missingTopic: 'Mitel SIP trunks' })
+  })
+
   it('attaches layer and documentVersionId from this turn\'s retrieval, never from the model', async () => {
     const parsed = {
       schemaVersion: '1.0' as const,

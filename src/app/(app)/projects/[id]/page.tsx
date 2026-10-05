@@ -15,7 +15,7 @@ import { listKnowledgeBasesForProject, listSourcesForKnowledgeBases, getSourceRe
 import { listArticlesForProject } from '@/lib/wiki/project-links'
 import { getProjectReadiness } from '@/lib/projects/ember-readiness'
 import { EmberReadinessSection } from '@/components/projects/EmberReadinessSection'
-import { listKnowledgeGaps } from '@/lib/projects/knowledge-gaps'
+import { listKnowledgeGaps, listKnowledgeGapOccurrences } from '@/lib/projects/knowledge-gaps'
 import { KnowledgeGapsSection } from '@/components/projects/KnowledgeGapsSection'
 import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton, PendingReviewBadge } from '@/components/projects/KnowledgeBaseAttachManager'
 import { getOrganizationExplorer } from '@/lib/projects/explorer'
@@ -166,6 +166,7 @@ export default async function ProjectPage({
     { data: projectArtifacts },
     emberReadiness,
     knowledgeGaps,
+    knowledgeGapOccurrences,
   ] = await Promise.all([
     listKnowledgeBasesForProject(supabase, id),
     supabase.from('eval_datasets').select('id, name, status').eq('project_id', id),
@@ -238,6 +239,14 @@ export default async function ProjectPage({
           return null
         })
       : Promise.resolve(null),
+    // Stage 4: detections grouped under each gap; same hide-on-failure rule
+    // (an empty list just means no grouped questions are shown).
+    user
+      ? listKnowledgeGapOccurrences(supabase, id).catch((err) => {
+          console.error('Knowledge gap occurrences unavailable', err)
+          return []
+        })
+      : Promise.resolve([]),
   ])
   const statusHistoryActorIds = [...new Set((statusHistory ?? []).map((h) => h.actor_id).filter((x): x is string => !!x))]
 
@@ -396,6 +405,8 @@ export default async function ProjectPage({
   const { data: promotedCases } =
     promotedCaseIds.length > 0 ? await supabase.from('eval_cases').select('id, dataset_id').in('id', promotedCaseIds) : { data: [] }
   const evalCaseDatasetById = new Map((promotedCases ?? []).map((c) => [c.id, c.dataset_id]))
+  const occurrencesByGapId = new Map<string, typeof knowledgeGapOccurrences>()
+  for (const o of knowledgeGapOccurrences) occurrencesByGapId.set(o.gap_id, [...(occurrencesByGapId.get(o.gap_id) ?? []), o])
   const directoryMembers = (activeMembers ?? []).map((m) => ({
     membershipId: m.id,
     userId: m.user_id,
@@ -748,6 +759,7 @@ export default async function ProjectPage({
           sources={[...sourcesByKbId.values()].flat().map((src) => ({ id: src.id, title: src.title }))}
           articles={effectiveLinkedArticles.flatMap((l) => (l.article ? [{ id: l.article.id, title: l.article.title }] : []))}
           evalCaseDatasetById={evalCaseDatasetById}
+          occurrencesByGapId={occurrencesByGapId}
         />
       )}
 
