@@ -15,6 +15,8 @@ import { listKnowledgeBasesForProject, listSourcesForKnowledgeBases, getSourceRe
 import { listArticlesForProject } from '@/lib/wiki/project-links'
 import { getProjectReadiness } from '@/lib/projects/ember-readiness'
 import { EmberReadinessSection } from '@/components/projects/EmberReadinessSection'
+import { listKnowledgeGaps } from '@/lib/projects/knowledge-gaps'
+import { KnowledgeGapsSection } from '@/components/projects/KnowledgeGapsSection'
 import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton, PendingReviewBadge } from '@/components/projects/KnowledgeBaseAttachManager'
 import { getOrganizationExplorer } from '@/lib/projects/explorer'
 import { OrganizationExplorer } from '@/components/projects/OrganizationExplorer'
@@ -163,6 +165,7 @@ export default async function ProjectPage({
     ontologyMapData,
     { data: projectArtifacts },
     emberReadiness,
+    knowledgeGaps,
   ] = await Promise.all([
     listKnowledgeBasesForProject(supabase, id),
     supabase.from('eval_datasets').select('id, name, status').eq('project_id', id),
@@ -227,6 +230,14 @@ export default async function ProjectPage({
       console.error('Ember readiness unavailable', err)
       return null
     }),
+    // Ember Readiness, Stage 3 -- RLS returns the whole queue to a curator
+    // and only their own reports to anyone else. Same hide-on-failure rule.
+    user
+      ? listKnowledgeGaps(supabase, id).catch((err) => {
+          console.error('Knowledge gaps unavailable', err)
+          return null
+        })
+      : Promise.resolve(null),
   ])
   const statusHistoryActorIds = [...new Set((statusHistory ?? []).map((h) => h.actor_id).filter((x): x is string => !!x))]
 
@@ -380,6 +391,11 @@ export default async function ProjectPage({
   ])
   const statusHistoryActorEmail = new Map((statusHistoryActors ?? []).map((p) => [p.id, p.email]))
   const memberEmailById = new Map((memberProfiles ?? []).map((p) => [p.id, p.email]))
+  // Gaps already turned into test questions link to their dataset.
+  const promotedCaseIds = (knowledgeGaps ?? []).map((g) => g.eval_case_id).filter((x): x is string => !!x)
+  const { data: promotedCases } =
+    promotedCaseIds.length > 0 ? await supabase.from('eval_cases').select('id, dataset_id').in('id', promotedCaseIds) : { data: [] }
+  const evalCaseDatasetById = new Map((promotedCases ?? []).map((c) => [c.id, c.dataset_id]))
   const directoryMembers = (activeMembers ?? []).map((m) => ({
     membershipId: m.id,
     userId: m.user_id,
@@ -721,6 +737,17 @@ export default async function ProjectPage({
           canEdit={canCurateWorkstreams}
           datasets={evalDatasets ?? []}
           nameForUser={(userId) => (userId ? memberEmailById.get(userId) || 'a platform admin' : 'a former member')}
+        />
+      )}
+      {knowledgeGaps && (
+        <KnowledgeGapsSection
+          projectId={project.id}
+          gaps={knowledgeGaps}
+          isCurator={canCurateWorkstreams}
+          nameForUser={(userId) => (userId ? memberEmailById.get(userId) || 'a former member' : 'a former member')}
+          sources={[...sourcesByKbId.values()].flat().map((src) => ({ id: src.id, title: src.title }))}
+          articles={effectiveLinkedArticles.flatMap((l) => (l.article ? [{ id: l.article.id, title: l.article.title }] : []))}
+          evalCaseDatasetById={evalCaseDatasetById}
         />
       )}
 

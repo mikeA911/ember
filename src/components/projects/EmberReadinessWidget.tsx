@@ -12,13 +12,14 @@ export function EmberReadinessWidget({ projects }: { projects: { id: string; nam
     <section className="flex flex-col gap-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Ember readiness</h2>
       <div className="overflow-x-auto rounded border border-zinc-200 bg-white">
-        <table className="w-full min-w-[32rem] text-left text-sm">
+        <table className="w-full min-w-[36rem] text-left text-sm">
           <thead className="bg-zinc-50 text-xs text-zinc-500">
             <tr>
               <th className="px-3 py-2 font-medium">Project</th>
               <th className="px-3 py-2 font-medium">Verdict</th>
               <th className="px-3 py-2 text-right font-medium">Curator confidence</th>
               <th className="px-3 py-2 text-right font-medium">Measured score</th>
+              <th className="px-3 py-2 text-right font-medium">Open gaps</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
@@ -38,6 +39,15 @@ export function EmberReadinessWidget({ projects }: { projects: { id: string; nam
                 <td className="px-3 py-2 text-right">{readiness.current ? `${readiness.current.confidencePercent}%` : '—'}</td>
                 <td className="px-3 py-2 text-right">
                   {readiness.measured ? `${readiness.measured.passed}/${readiness.measured.questions} (${readiness.measured.pct}%)` : '—'}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  {readiness.openGapCount > 0 ? (
+                    <Link href={`/projects/${id}#knowledge-gaps`} className="underline">
+                      {readiness.openGapCount}
+                    </Link>
+                  ) : (
+                    0
+                  )}
                 </td>
               </tr>
             ))}

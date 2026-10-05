@@ -235,7 +235,17 @@ As a Viewer, I want to see on the Project page how ready Ember is for this Proje
 - I see counts only (questions passed, sources, searchable sources, Wiki articles), never individual test results.
 
 **VWR-EVL-02 — See readiness for all my Projects**
-As a Viewer, I want an **Ember readiness** table on my dashboard with one row per Project I belong to, so that I can see at a glance where Ember is ready and where it still needs sources.
+As a Viewer, I want an **Ember readiness** table on my dashboard with one row per Project I belong to, including its open knowledge gaps, so that I can see at a glance where Ember is ready and where it still needs sources.
+
+**VWR-EVL-03 — Report an Ember failure**
+As a Viewer, I want to tell my Project's curators when Ember gets something wrong or can't answer — with **Report a problem** under the answer, or from the Project's **Knowledge gaps** section — so that the missing knowledge gets added.
+- From an answer, the question, the answer, its sources and the model are attached automatically from the stored conversation; I only say what was wrong (*Wrong*, *Incomplete*, *Outdated*, *Cited the wrong source*, *Could not answer*) and can add the correct answer and a source.
+- Only in a Project conversation; the report goes to that Project's curators, not to the platform feedback board.
+- Every Project owner/curator gets a note.
+
+**VWR-EVL-04 — Follow my reports**
+As a Viewer, I want to see my own reports and what happened to them under **Knowledge gaps**, and get a note when one is resolved or closed, so that I know whether Ember can now answer.
+- I see only my own reports; other members see only the open-gap count.
 
 ### PUB — Publishing, blog and trending
 
@@ -547,6 +557,21 @@ As a Project Curator, I want to record how confident I am that Ember knows enoug
 - Each save adds to the history; earlier assessments stay readable and are never edited.
 - The measured score at the time is recorded server-side, so a later drop can mark the assessment for review.
 - The Project's test-question datasets are linked from the section for me to maintain.
+
+**CUR-EVL-04 — Work the knowledge-gap queue** *(owner)*
+As a Project Curator, I want to see every failure report for my Project, triage it (*Needs a source*, *Needs a Wiki article*, *Out of scope*, *Duplicate*), and resolve it by linking the source or Wiki article that now covers it and recording whether Ember now answers it, so that gaps get closed and the reporter knows.
+- Open gaps are listed first; closed ones stay readable.
+- What was reported can't be edited, and nothing is deleted.
+- Resolving, or closing as out of scope or duplicate, sends the reporter a note.
+
+**CUR-EVL-05 — Turn a gap into a test question** *(owner)*
+As a Project Curator, I want one click to add a gap's question, with its correct answer, to my Project's draft test questions, so that every later evaluation run checks it stays fixed.
+- Goes into the Project's newest draft dataset, created if there is none.
+- Needs a correct answer (reported, or my resolution note).
+
+**CUR-EVL-06 — Move an Ember product problem to the feedback board** *(owner)*
+As a Project Curator, I want to move a report that is really a problem with Ember itself (not missing knowledge) to the platform feedback board, so that the platform owner sees it.
+- Filed as a feedback report in my name; the gap closes as an Ember product issue.
 
 
 ### AGT — Graphs, agents and agent registry

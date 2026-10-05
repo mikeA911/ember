@@ -337,10 +337,23 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Start:** `/projects/[id]#ember-readiness`, or the dashboard's **Ember readiness** table.
 - **Navigation:** Open the Project → **Ember readiness** section. From the dashboard, select the Project's name in the **Ember readiness** table. Curators: **Assess readiness** / **Update readiness** in the section.
 - **Outcome:** A verdict (*Ready*, *Needs more sources* or *Not assessed*), the curator's confidence with reason, author, date and review date, the measured score (questions passed of questions asked, dataset, run date), knowledge coverage (sources, searchable sources, Wiki articles, last source added), *review due* and disagreement notices, earlier assessments, and (curators) links to the Project's test-question datasets.
-- **Ember guidance:** Explain the two signals and that they are deliberately separate; link to the section. Ember cannot set or change readiness. If a user says Ember could not answer from Project knowledge, suggest telling a Project curator or submitting a candidate source.
+- **Ember guidance:** Explain the two signals and that they are deliberately separate; link to the section. Ember cannot set or change readiness. If a user says Ember could not answer from Project knowledge, point them to **Report a problem** under the answer.
 - **Boundaries:** Assessments are append-only; each save adds to the history. Members see counts, never individual test results. The measured score at the time of an assessment is recorded server-side.
 - **Exposure:** Read-only candidate for MCP; assessing stays a UI action.
 - **Verification:** Code verified 2026-10-05 (Ember Readiness, Stage 2); SQL behaviour checked against a local Postgres with stub tables.
+
+### Report an Ember failure, and work the knowledge-gap queue
+
+- **Intent:** Tell the Project's curators that Ember got something wrong or couldn't answer, so the missing knowledge gets added; (curators) close those gaps.
+- **Users and authority:** Any active Project member reports, and sees their own reports. Project owners/curators and platform admins see and work every gap for the Project. Other members see only the open count.
+- **Prerequisites:** Project membership. **Report a problem** appears only in a Project-bound conversation.
+- **Start:** **Report a problem** under an Ember answer in a Project conversation, or `/projects/[id]#knowledge-gaps`.
+- **Navigation:** In the chat, under the answer → **Report a problem** → choose what was wrong → **Send to curators**. Without the answer to hand: open the Project → **Knowledge gaps** → **Report something Ember got wrong**. Curators: **Knowledge gaps** → **Triage**, **Resolve**, **Make it a test question** or **It's an Ember problem**.
+- **Outcome:** A gap in the Project's queue with the question, Ember's answer, its sources and the model (from the stored conversation), the kind of failure and anything the reporter added; a note to every Project owner/curator. When resolved (or closed as out of scope or duplicate) the reporter gets a note. A promoted gap becomes a draft test question in the Project's draft dataset; *It's an Ember problem* files a platform feedback report and closes the gap.
+- **Ember guidance:** When a user says an answer was wrong or missing, point them to **Report a problem** under that answer. Ember does not file or triage reports itself.
+- **Boundaries:** What was reported can't be edited and gaps are never deleted. Reports go to the Project's curators, never the platform feedback board unless a curator converts one. Five or more open gaps mark the Project's readiness *review due*.
+- **Exposure:** Not exposed over MCP; external tokens cannot write the table.
+- **Verification:** Code verified 2026-10-05 (Ember Readiness, Stage 3); SQL behaviour checked against a local Postgres with stub tables.
 
 ### Configure a Project's Ember starter prompt
 
@@ -440,7 +453,7 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **What evals measure:** Evals measure Ember and Agents (whether answers retrieve the right evidence and stay grounded), not a Project's delivered solution. Ember should not describe an eval score as evidence that a client system conforms to a standard.
 - **Exposure:** Results are candidates for admin read access only; running evaluations stays a UI action.
 - **Verification:** Code verified 2026-10-05 (Ember Readiness, Stage 1). Detailed workflows remain to be catalogued.
-- **Planned, not yet available:** `docs/dev-request-ember-readiness-and-knowledge-gaps.md` Stages 3–4 add open knowledge-gap counts to the readiness section, failure reports from Ember answers, and automatic knowledge-gap reports to Project curators. `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` proposes a separate **Solution evaluation** area for requirements, verification evidence and conformance decisions. Until these ship, Ember must not tell users these features exist or direct them to them; if a user reports that Ember could not answer from Project knowledge, suggest they tell a Project curator or submit a candidate source.
+- **Planned, not yet available:** `docs/dev-request-ember-readiness-and-knowledge-gaps.md` Stage 4 adds automatic knowledge-gap detection in Project chat, routed to Project curators. `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` proposes a separate **Solution evaluation** area for requirements, verification evidence and conformance decisions. Until these ship, Ember must not tell users these features exist or direct them to them. If a user says Ember got something wrong or could not answer from Project knowledge, point them to **Report a problem** under the answer (see **Report an Ember failure** below).
 
 ### Graphs
 

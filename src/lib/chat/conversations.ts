@@ -69,6 +69,9 @@ export interface DisplayMessage {
   structured?: VerifiedAssistantEnvelope
   createdRecords?: ResolvedCreatedRecord[]
   pendingGatewayInvocations?: PendingGatewayInvocation[]
+  // The persisted assistant row -- what "Report a problem with this answer"
+  // points at (Ember Readiness, Stage 3).
+  messageId?: string
 }
 
 // Turns persisted rows back into the same shape ChatPanel renders live.
@@ -146,6 +149,7 @@ export async function toDisplayMessages(
 
     out.push({
       role: 'assistant',
+      messageId: row.id,
       content: row.content ?? '',
       providerDisplayName: names?.providerDisplayName ?? row.provider ?? undefined,
       modelDisplayName: names?.modelDisplayName ?? row.model ?? undefined,

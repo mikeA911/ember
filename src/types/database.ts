@@ -752,7 +752,88 @@ export interface ProjectEmberReadinessSignals {
   searchable_source_count: number
   wiki_article_count: number
   last_source_added_at: string | null
+  // Stage 3: knowledge gaps with status new, needs_source or wiki_needed.
+  open_gap_count: number
 }
+
+// Ember Readiness, Stage 3 (20261014100001_project_knowledge_gaps.sql):
+// failure reports and the curator's knowledge-gap queue. Visible to the
+// reporter and the Project's curators/admins only.
+export type KnowledgeGapOrigin = 'failure_report' | 'automatic'
+export type KnowledgeGapFailureKind = 'wrong' | 'incomplete' | 'outdated' | 'wrong_source' | 'could_not_answer'
+export type KnowledgeGapStatus = 'new' | 'needs_source' | 'wiki_needed' | 'resolved' | 'out_of_scope' | 'product_issue' | 'duplicate'
+
+export interface ProjectKnowledgeGap {
+  id: string
+  project_id: string
+  origin: KnowledgeGapOrigin
+  question: string
+  ember_answer: string | null
+  failure_kind: KnowledgeGapFailureKind | null
+  details: string | null
+  correct_answer: string | null
+  suggested_source: string | null
+  missing_topic: string | null
+  conversation_id: string | null
+  message_id: string | null
+  answer_provider: string | null
+  answer_model: string | null
+  cited_sources: { label: string; sourceType: string; sourceId: string }[] | null
+  reported_by: string | null
+  status: KnowledgeGapStatus
+  triage_note: string | null
+  duplicate_of: string | null
+  resolving_source_id: string | null
+  resolving_article_id: string | null
+  resolution_note: string | null
+  verified_answers: boolean | null
+  verified_by: string | null
+  verified_at: string | null
+  eval_case_id: string | null
+  feedback_report_id: string | null
+  resolved_by: string | null
+  resolved_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ProjectKnowledgeGapInsert = Pick<ProjectKnowledgeGap, 'project_id' | 'question' | 'reported_by'> &
+  Partial<
+    Pick<
+      ProjectKnowledgeGap,
+      | 'origin'
+      | 'ember_answer'
+      | 'failure_kind'
+      | 'details'
+      | 'correct_answer'
+      | 'suggested_source'
+      | 'missing_topic'
+      | 'conversation_id'
+      | 'message_id'
+      | 'answer_provider'
+      | 'answer_model'
+      | 'cited_sources'
+    >
+  >
+
+export type ProjectKnowledgeGapUpdate = Partial<
+  Pick<
+    ProjectKnowledgeGap,
+    | 'status'
+    | 'triage_note'
+    | 'duplicate_of'
+    | 'resolving_source_id'
+    | 'resolving_article_id'
+    | 'resolution_note'
+    | 'verified_answers'
+    | 'verified_by'
+    | 'verified_at'
+    | 'eval_case_id'
+    | 'feedback_report_id'
+    | 'resolved_by'
+    | 'resolved_at'
+  >
+>
 
 // private = members/admin only (default, never auto-changed). internal =
 // any authenticated user can view (editing still gated by project_members).
@@ -3161,6 +3242,12 @@ interface DatabaseDefinition {
         Relationships: []
       }
       project_status_history: { Row: ProjectStatusHistoryEntry; Insert: ProjectStatusHistoryEntryInsert; Update: never; Relationships: [] }
+      project_knowledge_gaps: {
+        Row: ProjectKnowledgeGap
+        Insert: ProjectKnowledgeGapInsert
+        Update: ProjectKnowledgeGapUpdate
+        Relationships: []
+      }
       project_ember_readiness: {
         Row: ProjectEmberReadiness
         Insert: Omit<ProjectEmberReadiness, 'id' | 'set_at' | 'measured_score_at_set'>

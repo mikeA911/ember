@@ -2,7 +2,7 @@
 
 ## Status
 
-Stages 1 (admin dashboard changes) and 2 (readiness section) built 5 October 2026; Stages 3–4 proposed. Companion to `docs/dev-request-solution-conformance-and-acceptance-evaluation.md`. Worked example: the `cebu-ng911` Project.
+Stages 1 (admin dashboard changes), 2 (readiness section) and 3 (failure reports and the curator gap queue) built 5 October 2026; Stage 4 (automatic gap detection) proposed. Companion to `docs/dev-request-solution-conformance-and-acceptance-evaluation.md`. Worked example: the `cebu-ng911` Project.
 
 ## Problem
 
@@ -119,6 +119,17 @@ A **Knowledge gaps** queue on the Project, combining automatic gaps and failure 
 
 Any member may attach a candidate source to a gap; only curators approve it into the knowledge base, as today.
 
+**As built (Stage 3, 5 October 2026):**
+
+- **Storage.** `project_knowledge_gaps` (`20261014100001_project_knowledge_gaps.sql`), one table for failure reports now and automatic gaps in Stage 4 (`origin`). RLS: the reporter and the Project's owner/curators and platform admins can read a gap; any Project member can report, as themselves; only curators update; nothing is deleted. A `BEFORE INSERT` trigger forces a new report to `new` with every curator field empty, and requires a linked conversation to be the reporter's own, bound to the Project, and a linked message to be an Ember answer in it. A `BEFORE UPDATE` trigger stops anyone changing what was reported.
+- **Reporting.** **Report a problem** under any Ember answer in a Project conversation. The server takes the question (the last user message before the answer), the answer, its verified citations and the model from the stored conversation; the reporter only picks what was wrong (*Wrong*, *Incomplete*, *Outdated*, *Cited the wrong source*, *Could not answer*) and optionally adds details, the correct answer and a source. The Project page's **Knowledge gaps** section has the same form for reports typed without the answer to hand. The chat turn now returns the saved message id so the report points at the exact answer.
+- **Statuses.** Open: `new`, `needs_source`, `wiki_needed`. Closed: `resolved`, `out_of_scope`, `duplicate` (of another gap in the same Project), `product_issue`.
+- **Curator queue.** On the Project page, open gaps first, closed ones collapsed. **Triage**, **Resolve** (link one of the Project's sources and/or Wiki articles, add a note, record whether Ember now answers it when re-asked), **Make it a test question** and **It's an Ember problem** (files a feedback report as the curator and closes the gap as `product_issue`).
+- **Test questions.** Promotion adds the question to the Project's newest draft dataset, creating `<Project> — Ember test questions` if there is none (active datasets are frozen). The expected answer is the reported correct answer, else the resolution note; the resolving Wiki article becomes expected evidence and the resolving source is named in the scoring criteria. Tagged `knowledge-gap`.
+- **Notifications.** Through Project notes (the app's only notification channel): every Project owner/curator on a new report, and the reporter when their report is resolved or closed as out of scope or duplicate. One note per report; the digest for repeated questions comes with Stage 4's grouping.
+- **Readiness.** `project_ember_readiness_signals()` now also returns the open-gap count, shown in the readiness section and as an *Open gaps* column on the dashboard table. Five or more open gaps mark the readiness judgement *review due*.
+- **Not yet:** members attaching candidate sources directly to a gap (they use the existing **Submit a source** form); cross-Project gap trends on the admin dashboard.
+
 ## Admin dashboard changes
 
 - Add **Ember readiness** to `/admin`: the per-Project readiness table, the eval pages currently under `/evals` (datasets, runs, results, baselines, human review), and cross-Project gap trends.
@@ -132,7 +143,7 @@ Any member may attach a candidate source to a gap; only curators approve it into
 
 1. **Admin move** — eval runs, baselines and human review become platform-admin work (Server Actions and RLS); Evals leaves non-admin navigation and dashboards; Admin → Ember readiness. *Built.*
 2. **Readiness section** — curator confidence and verdict with history, measured score and knowledge coverage on Project pages and the non-admin dashboard. *Built.*
-3. **Failure reports and the curator gap queue** — including promotion of a resolved gap to a draft eval case.
+3. **Failure reports and the curator gap queue** — including promotion of a resolved gap to a draft eval case. *Built.*
 4. **Automatic gap detection** — `knowledgeCoverage`, the retrieval signal, grouping and curator notification.
 
 ## Data model (indicative)
