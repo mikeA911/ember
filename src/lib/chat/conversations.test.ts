@@ -81,6 +81,7 @@ describe('toDisplayMessages', () => {
       { role: 'user', content: 'What is KB Sandbox?' },
       {
         role: 'assistant',
+        messageId: 'm2',
         content: 'A knowledge platform.',
         providerDisplayName: 'Groq',
         modelDisplayName: 'GPT-OSS 20B',
@@ -105,6 +106,7 @@ describe('toDisplayMessages', () => {
       { role: 'user', content: 'What do we know about chunking?' },
       {
         role: 'assistant',
+        messageId: 'm4',
         content: 'Found some articles.',
         providerDisplayName: 'groq',
         modelDisplayName: 'openai/gpt-oss-20b',
@@ -152,6 +154,7 @@ describe('toDisplayMessages', () => {
 
     expect(result[0]).toEqual({
       role: 'assistant',
+      messageId: 'm1',
       content: 'ok',
       providerDisplayName: 'deepseek',
       modelDisplayName: 'deepseek-v4-flash',

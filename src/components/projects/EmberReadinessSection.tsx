@@ -88,6 +88,13 @@ export function EmberReadinessSection({
       )}
 
       <p className="text-sm text-zinc-600">
+        Open knowledge gaps:{' '}
+        <a href="#knowledge-gaps" className="underline">
+          {readiness.openGapCount}
+        </a>
+      </p>
+
+      <p className="text-sm text-zinc-600">
         Knowledge: {coverage.sourceCount} source{coverage.sourceCount === 1 ? '' : 's'} ({coverage.searchableSourceCount} searchable) ·{' '}
         {coverage.wikiArticleCount} Wiki article{coverage.wikiArticleCount === 1 ? '' : 's'} · last source added{' '}
         {formatReadinessDate(coverage.lastSourceAddedAt)}

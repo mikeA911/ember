@@ -308,6 +308,11 @@ export interface AssistantTurnResult {
   // simple navigational chip, so kept separate from createdRecords. See
   // src/lib/mcp-gateway/execute.ts.
   pendingGatewayInvocations: PendingGatewayInvocation[]
+  // The persisted assistant row this reply was saved as -- lets the UI point
+  // a "Report a problem with this answer" at the exact message (Ember
+  // Readiness, Stage 3). Absent when nothing was persisted (provider error,
+  // policy block).
+  messageId?: string
   // Set when `reply` is a friendly stand-in for a failed provider call
   // (rate limit, capacity, auth, ...) rather than a real assistant answer --
   // see the generateChat catch below. A normal AssistantTurnResult (not a
@@ -569,7 +574,7 @@ export async function runAssistantTurn(
   // display name, refreshes the conversation summary, and shapes the
   // return value. Never persists anything itself -- each caller appends its
   // own row first, since the content/response_payload differ per path.
-  async function finishTurn(reply: string, structured: VerifiedAssistantEnvelope | null): Promise<AssistantTurnResult> {
+  async function finishTurn(reply: string, structured: VerifiedAssistantEnvelope | null, messageId: string): Promise<AssistantTurnResult> {
     const usedEmbeddingRetrieval = toolsUsed.has('search_wiki') || toolsUsed.has(SEARCH_PROJECT_KNOWLEDGE_TOOL_NAME)
     const embeddingModelDisplayName = usedEmbeddingRetrieval ? (await getDefaultModel(ctx.supabase, 'embedding')).model.display_name : undefined
     await maybeRefreshSummary(ctx, conversation.id, contextOmittedMessages, projectContext ? projectContext.informationSensitivity : undefined, selfHostedOnly)
@@ -589,6 +594,7 @@ export async function runAssistantTurn(
       structured,
       createdRecords: resolvedCreatedRecords,
       pendingGatewayInvocations,
+      messageId,
     }
   }
 
@@ -604,7 +610,7 @@ export async function runAssistantTurn(
         rawContent.trim() ||
         recoveredMessage ||
         "I put together a response but it didn't come through correctly -- could you ask again?"
-      await appendMessage(ctx.supabase, {
+      const saved = await appendMessage(ctx.supabase, {
         conversationId: conversation.id,
         userId: ctx.user.id,
         role: 'assistant',
@@ -613,7 +619,7 @@ export async function runAssistantTurn(
         model: chatProvider.modelId,
         responsePayload: null,
       })
-      return finishTurn(content, null)
+      return finishTurn(content, null, saved.id)
     }
 
     const retrieved: RetrievedProvenance = {
@@ -622,7 +628,7 @@ export async function runAssistantTurn(
       workingKnowledgeIds: retrievedWorkingKnowledgeIds,
     }
     const persisted = await buildPersistedEnvelope(ctx, parsed.data, retrieved)
-    await appendMessage(ctx.supabase, {
+    const saved = await appendMessage(ctx.supabase, {
       conversationId: conversation.id,
       userId: ctx.user.id,
       role: 'assistant',
@@ -632,7 +638,7 @@ export async function runAssistantTurn(
       responsePayload: persisted,
     })
     const structured = await resolveEnvelopeForDisplay(ctx, persisted)
-    return finishTurn(persisted.message, structured)
+    return finishTurn(persisted.message, structured, saved.id)
   }
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
@@ -769,7 +775,7 @@ export async function runAssistantTurn(
       ? result.message.content || null
       : result.message.content?.trim() || "I wasn't able to generate a reply to that -- could you try rephrasing, or asking again?"
 
-    await appendMessage(ctx.supabase, {
+    const savedAssistant = await appendMessage(ctx.supabase, {
       conversationId: conversation.id,
       userId: ctx.user.id,
       role: 'assistant',
@@ -784,7 +790,7 @@ export async function runAssistantTurn(
       // tool-calling support, or it judged no tool needed and replied
       // directly) still gets a normal, working reply -- just without a
       // structured payload.
-      return await finishTurn(messageContent as string, null)
+      return await finishTurn(messageContent as string, null, savedAssistant.id)
     }
 
     for (const toolCall of result.message.toolCalls ?? []) {
@@ -1103,7 +1109,7 @@ export async function runAssistantTurn(
   }
 
   const fallback = "I wasn't able to finish that within the allotted number of steps -- could you try rephrasing or breaking it into a smaller request?"
-  await appendMessage(ctx.supabase, {
+  const savedFallback = await appendMessage(ctx.supabase, {
     conversationId: conversation.id,
     userId: ctx.user.id,
     role: 'assistant',
@@ -1112,6 +1118,7 @@ export async function runAssistantTurn(
     model: chatProvider.modelId,
   })
   return {
+    messageId: savedFallback.id,
     conversationId: conversation.id,
     reply: fallback,
     providerName: chatProvider.providerName,

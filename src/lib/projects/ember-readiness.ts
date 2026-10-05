@@ -18,6 +18,9 @@ export const SCORE_DROP_POINTS = 15
 // Curator confidence and measured score further apart than this are shown
 // as disagreeing rather than one being picked.
 export const DISAGREEMENT_POINTS = 25
+// This many open knowledge gaps (new, needs a source, Wiki needed) mark the
+// judgement for review (Stage 3).
+export const OPEN_GAPS_REVIEW_THRESHOLD = 5
 
 export type ReadinessDisplayVerdict = EmberReadinessVerdict | 'not_assessed'
 
@@ -64,6 +67,8 @@ export interface ProjectReadiness {
   history: ReadinessJudgement[]
   measured: ReadinessMeasured | null
   coverage: ReadinessCoverage
+  // Open knowledge gaps (count only -- every member sees it).
+  openGapCount: number
   status: ReadinessStatus
 }
 
@@ -103,13 +108,21 @@ function toCoverage(signals: ProjectEmberReadinessSignals | undefined): Readines
 }
 
 // Pure, so the staleness and disagreement rules are unit-testable.
-export function computeReadinessStatus(current: ReadinessJudgement | null, measured: ReadinessMeasured | null, now: Date): ReadinessStatus {
+export function computeReadinessStatus(
+  current: ReadinessJudgement | null,
+  measured: ReadinessMeasured | null,
+  now: Date,
+  openGapCount = 0
+): ReadinessStatus {
   if (!current) return { verdict: 'not_assessed', reviewDue: false, reviewReasons: [], disagreement: null }
 
   const reviewReasons: string[] = []
   if (new Date(current.reviewDueAt).getTime() <= now.getTime()) reviewReasons.push('The review date has passed.')
   if (measured && current.measuredPctAtSet !== null && current.measuredPctAtSet - measured.pct >= SCORE_DROP_POINTS) {
     reviewReasons.push(`The measured score fell from ${current.measuredPctAtSet}% to ${measured.pct}% since this was set.`)
+  }
+  if (openGapCount >= OPEN_GAPS_REVIEW_THRESHOLD) {
+    reviewReasons.push(`${openGapCount} knowledge gaps are open.`)
   }
 
   let disagreement: string | null = null
@@ -159,13 +172,15 @@ export async function listProjectReadiness(
     const current = judgements[0] ?? null
     const signals = signalsById.get(projectId)
     const measured = toMeasured(signals)
+    const openGapCount = signals?.open_gap_count ?? 0
     result.set(projectId, {
       projectId,
       current,
       history: judgements.slice(1, 1 + historyLimit),
       measured,
       coverage: toCoverage(signals),
-      status: computeReadinessStatus(current, measured, now),
+      openGapCount,
+      status: computeReadinessStatus(current, measured, now, openGapCount),
     })
   }
   return result

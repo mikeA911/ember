@@ -210,7 +210,7 @@ beforeEach(() => {
   getToolSpecsMock.mockReturnValue([])
   createConversationMock.mockResolvedValue({ id: 'conv-1' })
   listMessagesMock.mockResolvedValue([])
-  appendMessageMock.mockResolvedValue(undefined)
+  appendMessageMock.mockResolvedValue({ id: 'msg-saved' })
   updateMock.mockReturnValue({ eq: () => Promise.resolve({ error: null }) })
   getConversationSummaryMock.mockResolvedValue(null)
   maybeRefreshSummaryMock.mockResolvedValue(undefined)
@@ -239,6 +239,8 @@ describe('runAssistantTurn', () => {
       structured: null,
       createdRecords: [],
       pendingGatewayInvocations: [],
+      // The persisted assistant row, so the UI can report this exact answer.
+      messageId: 'msg-saved',
       ...CHAT_PROVIDER_INFO,
     })
     expect(generateChatMock).toHaveBeenCalledTimes(1)

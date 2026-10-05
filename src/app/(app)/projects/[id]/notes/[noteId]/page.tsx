@@ -26,6 +26,7 @@ async function contextLink(
 ): Promise<{ href: string | null; label: string; request?: ResourceAccessRequest } | null> {
   if (!contextType || !contextId) return null
   if (contextType === 'eval_run') return { href: `/evals/runs/${contextId}`, label: 'Eval run' }
+  if (contextType === 'knowledge_gap') return { href: `/projects/${projectId}#knowledge-gaps`, label: 'Knowledge gaps' }
   if (contextType === 'workstream') return { href: `/projects/${projectId}/workstreams/${contextId}`, label: 'Workstream' }
   if (contextType === 'workstream_artifact') {
     const { data: artifact } = await supabase.from('workstream_artifacts').select('workstream_id, title').eq('id', contextId).maybeSingle()

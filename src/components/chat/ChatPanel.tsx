@@ -39,6 +39,7 @@ import {
 import { defaultNoteTitle } from '@/lib/chat/transcript'
 import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, WebSearchQueries, SuggestedPrompts } from './StructuredResponse'
 import { GatewayInvocationCard } from './GatewayInvocationCard'
+import { ReportAnswerForm } from './ReportAnswerForm'
 
 // Owner Roadmap and Ember Feedback Board, Phase 1. Only the three initial
 // Ember-facing choices -- 'usability'/'documentation' exist as later
@@ -211,6 +212,8 @@ export function ChatSession({
   const [models, setModels] = useState<ChatModelOption[]>([])
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [detailsOpenFor, setDetailsOpenFor] = useState<number | null>(null)
+  // Ember Readiness, Stage 3: which answer's "Report a problem" form is open.
+  const [reportOpenFor, setReportOpenFor] = useState<number | null>(null)
   const [activity, setActivity] = useState<string | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
@@ -508,6 +511,7 @@ export function ChatSession({
           structured: result.structured ?? undefined,
           createdRecords: result.createdRecords.length > 0 ? result.createdRecords : undefined,
           pendingGatewayInvocations: result.pendingGatewayInvocations.length > 0 ? result.pendingGatewayInvocations : undefined,
+          messageId: result.messageId,
         },
       ])
       // The model that actually served this turn is now known -- if the
@@ -1392,8 +1396,9 @@ export function ChatSession({
                 <SuggestedPrompts prompts={m.structured?.suggestedPrompts} onSelect={setInput} />
               </div>
               {m.pendingGatewayInvocations?.map((inv) => <GatewayInvocationCard key={inv.invocationId} invocation={inv} />)}
-              {m.providerDisplayName && (
+              {(m.providerDisplayName || (projectId && m.messageId && !feedbackCategory)) && (
               <div className="mt-0.5">
+                {m.providerDisplayName && (
                 <button
                   type="button"
                   onClick={() => setDetailsOpenFor(detailsOpenFor === i ? null : i)}
@@ -1401,6 +1406,19 @@ export function ChatSession({
                 >
                   Details
                 </button>
+                )}
+                {/* Ember Readiness, Stage 3: only in a Project conversation,
+                    where there are curators to route the report to. */}
+                {projectId && m.messageId && !feedbackCategory && (
+                  <button
+                    type="button"
+                    onClick={() => setReportOpenFor(reportOpenFor === i ? null : i)}
+                    className="ml-3 text-xs text-zinc-400 underline hover:text-zinc-600"
+                  >
+                    Report a problem
+                  </button>
+                )}
+                {reportOpenFor === i && m.messageId && <ReportAnswerForm messageId={m.messageId} onClose={() => setReportOpenFor(null)} />}
                 {detailsOpenFor === i && (
                   <div className="mt-1 rounded border border-zinc-200 bg-zinc-50 p-2 text-left text-xs text-zinc-500">
                     <p>

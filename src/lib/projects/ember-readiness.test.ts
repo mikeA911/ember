@@ -62,6 +62,13 @@ describe('computeReadinessStatus', () => {
     expect(computeReadinessStatus(judgement({ measuredPctAtSet: null }), measured(10), NOW).reviewReasons).toEqual([])
   })
 
+  it('marks review due once five or more knowledge gaps are open', () => {
+    expect(computeReadinessStatus(judgement(), measured(80), NOW, 4).reviewDue).toBe(false)
+    const status = computeReadinessStatus(judgement(), measured(80), NOW, 5)
+    expect(status.reviewDue).toBe(true)
+    expect(status.reviewReasons).toEqual(['5 knowledge gaps are open.'])
+  })
+
   it('says so when curator confidence and the measured score disagree by more than 25 points, in either direction', () => {
     expect(computeReadinessStatus(judgement({ confidencePercent: 90, measuredPctAtSet: null }), measured(50), NOW).disagreement).toContain(
       'Curator confidence (90%) is well above the measured score (50%)'
@@ -118,6 +125,7 @@ describe('listProjectReadiness', () => {
         searchable_source_count: 3,
         wiki_article_count: 2,
         last_source_added_at: '2026-09-20T00:00:00Z',
+        open_gap_count: 2,
       },
     ]
     const rpcCalls: unknown[] = []
@@ -138,6 +146,7 @@ describe('listProjectReadiness', () => {
     expect(p1.measured).toEqual({ runId: 'run-1', datasetName: 'NG911', measuredAt: '2026-10-04T00:00:00Z', questions: 5, passed: 3, pct: 60 })
     expect(p1.coverage).toEqual({ sourceCount: 4, searchableSourceCount: 3, wikiArticleCount: 2, lastSourceAddedAt: '2026-09-20T00:00:00Z' })
     expect(p1.status.verdict).toBe('ready')
+    expect(p1.openGapCount).toBe(2)
 
     // A Project with no judgement and no signals row reads as not assessed.
     const p2 = result.get('p2')!

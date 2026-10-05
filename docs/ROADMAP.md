@@ -132,6 +132,7 @@ Status terms used below:
 - Guided-method reasoning has been tested against representative requirement-resolution scenarios.
 - Ember Readiness, Stage 1: running evaluations, marking baselines and human review are now platform-admin work, enforced in the Server Actions and RLS; Admin → **Ember readiness** lists every dataset with its Project and latest run, and Evals is removed from non-admin navigation and dashboards. Curators keep authoring test questions (5 Oct).
 - Ember Readiness, Stage 2: every Project page and dashboard shows how ready Ember is for each Project -- the curator's confidence, verdict and reason (append-only history, review date) beside the measured score from the latest admin run and the Project's knowledge coverage, with review-due and disagreement notices (5 Oct).
+- Ember Readiness, Stage 3: Project members report Ember failures ("Report a problem" under an answer attaches the question, answer, sources and model automatically); the Project's curators triage, resolve by linking the source or Wiki article that now covers it, turn the question into a draft test question, or move a product problem to the feedback board. Open-gap counts appear in readiness (5 Oct).
 
 ### Validate
 
@@ -143,7 +144,7 @@ Status terms used below:
 - Define a pre-beta Assistant evaluation rubric covering correctness, grounding, method fit, prerequisite detection, safe action boundaries, provenance, latency, and recovery from tool failure.
 - Record basic Wizard/method outcomes so the product can learn which guided methods work in practice.
 - Establish the evaluation criteria for the first external pilot.
-- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): Stages 1 and 2 are done (see Recent internal development). Remaining: open knowledge-gap counts in the readiness section; let Project members report Ember failures; detect knowledge gaps automatically in Project-bound chat and route them to the Project's curators; let a resolved gap become a draft eval case.
+- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): Stages 1–3 are done (see Recent internal development). Remaining (Stage 4): detect knowledge gaps automatically in Project-bound chat, group repeated questions and route them to the Project's curators.
 
 ### Future
 
