@@ -96,6 +96,28 @@ describe('runSearchProjectKnowledge', () => {
     ])
   })
 
+  it('treats a knowledge base attached to one of the project\'s workstreams as the project\'s own', async () => {
+    const supabase = createFakeSupabase({
+      project_knowledge_bases: [{ data: [], error: null }],
+      workstream_knowledge_bases: [{ data: [{ knowledge_base_id: 'mitel_integration' }], error: null }],
+      project_wiki_articles: [{ data: [], error: null }],
+      kb_vectors: [{ data: [{ id: 'vec-1', document_id: 'doc-1' }], error: null }],
+      documents: [{ data: [{ id: 'doc-1', knowledge_source_id: 'source-1' }], error: null }],
+      knowledge_sources: [{ data: [{ id: 'source-1', title: 'Mitel SIP trunk guide', knowledge_base_id: 'mitel_integration' }], error: null }],
+    })
+    supabase.rpc = vi.fn(async (name: string) => {
+      if (name === 'match_documents') {
+        return { data: [{ id: 'vec-1', chunk_id: 'chunk-1', content: 'Trunks use 5060/5061.', similarity: 0.8, metadata: {} }], error: null }
+      }
+      return { data: [], error: null }
+    }) as never
+
+    const result = await runSearchProjectKnowledge(fakeCtx(supabase), 'proj-1', { query: 'mitel trunks', limit: 5 })
+
+    expect(result.results.map((r) => [r.sourceId, r.layer])).toEqual([['source-1', 'project']])
+    expect(supabase._calls).toContainEqual({ table: 'workstream_knowledge_bases', method: 'eq', args: { column: 'workstream.project_id', value: 'proj-1' } })
+  })
+
   it('ranks project-layer results ahead of platform-layer results regardless of similarity order', async () => {
     const supabase = createFakeSupabase({
       project_knowledge_bases: [{ data: [], error: null }],

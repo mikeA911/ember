@@ -329,6 +329,15 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Exposure:** Not Ember-actionable; UI only.
 - **Verification:** `src/components/projects/SourceSubmissionsReview.tsx`, `src/lib/workbench/source-submissions.ts` (`approveSourceSubmission`, `rejectSourceSubmission`), reuses `src/lib/curator/chunks.ts` (`approveChunk`) unmodified; code verified 2026-09-04. Live-verified: a project owner approved a real member-submitted file and confirmed the resulting chunk was genuinely embedded (present in `kb_vectors` with the expected auto-approval marker) and separately visible/re-reviewable on `/review/[docId]`.
 
+### What counts as Project knowledge (for Ember's answers)
+
+- **Intent:** Understand which material Ember treats as this Project's own evidence.
+- **Users and authority:** Every Project member; curators decide what gets added.
+- **Outcome:** Project knowledge = approved chunks of sources in knowledge bases attached to the Project **or to one of its workstreams**, plus approved Wiki articles attached to the Project. Workstream artifacts (research dossiers, findings, test results), working knowledge, Project notes and web results are not Project knowledge until an artifact is submitted as a source and approved.
+- **Ember guidance:** When asked why Ember couldn't answer, explain this rule and point to **Submit a source** (or submitting an approved artifact from its workstream page), then curator approval and chunk approval. Never present working knowledge or web results as Project evidence.
+- **Boundaries:** Retrieval is RAG over approved, embedded chunks under the caller's own access; restricted sources stay hidden from members without a grant.
+- **Verification:** Code verified 2026-10-05.
+
 ### See or assess Ember readiness for a Project
 
 - **Intent:** Know how far to rely on Ember for this Project, and (curators) record that judgement.
@@ -348,7 +357,7 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Users and authority:** Any active Project member reports, and sees their own reports. Project owners/curators and platform admins see and work every gap for the Project. Other members see only the open count.
 - **Prerequisites:** Project membership. **Report a problem** appears only in a Project-bound conversation.
 - **Start:** **Report a problem** under an Ember answer in a Project conversation, or `/projects/[id]#knowledge-gaps`.
-- **Navigation:** In the chat, under the answer → **Report a problem** → choose what was wrong → **Send to curators**. Without the answer to hand: open the Project → **Knowledge gaps** → **Report something Ember got wrong**. Curators: **Knowledge gaps** → **Triage**, **Resolve**, **Make it a test question** or **It's an Ember problem**.
+- **Navigation:** In the chat, under the answer → **Report a problem** → choose what was wrong → **Send to curators**. Without the answer to hand: open the Project → **Knowledge gaps** → **Report something Ember got wrong**. Curators: **Knowledge gaps** → **Triage**, **Resolve**, **Make it a test question** or **It's an Ember problem**. **Resolve** lists sources from the Project's and its workstreams' knowledge bases, marking those not yet searchable, and **The source isn't listed?** walks through submitting a source or an approved workstream artifact, approving it, and having its chunks approved.
 - **Outcome:** A gap in the Project's queue with the question, Ember's answer, its sources and the model (from the stored conversation), the kind of failure and anything the reporter added; a note to every Project owner/curator. Gaps Ember detects itself join the same queue as *Detected by Ember*, grouped when the same question recurs (*Asked N times*, other wordings, details people added); curators get a note for a new one and at 3, 10 and 25 occurrences. When resolved (or closed as out of scope or duplicate) the reporter gets a note. A promoted gap becomes a draft test question in the Project's draft dataset; *It's an Ember problem* files a platform feedback report and closes the gap.
 - **Ember guidance:** When a user says an answer was wrong or missing, point them to **Report a problem** under that answer. Ember does not triage reports. In a Project conversation, Ember itself files a knowledge gap when it can't answer from the Project's knowledge (its `knowledgeCoverage` declaration); the user then sees a notice under the answer with **Add details** and **Don't send** -- don't also ask them to report it.
 - **Boundaries:** What was reported can't be edited and gaps are never deleted. Reports go to the Project's curators, never the platform feedback board unless a curator converts one. Five or more open gaps mark the Project's readiness *review due*.

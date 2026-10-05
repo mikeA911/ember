@@ -134,6 +134,7 @@ Status terms used below:
 - Ember Readiness, Stage 2: every Project page and dashboard shows how ready Ember is for each Project -- the curator's confidence, verdict and reason (append-only history, review date) beside the measured score from the latest admin run and the Project's knowledge coverage, with review-due and disagreement notices (5 Oct).
 - Ember Readiness, Stage 3: Project members report Ember failures ("Report a problem" under an answer attaches the question, answer, sources and model automatically); the Project's curators triage, resolve by linking the source or Wiki article that now covers it, turn the question into a draft test question, or move a product problem to the feedback board. Open-gap counts appear in readiness (5 Oct).
 - Ember Readiness, Stage 4: in Project chat Ember flags answers it couldn't ground in the Project's knowledge (its own declaration, or an empty Project search) and files them as knowledge gaps, grouping repeated questions; the person who asked can add details or withdraw it, and curators get one note per new gap plus milestone digests (5 Oct).
+- Project knowledge scope: knowledge bases attached to a Project's workstreams now count as Project evidence in Ember's search and in readiness coverage (member read access extended accordingly, evidence-access restrictions unchanged); the gap Resolve form shows which sources are searchable and how to submit an approved artifact as a source (5 Oct).
 
 ### Validate
 

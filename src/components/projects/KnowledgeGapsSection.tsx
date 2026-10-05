@@ -1,5 +1,5 @@
 import type { ProjectKnowledgeGap, ProjectKnowledgeGapOccurrence } from '@/types/database'
-import { KnowledgeGapActions } from './KnowledgeGapActions'
+import { KnowledgeGapActions, type ResolutionSource } from './KnowledgeGapActions'
 import { ReportFailureForm } from './ReportFailureForm'
 import { FAILURE_KIND_LABELS, GAP_STATUS_LABELS, GAP_STATUS_STYLES } from './knowledge-gap-labels'
 import { formatReadinessDate } from './ember-readiness-labels'
@@ -51,6 +51,7 @@ export function KnowledgeGapsSection({
   isCurator,
   nameForUser,
   sources,
+  submittableArtifacts,
   articles,
   evalCaseDatasetById,
   occurrencesByGapId,
@@ -59,8 +60,12 @@ export function KnowledgeGapsSection({
   gaps: ProjectKnowledgeGap[]
   isCurator: boolean
   nameForUser: (userId: string | null) => string
-  // What a gap can be resolved with: this Project's sources and Wiki articles.
-  sources: { id: string; title: string }[]
+  // What a gap can be resolved with: sources in the Project's and its
+  // workstreams' knowledge bases (context = workstream name, searchable =
+  // has an approved chunk), and Wiki articles attached to the Project.
+  sources: ResolutionSource[]
+  // Approved workstream artifacts a curator could submit as a new source.
+  submittableArtifacts: { id: string; title: string }[]
   articles: { id: string; title: string }[]
   // eval_cases.id -> dataset id, for gaps already turned into test questions.
   evalCaseDatasetById: Map<string, string>
@@ -137,7 +142,9 @@ export function KnowledgeGapsSection({
             isOpen={isOpen}
             canPromote={!gap.eval_case_id && gap.status !== 'out_of_scope' && gap.status !== 'duplicate' && gap.status !== 'product_issue'}
             evalCaseDatasetId={gap.eval_case_id ? (evalCaseDatasetById.get(gap.eval_case_id) ?? null) : null}
+            projectId={projectId}
             sources={sources}
+            submittableArtifacts={submittableArtifacts}
             articles={articles}
             otherGaps={gaps.filter((g) => g.id !== gap.id && g.status !== 'duplicate').map((g) => ({ id: g.id, question: g.question }))}
           />

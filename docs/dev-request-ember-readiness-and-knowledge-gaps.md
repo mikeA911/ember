@@ -116,6 +116,8 @@ A gap is raised when (1) says `partial` or `not_in_project_knowledge`, or when (
 - **Curators** get one Project note when a gap is first detected and a digest note when the same question has come up 3, 10 and 25 times. **Deviation:** milestone digests rather than a scheduled daily digest, because the app has no scheduler. The queue shows *Asked N times*, the missing topic, and *How people asked*: the other wordings plus any notes and suggested sources.
 - **Scope.** Never from unbound, feedback or journal conversations (enforced in the loop and in the database function). Detections are visible only to the person who asked and the Project's curators/admins; direct inserts and deletes on detections are refused. A failure to record never breaks the chat turn.
 
+**Follow-up (5 October 2026): Project knowledge scope.** Knowledge bases attached to a Project's workstreams now count as Project knowledge, both in Ember's Project search and in readiness coverage. Coverage counts exactly what search uses: Project and workstream knowledge bases, and Wiki articles attached to the Project. **Resolve** lists those sources, marks ones without approved chunks as *not searchable yet*, and explains how to submit a source or an approved workstream artifact, approve it and get its chunks approved (`20261016100001_workstream_knowledge_in_project_search.sql`).
+
 ## Curator workflow
 
 A **Knowledge gaps** queue on the Project, combining automatic gaps and failure reports:
