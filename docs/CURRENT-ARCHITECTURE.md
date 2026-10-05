@@ -1,6 +1,6 @@
 # Ember (KB Sandbox) — Current Architecture
 
-Living documentation of what is actually implemented. **Last updated: 4 October 2026.** The product is presented to users as **Ember**; the codebase, database and many docs still use the original name **KB Sandbox**, and both names refer to the same application.
+Living documentation of what is actually implemented. **Last updated: 5 October 2026.** The product is presented to users as **Ember**; the codebase, database and many docs still use the original name **KB Sandbox**, and both names refer to the same application.
 
 This file describes reality, not intent. `docs/ROADMAP.md` owns the public M1–M10 milestone names, order and status; this file explains how the delivered parts work. Where the two disagree, treat later code and migrations as authoritative and update whichever document is stale.
 
@@ -305,6 +305,8 @@ Taken from `docs/ROADMAP.md` (Next and Future items) and checked against the cod
 - **Knowledge.** Reviewed "promote conversation to Project Knowledge"; knowledge-quality and freshness signals; a general-purpose `/search` UI.
 - **Methods.** Persisted per-Project Requirement Status; thin Wizards for 2–4 selected Methods; demand and outcome instrumentation.
 - **Evaluation.** A pre-beta Ember evaluation rubric; experiment definitions and leaderboards beyond baseline-vs-run comparison; a full Runs/Tracing subsystem.
+- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`). Eval operations still live at the top-level `/evals` route: curators create datasets and cases, run draft datasets, mark baselines and add human reviews, and consultants run active datasets. Not built: moving runs, baselines and human review to `/admin` as platform-admin work; a per-Project readiness section (curator confidence, measured score, open gaps); Project-scoped Ember failure reports; a `knowledgeCoverage` field on the response envelope and automatic knowledge-gap records routed to Project curators.
+- **Solution evaluation** (`docs/dev-request-solution-conformance-and-acceptance-evaluation.md`). `/evals` measures Ember and Agents only. There is no model for evaluating a Project's delivered solution: no requirements traced to standards or contract clauses, verification records, evaluation baselines, conformance decisions, waivers or re-verification triggers. System assessments and capability evaluations remain separate and unchanged.
 - **Agents.** Tool calling for Agents; Guardrail Templates with runtime enforcement (guardrails remain free text); multi-agent collaboration; autonomous research or code-writing.
 - **Governance (M7).** AI system and model inventory, risk tiers, control definitions, evaluation gates and approval records; policy-gate coverage of evaluation, journal, enrichment and embedding calls; model- and deployment-level eligibility; versioned organization-level AI policy; redact/route/approve outcomes; retention and privacy rules.
 - **Deployment (M6).** Defined cloud/customer-cloud/private/local/hybrid profiles, health checks and provider failover.
