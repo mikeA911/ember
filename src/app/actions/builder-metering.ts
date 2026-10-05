@@ -9,12 +9,14 @@ export async function grantBuilderCreditAction(builderId: string, amountUsd: num
   const ctx = await requireUser()
   await grantBuilderCredit(ctx, builderId, amountUsd, reason)
   revalidatePath('/admin')
+  revalidatePath('/agency')
 }
 
 export async function setBuilderAllowanceAction(builderId: string, input: SetBuilderAllowanceInput): Promise<void> {
   const ctx = await requireUser()
   await setBuilderAllowance(ctx, builderId, input)
   revalidatePath('/admin')
+  revalidatePath('/agency')
 }
 
 // The profile page's own reader -- scoped to the caller's own spend, RLS-safe

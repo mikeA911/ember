@@ -103,9 +103,7 @@ export interface BuilderOperationsRow {
 // curator/admin only. Scoped to Projects tagged portfolio_category =
 // 'builder_lab' (the tag on every Project a builder owns -- their
 // provisioned workspace and each client Project, src/lib/workbench/
-// projects.ts), one row per builder -- a precise signal
-// independent of deployment mode, though the UI only ever surfaces this
-// tab in builder mode. Admin client throughout: a platform curator/admin
+// projects.ts), one row per builder -- a precise signal. Admin client throughout: a platform curator/admin
 // reviewing this is deliberately NOT expected to be a member of any
 // individual Builder's private Project -- same "safe metadata query"
 // posture as listPendingWorkstreamPromotions. `spend` (allowance/credits/
@@ -119,8 +117,11 @@ export async function listBuilderOperationsRows(ctx: WorkbenchCallerContext): Pr
   }
 
   const admin = createAdminClient()
-  const { data: builderProjects } = await admin.from('projects').select('id, owner_id').eq('portfolio_category', 'builder_lab')
-  if (!builderProjects || builderProjects.length === 0) return []
+  const { data: builderLabProjects } = await admin.from('projects').select('id, owner_id, builder_id').eq('portfolio_category', 'builder_lab')
+  if (!builderLabProjects || builderLabProjects.length === 0) return []
+  // A Live client Project the agency took over still belongs to its
+  // builder of record here.
+  const builderProjects = builderLabProjects.map((p) => ({ id: p.id, owner_id: p.builder_id ?? p.owner_id }))
 
   const projectIds = builderProjects.map((p) => p.id)
   const builderIds = [...new Set(builderProjects.map((p) => p.owner_id).filter((id): id is string => !!id))]

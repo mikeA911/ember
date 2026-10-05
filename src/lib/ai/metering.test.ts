@@ -3,7 +3,7 @@ import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 import type { AIProvider } from './provider'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 
-const { computeCost, getBuilderSpendSummary, withAllowanceGate, BuilderAllowanceError, grantBuilderCredit, setBuilderAllowance } = await import(
+const { computeCost, getBuilderSpendSummary, getBuilderSpendSummaries, withAllowanceGate, BuilderAllowanceError, grantBuilderCredit, setBuilderAllowance } = await import(
   './metering'
 )
 
@@ -159,14 +159,100 @@ describe('setBuilderAllowance', () => {
     ).rejects.toThrow('Requires curator or admin')
   })
 
-  it('upserts the allowance row for a curator/admin caller', async () => {
-    const supabase = createFakeSupabase({ builder_ai_allowances: [{ data: null, error: null }] })
-    await setBuilderAllowance(ctxWith(supabase, { role: 'curator' }), 'builder-1', {
+  it("upserts the allowance row for the builder's own agency curator", async () => {
+    const supabase = createFakeSupabase({
+      agency_builders: [{ data: { builder_id: 'builder-1' }, error: null }],
+      builder_ai_allowances: [{ data: null, error: null }],
+    })
+    await setBuilderAllowance(ctxWith(supabase, { userId: 'agency-1', role: 'curator' }), 'builder-1', {
       monthlyAllowanceUsd: 5,
       warningThresholdPct: 90,
       stopAtAllowance: false,
     })
     const upsert = supabase._calls.find((c) => c.table === 'builder_ai_allowances' && c.method === 'upsert')
     expect(upsert?.args).toMatchObject({ builder_id: 'builder-1', monthly_allowance_usd: 5, warning_threshold_pct: 90, stop_at_allowance: false })
+  })
+})
+
+// Agencies manage their own builders' budgets; an enterprise on its own
+// deployment is the agency. Another agency's curator never can.
+describe('budget management is scoped to the builder\'s agency', () => {
+  it('refuses a curator who is not the builder\'s agency', async () => {
+    const supabase = createFakeSupabase({ agency_builders: [{ data: null, error: null }] })
+    await expect(
+      setBuilderAllowance(ctxWith(supabase, { userId: 'agency-2', role: 'curator' }), 'builder-1', {
+        monthlyAllowanceUsd: 50,
+        warningThresholdPct: 80,
+        stopAtAllowance: true,
+      })
+    ).rejects.toThrow("Only the builder's agency or the platform admin")
+    await expect(grantBuilderCredit(ctxWith(supabase, { userId: 'agency-2', role: 'curator' }), 'builder-1', 10, 'top-up')).rejects.toThrow(
+      "Only the builder's agency or the platform admin"
+    )
+    expect(supabase._calls.some((c) => c.method === 'upsert' || c.method === 'insert')).toBe(false)
+  })
+
+  it('checks the roster for this builder and this curator', async () => {
+    const supabase = createFakeSupabase({
+      agency_builders: [{ data: { builder_id: 'builder-1' }, error: null }],
+      builder_credit_grants: [{ data: null, error: null }],
+    })
+    await grantBuilderCredit(ctxWith(supabase, { userId: 'agency-1', role: 'curator' }), 'builder-1', 10, 'top-up')
+    expect(supabase._calls).toContainEqual({ table: 'agency_builders', method: 'eq', args: { column: 'builder_id', value: 'builder-1' } })
+    expect(supabase._calls).toContainEqual({ table: 'agency_builders', method: 'eq', args: { column: 'agency_id', value: 'agency-1' } })
+  })
+})
+
+describe('getBuilderSpendSummaries', () => {
+  it('returns nothing, without querying, for no builders', async () => {
+    const supabase = createFakeSupabase({})
+    expect((await getBuilderSpendSummaries(supabase as never, [])).size).toBe(0)
+    expect(supabase._calls).toHaveLength(0)
+  })
+
+  it('sums each builder\'s credits and spend from their own period start, defaulting a builder with no allowance row', async () => {
+    const supabase = createFakeSupabase({
+      builder_ai_allowances: [
+        {
+          data: [{ builder_id: 'b-1', monthly_allowance_usd: 50, warning_threshold_pct: 90, stop_at_allowance: false, current_period_start: '2026-10-02' }],
+          error: null,
+        },
+      ],
+      builder_credit_grants: [{ data: [{ builder_id: 'b-1', amount_usd: 5 }, { builder_id: 'b-2', amount_usd: 3 }], error: null }],
+      ai_operation_logs: [
+        {
+          data: [
+            { requested_by: 'b-1', estimated_cost_usd: 99, created_at: '2026-10-01T12:00:00Z' }, // before b-1's period
+            { requested_by: 'b-1', estimated_cost_usd: 4, created_at: '2026-10-03T00:00:00Z' },
+            { requested_by: 'b-2', estimated_cost_usd: 2, created_at: '2026-10-03T00:00:00Z' },
+            { requested_by: 'b-2', estimated_cost_usd: null, created_at: '2026-10-03T00:00:00Z' },
+          ],
+          error: null,
+        },
+      ],
+    })
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-15T12:00:00'))
+    try {
+      const result = await getBuilderSpendSummaries(supabase as never, ['b-1', 'b-2'])
+      expect(result.get('b-1')).toEqual({
+        allowanceUsd: 50,
+        creditsUsd: 5,
+        spentThisPeriodUsd: 4,
+        remainingUsd: 51,
+        warningThresholdPct: 90,
+        stopAtAllowance: false,
+      })
+      expect(result.get('b-2')).toEqual({
+        allowanceUsd: 20,
+        creditsUsd: 3,
+        spentThisPeriodUsd: 2,
+        remainingUsd: 21,
+        warningThresholdPct: 80,
+        stopAtAllowance: true,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

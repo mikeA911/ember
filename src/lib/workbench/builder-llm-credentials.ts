@@ -12,8 +12,7 @@ import type { WorkbenchCallerContext } from './context'
 // a local server like Ollama/LM Studio reachable via an OpenAI-compatible
 // base URL) can supply it instead of drawing on the platform's metered
 // allowance (src/lib/ai/metering.ts) at all. One active credential per
-// builder -- matches the existing "builder gets exactly one Project"
-// simplicity precedent, not a multi-credential switcher.
+// builder -- not a multi-credential switcher.
 
 export type BuilderLlmProviderType = 'openai' | 'gemini' | 'groq' | 'openai_compatible'
 

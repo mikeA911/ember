@@ -37,11 +37,6 @@ export const env = {
   // is admin-configured (ai_providers.api_key_env_var) rather than known at
   // build time.
   byName: (envVarName: string) => optional(envVarName),
-  // KB Sandbox Builder (docs/dev-request-kb-sandbox-builder-product.md) --
-  // a deployment-level mode switch, never user-selectable. One deployment
-  // runs in exactly one mode for its whole lifetime; this is not a per-
-  // request or per-user toggle.
-  productMode: () => (optional('KB_SANDBOX_PRODUCT_MODE') === 'builder' ? 'builder' : 'enterprise') as 'enterprise' | 'builder',
   // Builder AI Usage Metering + BYOLLM: encrypts a builder-supplied provider
   // credential (builder_llm_credentials.encrypted_api_key) at rest -- the
   // first real secret value this app stores. Optional because a deployment

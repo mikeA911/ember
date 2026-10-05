@@ -47,6 +47,27 @@ const empty = {
 const noFee = { proposed_fee_amount: null, proposed_fee_currency: null, proposed_fee_period: null }
 
 describe('assembleAgencyDashboard', () => {
+  it("carries each builder's AI budget onto their row, null when none was loaded", () => {
+    const spend = { allowanceUsd: 20, creditsUsd: 5, spentThisPeriodUsd: 26, remainingUsd: -1, warningThresholdPct: 80, stopAtAllowance: true }
+    const result = assembleAgencyDashboard({
+      ...empty,
+      viewerIsAdmin: false,
+      agencies: [person('agency-1', 'a@example.com')],
+      builders: [person('builder-1', 'b1@example.com'), person('builder-2', 'b2@example.com')],
+      roster: [
+        { builder_id: 'builder-1', agency_id: 'agency-1' },
+        { builder_id: 'builder-2', agency_id: 'agency-1' },
+      ],
+      projects: [],
+      workstreams: [],
+      updates: [],
+      spendByBuilder: new Map([['builder-1', spend]]),
+    })
+    const [b1, b2] = result.agencies[0].builders
+    expect(b1.spend).toEqual(spend)
+    expect(b2.spend).toBeNull()
+  })
+
   it('splits a builder into workspace proposals and the client projects promoted from them', () => {
     const result = assembleAgencyDashboard({
       ...empty,
@@ -95,7 +116,16 @@ describe('assembleAgencyDashboard', () => {
         workstreamCount: 1,
         activeWorkstreamCount: 1,
         lastActivityAt: '2026-09-20T00:00:00Z',
-        fee: { amount: 120000, currency: 'PHP', period: 'annual', platformRatePct: 10, monthlyAmount: 10000, platformMonthly: 1000 },
+        fee: {
+          amount: 120000,
+          currency: 'PHP',
+          period: 'annual',
+          platformRatePct: 10,
+          builderSharePct: 0,
+          monthlyAmount: 10000,
+          platformMonthly: 1000,
+          builderMonthly: 0,
+        },
       }),
     ])
     expect(builder.lastActivityAt).toBe('2026-09-25T00:00:00Z')

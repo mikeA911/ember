@@ -15,12 +15,13 @@ import type {
 } from '@/types/database'
 import type { WorkbenchCallerContext } from './context'
 import { shapePendingPromotions, type PendingWorkstreamPromotionRow } from './workstream-promotions'
-import { getPlatformRatePct, monthlyEquivalent } from './client-billing'
+import { DEFAULT_BUILDER_SHARE_PCT, getBillingRates, monthlyEquivalent } from './client-billing'
 import { CATEGORY_ORDER } from '@/lib/projects/portfolio-categories'
+import { getBuilderSpendSummaries, type BuilderSpendSummary } from '@/lib/ai'
 
 // Builder agency dashboard (/agency, 2026-10-01, Mike): the platform owner
 // is the admin, each builder agency is a curator, each builder is a
-// consultant. A builder works from one workspace Project; each client
+// consultant. A builder works from a workspace Project; each client
 // proposal is a Workstream on it. When a client accepts, the builder
 // requests promotion and the agency (or admin) approves it, which creates
 // the client Project (workstream-promotions.ts). A curator sees their own
@@ -36,7 +37,9 @@ import { CATEGORY_ORDER } from '@/lib/projects/portfolio-categories'
 // progress update the builder chose to share -- plus, for the management
 // view (2026-10-03), each project's workstreams, the knowledge bases
 // attached to them (names only) and a completion percentage computed from
-// deliverable checklist counts, never the deliverable labels. Never goal/details/
+// deliverable checklist counts, never the deliverable labels -- and each
+// builder's AI budget (allowance, credits, spend this period), which the
+// agency manages (metering.ts). Never goal/details/
 // objective, notebooks, conversations, artifacts or slides. The admin
 // client is the query engine only -- every query below is scoped to the
 // builders the caller is entitled to see before anything is read.
@@ -92,8 +95,11 @@ export interface AgencyClientFee {
   period: FeeBillingPeriod
   // The rate recorded with this fee, not necessarily today's.
   platformRatePct: number
+  // The builder's share -- an employee's bonus -- recorded with this fee.
+  builderSharePct: number
   monthlyAmount: number
   platformMonthly: number
+  builderMonthly: number
 }
 
 // A Project created from an approved promotion -- one paying client.
@@ -127,6 +133,8 @@ export interface AgencyBuilderRow {
   pendingPromotions: PendingWorkstreamPromotionRow[]
   lastActivityAt: string | null
   attention: AgencyAttention | null
+  // null when the dashboard was assembled without spend (tests, fixtures).
+  spend: BuilderSpendSummary | null
 }
 
 export interface AgencyGroup {
@@ -148,8 +156,10 @@ export interface AgencyCategoryCompletion {
 
 export interface AgencyDashboard {
   viewerIsAdmin: boolean
-  // Today's platform rate, applied to fees recorded from now on.
+  // Today's platform rate and builder's share, applied to fees recorded
+  // from now on.
   platformRatePct: number
+  builderSharePct: number
   agencies: AgencyGroup[]
   // Admin only -- builders with no agency_builders row yet.
   unassigned: AgencyBuilderRow[]
@@ -214,9 +224,19 @@ export interface AgencyDashboardInput {
     created_at: string
   }[]
   viewerMembers: { project_id: string }[]
-  fees: { project_id: string; amount: number; currency: FeeCurrency; billing_period: FeeBillingPeriod; platform_rate_pct: number }[]
+  fees: {
+    project_id: string
+    amount: number
+    currency: FeeCurrency
+    billing_period: FeeBillingPeriod
+    platform_rate_pct: number
+    // Optional so fixtures can omit it; missing reads as 0.
+    builder_share_pct?: number
+  }[]
   pendingPromotionRows: PendingWorkstreamPromotionRow[]
   platformRatePct: number
+  builderSharePct?: number
+  spendByBuilder?: Map<string, BuilderSpendSummary>
 }
 
 function laterOf(a: string | null, b: string | null): string | null {
@@ -303,14 +323,17 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
     // numeric columns can arrive as strings from PostgREST.
     const amount = Number(f.amount)
     const platformRatePct = Number(f.platform_rate_pct)
+    const builderSharePct = Number(f.builder_share_pct ?? 0)
     const monthlyAmount = monthlyEquivalent(amount, f.billing_period)
     feeByProject.set(f.project_id, {
       amount,
       currency: f.currency,
       period: f.billing_period,
       platformRatePct,
+      builderSharePct,
       monthlyAmount,
       platformMonthly: (monthlyAmount * platformRatePct) / 100,
+      builderMonthly: (monthlyAmount * builderSharePct) / 100,
     })
   }
 
@@ -417,6 +440,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
       pendingPromotions: pendingByBuilder.get(b.id) ?? [],
       lastActivityAt: all.reduce<string | null>((latest, r) => laterOf(latest, r.lastActivityAt), null),
       attention: attentionFor(all.flatMap((r) => (r.latestUpdate ? [r.latestUpdate] : []))),
+      spend: input.spendByBuilder?.get(b.id) ?? null,
     }
   })
   builderRows.sort(byEmail)
@@ -458,6 +482,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
   return {
     viewerIsAdmin: input.viewerIsAdmin,
     platformRatePct: input.platformRatePct,
+    builderSharePct: input.builderSharePct ?? DEFAULT_BUILDER_SHARE_PCT,
     agencies,
     unassigned,
     completionByCategory,
@@ -507,7 +532,13 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
   let promotions: AgencyDashboardInput['promotions'] = []
   if (builderIds.length > 0) {
     const [{ data: projectRows, error: projectError }, { data: promotionRows, error: promotionError }] = await Promise.all([
-      admin.from('projects').select('id, name, status, owner_id, updated_at, portfolio_category').in('owner_id', builderIds).neq('status', 'archived'),
+      // A builder's own Projects, plus Live ones their agency took over
+      // (builder_id, 20261008100001).
+      admin
+        .from('projects')
+        .select('id, name, status, owner_id, builder_id, updated_at, portfolio_category')
+        .or(`owner_id.in.(${builderIds.join(',')}),builder_id.in.(${builderIds.join(',')})`)
+        .neq('status', 'archived'),
       admin
         .from('workstream_promotions')
         .select(
@@ -517,7 +548,8 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     ])
     if (projectError) throw projectError
     if (promotionError) throw promotionError
-    projects = projectRows ?? []
+    // Shown on the builder of record's card, whoever owns it now.
+    projects = (projectRows ?? []).map(({ builder_id, ...p }) => ({ ...p, owner_id: builder_id ?? p.owner_id }))
     promotions = promotionRows ?? []
   }
 
@@ -535,7 +567,10 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     ] = await Promise.all([
       admin.from('project_workstreams').select('id, project_id, name, status, updated_at, deliverables').in('project_id', projectIds),
       admin.from('project_members').select('project_id').in('project_id', projectIds).eq('role', 'viewer').eq('status', 'active'),
-      admin.from('client_project_fees').select('project_id, amount, currency, billing_period, platform_rate_pct').in('project_id', projectIds),
+      admin
+        .from('client_project_fees')
+        .select('project_id, amount, currency, billing_period, platform_rate_pct, builder_share_pct')
+        .in('project_id', projectIds),
       admin.from('project_knowledge_bases').select('project_id, knowledge_base_id').in('project_id', projectIds),
     ])
     if (workstreamError) throw workstreamError
@@ -582,9 +617,10 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     knowledgeBases = data ?? []
   }
 
-  const [pendingPromotionRows, platformRatePct] = await Promise.all([
+  const [pendingPromotionRows, rates, spendByBuilder] = await Promise.all([
     shapePendingPromotions(promotions.filter((p) => p.status === 'pending')),
-    getPlatformRatePct(admin),
+    getBillingRates(admin),
+    getBuilderSpendSummaries(admin, builderIds),
   ])
 
   return assembleAgencyDashboard({
@@ -603,7 +639,9 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     viewerMembers,
     fees,
     pendingPromotionRows,
-    platformRatePct,
+    platformRatePct: rates.platformRatePct,
+    builderSharePct: rates.builderSharePct,
+    spendByBuilder,
   })
 }
 

@@ -6,8 +6,10 @@ import { setClientProjectFeeAction } from '@/app/actions/agency'
 import type { AgencyClientFee } from '@/lib/workbench/agency-dashboard'
 import { formatMoney } from './money'
 
-// Shows a client Project's maintenance fee and the platform's share, with
-// an inline editor for the agency/admin (the only viewers of /agency).
+// Shows a client Project's maintenance fee, the platform's share and the
+// builder's share (an employee's bonus), with an inline editor for the
+// agency/admin (the only viewers of /agency). The platform rate is fixed
+// when the fee is recorded; the builder's share is negotiated per Project.
 export function ClientFeeEditor({ projectId, fee }: { projectId: string; fee: AgencyClientFee | null }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -16,6 +18,8 @@ export function ClientFeeEditor({ projectId, fee }: { projectId: string; fee: Ag
   const [amount, setAmount] = useState(fee ? String(fee.amount) : '')
   const [currency, setCurrency] = useState<'PHP' | 'USD'>(fee?.currency ?? 'PHP')
   const [period, setPeriod] = useState<'monthly' | 'annual'>(fee?.period ?? 'monthly')
+  // Blank on a new fee: the deployment default applies.
+  const [builderShare, setBuilderShare] = useState(fee ? String(fee.builderSharePct) : '')
 
   function save() {
     setError(null)
@@ -24,9 +28,14 @@ export function ClientFeeEditor({ projectId, fee }: { projectId: string; fee: Ag
       setError('Enter an amount')
       return
     }
+    const share = builderShare.trim() ? Number(builderShare.trim()) : undefined
+    if (share !== undefined && !Number.isFinite(share)) {
+      setError("Enter the builder's share as a percentage")
+      return
+    }
     startTransition(async () => {
       try {
-        await setClientProjectFeeAction(projectId, { amount: value, currency, period })
+        await setClientProjectFeeAction(projectId, { amount: value, currency, period, builderSharePct: share })
         setEditing(false)
         router.refresh()
       } catch (err) {
@@ -45,6 +54,9 @@ export function ClientFeeEditor({ projectId, fee }: { projectId: string; fee: Ag
             </span>
             <span className="text-zinc-500">
               Platform share {formatMoney(fee.platformMonthly, fee.currency)}/mo ({fee.platformRatePct}%)
+            </span>
+            <span className="text-zinc-500">
+              Builder share {formatMoney(fee.builderMonthly, fee.currency)}/mo ({fee.builderSharePct}%)
             </span>
           </>
         ) : (
@@ -76,6 +88,18 @@ export function ClientFeeEditor({ projectId, fee }: { projectId: string; fee: Ag
           <option value="annual">/ year</option>
         </select>
       </div>
+      <label className="flex items-center gap-1 text-zinc-600">
+        Builder share
+        <input
+          aria-label="Builder share percentage"
+          inputMode="decimal"
+          value={builderShare}
+          placeholder="default"
+          onChange={(e) => setBuilderShare(e.target.value)}
+          className="w-14 rounded border border-zinc-300 px-1.5 py-0.5 text-right"
+        />
+        %
+      </label>
       <div className="flex gap-2">
         <button type="button" disabled={isPending} onClick={save} className="rounded bg-zinc-900 px-2 py-0.5 font-medium text-white disabled:opacity-50">
           Save

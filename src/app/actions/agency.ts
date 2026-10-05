@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/lib/auth'
 import { assignBuilderToAgency } from '@/lib/workbench/agency-dashboard'
-import { setClientProjectFee, setPlatformRatePct, type FeeInput } from '@/lib/workbench/client-billing'
+import { setBillingRates, setClientProjectFee, type BillingRates, type FeeInput } from '@/lib/workbench/client-billing'
 
 export async function assignBuilderToAgencyAction(builderId: string, agencyId: string | null) {
   const ctx = await requireUser()
@@ -11,9 +11,9 @@ export async function assignBuilderToAgencyAction(builderId: string, agencyId: s
   revalidatePath('/agency')
 }
 
-export async function setPlatformRateAction(pct: number) {
+export async function setBillingRatesAction(rates: Partial<BillingRates>) {
   const ctx = await requireUser()
-  await setPlatformRatePct(ctx, pct)
+  await setBillingRates(ctx, rates)
   revalidatePath('/agency')
 }
 

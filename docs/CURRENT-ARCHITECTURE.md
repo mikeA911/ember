@@ -14,7 +14,7 @@ The public roadmap has ten milestones. Internal labels (M3.5, M5A, M5F and so on
 | M2 | Organize | Live | Versioned Wiki with provenance (M2); Workbench and Product Handbook categories; Project-scoped Wiki articles; working knowledge |
 | M3 | Evaluate | Live | Evaluation engine (M3); multi-provider model registry (M3.5); Projects, membership and isolation (M3.6); public/anonymous experience (M3.7) |
 | M4 | Orchestrate | Live | Graph runtime (M4); Workbench service layer and in-process tool contract (M5F); bounded Ember tool loop |
-| M5 | Apply | Live | Agent Templates and RAG Answer Agent (M5A/B); Workstreams and artifacts (M5D); Ember assistant; assessments; Methods; presentations; workstream promotion; external agent registry and gateway; Builder mode |
+| M5 | Apply | Live | Agent Templates and RAG Answer Agent (M5A/B); Workstreams and artifacts (M5D); Ember assistant; assessments; Methods; presentations; workstream promotion; external agent registry and gateway; builders and agencies |
 | M6 | Deploy | Planned | Foundations only: model-neutral registry, bearer-token identity, and the read-only external MCP server |
 | M7 | Govern | Planned | Foundations only: information-sensitivity classification and pre-inference policy gate, approval policies and authorities, Project creation approval |
 | M8 | Communicate | Planned | Foundations only: artifacts, findings, presentations, public Project profiles |
@@ -31,7 +31,7 @@ Next.js 16 (App Router), TypeScript, Supabase (Postgres + pgvector, Auth includi
 
 Milestone 1 was a full rebuild of an earlier Vite SPA, not an in-place migration.
 
-The deployment runs in one of two **product modes**, set server-side by `KB_SANDBOX_PRODUCT_MODE` (`enterprise`, the default, or `builder`); see [Builder mode](#builder-mode). One deployment currently serves one client organization; there is no native Organization record (see `docs/workbench-handbook-how-kb-sandbox-is-organized.md`).
+There is one product configuration: every deployment runs the builder and agency model described in [Builders and agencies](#builders-and-agencies). An enterprise customer gets its own deployment and acts as the agency. One deployment currently serves one client organization; there is no native Organization record (see `docs/workbench-handbook-how-kb-sandbox-is-organized.md`).
 
 ## Data model
 
@@ -111,7 +111,7 @@ This is what makes "Chunks Only vs. Wiki Only vs. Wiki + Chunks" a real, run-con
 
 ## Auth & authorization
 
-Supabase Auth, session cookie refreshed by `src/proxy.ts` on every request. Actual enforcement happens twice, deliberately:
+Supabase Auth, session cookie refreshed by `src/proxy.ts` on every request. Accounts are created only by an admin (`createUserAction`), which writes the profile; self-registration is off, and a user who signs up straight against Supabase Auth gets no profile and cannot sign in (`20261009`). Actual enforcement happens twice, deliberately:
 
 1. **Server Actions/layouts** call `requireUser()`/`requireRole()` (`src/lib/auth.ts`) against the caller's own session before doing anything.
 2. **RLS** is the backstop that holds even if an action forgot to check — e.g. `wiki_versions` has no `UPDATE` policy for `authenticated` at all, so even a bug in a Server Action's role check couldn't let a non-admin set `approved_by`/`approved_at`; only the service-role client (used exclusively inside the admin-gated `approveArticleAction`) can write those columns.
@@ -215,13 +215,13 @@ Ember is the conversational interface to the Workbench (`src/lib/chat/`, UI in `
 - **Project binding.** A conversation can be bound to one Project. Project-scoped retrieval applies both access layers (membership and resource-level evidence access) before anything reaches the model, and retrieved resources are recorded per message (`chat_message_retrieved_resources`).
 - **Provenance.** Each assistant message stores a provider/model snapshot; the model can be switched for the next message without rewriting history. Records Ember creates (Projects, Workstreams, artifacts) carry creation-path provenance. Long conversations are summarised in the background, and that call passes the same policy gate.
 - **Activity.** A polling-based activity indicator reports the current tool.
-- **Role-directed shell.** Curators and admins get the classic Workbench navigation; members, consultants and viewers get an Ember-first shell with a "Switch to classic workspace" toggle (`src/components/Header.tsx`).
+- **Role-directed shell.** Curators and admins get the full Workbench navigation plus Agency; members, consultants and viewers get the builder shell: Ember, Projects, Wiki and Blog (`src/components/Header.tsx`).
 
 ## Projects: lifecycle, approval and structure (M3.6 onward)
 
 Beyond the M3.6 membership model:
 
-- **Creation approval** (`20261004`). A Project created by someone below curator starts `approval_status = 'pending'` (a database trigger enforces this) and its invited members are held until approval. A curator or admin decides; nobody can approve their own Project. Rejections can be resubmitted by the creator.
+- **Creation approval** (`20261004`). A Project created by someone below curator starts `approval_status = 'pending'` (a database trigger enforces this) and its invited members are held until approval. An admin decides, or a curator: only the creator's own agency curator if the creator is on an agency roster (`agency_builders`), otherwise any curator. Nobody can approve their own Project. Rejections can be resubmitted by the creator.
 - **Status pipeline** (`20260828`, `20261004`). `draft → active → review → completed → live`, plus `archived`, with every change in `project_status_history`. Only a platform admin can delete a Project.
 - **Framing fields.** Goal, objective, starter prompt (seeds Ember), portfolio category and discoverability, editable by the Project owner or curator.
 - **Directory, join and access requests.** Discoverable Projects are listed in a directory; users can request to join (`project_join_requests`, decided by owner/curator). Non-member curators see safe portfolio metadata and can request membership through a Project note.
@@ -253,7 +253,7 @@ Who may *see* something and which AI provider may *process* it are separate deci
 
 - **Artifact lifecycle.** Artifact types now include design notes, research dossiers and implementation handoffs, and artifacts have a review status set by the Project owner/curator (`20260831`). Artifacts remain insert-only.
 - **Structure.** Workstreams have summaries, deliverables, relationships to other Workstreams and their own attached knowledge bases.
-- **Promotion** (`workstream_promotions`, `20260906`). A member submits a completed Workstream; the Project owner/curator (or admin) decides, never the submitter. Approval creates a **new** Project so the original is never exposed to the new team. In Builder mode it also copies the artifacts, adds the agency as curator, records a client fee and adds client contacts as viewers.
+- **Promotion** (`workstream_promotions`, `20260906`). A member submits a completed Workstream; the Project owner/curator (or admin) decides, never the submitter. Approval creates a **new** Project so the original is never exposed to the new team. Promoting from a builder's own workspace also copies the artifacts, adds the agency as curator, records a client fee and adds client contacts as viewers.
 - **Presentations** (`20260930`). Owner/curator generates a slide presentation from a Workstream and runs a review: `draft → review_open → review_closed → builder_revision → curator_review → approved`. Reviews can be scheduled (a Vercel cron route opens them) and have deadlines. Any signed-in member can comment on slides; comments are classified into tracked actions. Nobody can approve a presentation they created. Owners and curators are notified through Project notes.
 
 ## Assessments and Methods
@@ -282,15 +282,17 @@ Who may *see* something and which AI provider may *process* it are separate deci
 - **Tools (read-only).** `whoami`, `list_my_projects`, `get_project_summary`, `list_workstreams`, `search_project_knowledge`, `search_wiki`, `list_project_notes`, `get_navigation_guide`. Every result links back to Ember.
 - **Limits and audit.** 30 calls per minute and 500 per day per user; every call, including denials, is logged.
 
-## Builder mode
+## Builders and agencies
 
-With `KB_SANDBOX_PRODUCT_MODE=builder`, the deployment runs a builder programme on the same codebase. Platform roles take on new meanings: admin is the platform owner, a curator is an **agency**, a consultant is a **builder**.
+Every deployment runs the builder programme. Admin is the platform owner, a curator is an **agency**, a consultant is a **builder**. An enterprise running its own deployment is effectively the agency, and the agency dashboard serves it the same way. (Until October 2026 this was a separate `KB_SANDBOX_PRODUCT_MODE=builder` deployment mode; the modes were merged.)
 
-- **Workspace.** Creating a consultant account provisions one `builder_lab` Project; a builder cannot create a second Project. Each client proposal is a Workstream, and an accepted proposal becomes a client Project through promotion (see above).
-- **Agency supervision** (`agency_builders`, `/agency`). Admins assign builders to agencies. An agency sees and decides only for its own builders. Agency and Builder Operations views are metadata-only and consent-based: names, statuses, counts, completion percentages and progress updates the builder chose to share, never notebooks, conversations, artifacts or slides.
-- **Metering** (`src/lib/ai/metering.ts`, `20260907`). Ember calls on a builder's own workspace Project are priced from the registry and counted against a monthly allowance plus credit grants, with a warning threshold and optional hard stop enforced before the call. Unpriced calls are reported as unpriced.
+- **Workspace.** Creating a consultant account provisions a `builder_lab` workspace Project. Builders may also create further Projects (pending approval) or be added to an agency's Projects. Each client proposal is a Workstream, and an accepted proposal becomes a client Project through promotion (see above).
+- **Agency supervision** (`agency_builders`, `/agency`). Admins assign builders to agencies. An agency sees and decides only for its own builders; a creator on no roster can be decided by any curator. Agency and Builder Operations views are metadata-only and consent-based: names, statuses, counts, completion percentages and progress updates the builder chose to share, never notebooks, conversations, artifacts or slides.
+- **Live client Projects use self-hosted AI** (`src/lib/ai/hosting-policy.ts`). A Live Project with a client fee record may use only providers flagged `is_self_hosted` for content calls.
+- **Metering** (`src/lib/ai/metering.ts`, `20260907`). Ember calls on a builder's own workspace Project are priced from the registry and counted against a monthly allowance plus credit grants, with a warning threshold and optional hard stop enforced before the call. Unpriced calls are reported as unpriced. The builder's agency or the admin sees and sets the budget on `/agency`; RLS (`can_manage_builder_budget`, `20261007`) keeps other agencies out.
 - **Bring your own LLM** (`builder-llm-credentials.ts`). A builder can store one encrypted credential for their own API key or local OpenAI-compatible server. Those calls are logged but never metered.
-- **Billing** (`client_project_fees`). Agencies record client maintenance fees; the admin sets the platform rate. Ember records figures for invoicing and never charges anyone.
+- **Live hand-over** (`20261008`). When a builder's Project goes Live, ownership passes to their agency; the builder stays on as curator and remains the builder of record (`projects.builder_id`, set only by the service layer or an admin). Metering, progress updates, the agency dashboard and the builder's fee share follow the builder of record.
+- **Billing** (`client_project_fees`). Agencies record client maintenance fees; the admin sets the platform rate and the default builder's share (an employee's bonus), both recorded on each fee when it's created. The agency can adjust the builder's share per Project, and builders see theirs on their profile. Ember records figures for invoicing and never charges anyone.
 - Not yet built from `docs/dev-request-kb-sandbox-builder-product.md`: the dedicated Builder Notebook, opportunity states, the five programme milestones and milestone-triggered credits.
 
 ## Other platform features

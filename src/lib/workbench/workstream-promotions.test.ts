@@ -307,6 +307,7 @@ describe('approveWorkstreamPromotion', () => {
       currency: 'USD',
       billing_period: 'annual',
       platform_rate_pct: 12.5,
+      builder_share_pct: 10,
       set_by: 'operator-1',
     })
   })

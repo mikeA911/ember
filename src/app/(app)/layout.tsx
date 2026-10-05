@@ -6,7 +6,6 @@ import { getBrandingUrls } from '@/lib/branding'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { NavigationOverlay } from '@/components/shared/NavigationOverlay'
 import { listMemberProjectOptions } from '@/lib/projects/queries'
-import { env } from '@/lib/env'
 import type { Profile } from '@/types/database'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -30,13 +29,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex flex-1 flex-col">
-      <Header profile={profile as Profile} logoUrl={brandingUrls.logo} productMode={env.productMode()} />
+      <Header profile={profile as Profile} logoUrl={brandingUrls.logo} />
       <main className="flex-1 mx-auto w-full max-w-5xl px-4 py-8">{children}</main>
       {/* ChatPanel reads useSearchParams() (to detect ?view=ember) -- Next
           requires a Suspense boundary around any client component that does,
           so this doesn't de-opt the whole layout to client-only rendering. */}
       <Suspense fallback={null}>
-        <ChatPanel projects={projects} role={(profile as Profile).role} productMode={env.productMode()} />
+        <ChatPanel projects={projects} role={(profile as Profile).role} />
       </Suspense>
       {/* Instant ember loading screen on link click -- reads
           useSearchParams(), so it needs its own Suspense boundary too. */}

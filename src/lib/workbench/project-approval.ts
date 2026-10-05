@@ -2,17 +2,17 @@ import 'server-only'
 import { AuthError } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ProjectValidationError } from '@/lib/projects/errors'
-import { env } from '@/lib/env'
 import type { PendingProjectMember, ProjectApprovalStatus, ProjectType } from '@/types/database'
 import type { WorkbenchCallerContext } from './context'
 
 // Project creation approval (20261004100001_project_creation_approval.sql).
 // A project created by a consultant/builder is 'pending' until it's
 // decided by a platform admin, or by a curator:
-//   * Enterprise mode -- one organization per deployment, the admin runs
-//     it and its curators are its staff, so any curator decides.
-//   * Builder mode -- each agency is a curator account, so only the
-//     creator's own agency curator (agency_builders) decides.
+//   * a creator on an agency's roster (agency_builders) -- only their own
+//     agency curator decides, so agencies sharing a deployment never
+//     decide each other's builders' projects;
+//   * a creator on no roster -- any curator decides (a single-organization
+//     deployment, where the curators are that organization's own staff).
 // Curators' and admins' own projects never need approval.
 // The creator keeps working on it meanwhile; it just stays theirs alone --
 // the DB triggers keep it private and refuse other active members.
@@ -34,28 +34,34 @@ export interface ProjectAwaitingApprovalRow {
   createdAt: string
 }
 
-// Admin, or any curator in Enterprise mode: every pending project.
-// Builder-mode curator: only their own builders' projects.
+// Admin: every pending project. Curator: their own builders' projects,
+// plus those of creators on no agency's roster.
 export async function listProjectsAwaitingApproval(ctx: WorkbenchCallerContext): Promise<ProjectAwaitingApprovalRow[]> {
   const { profile, user } = ctx
   if (profile.role !== 'admin' && profile.role !== 'curator') return []
   const admin = createAdminClient()
 
-  let query = admin
+  const { data: allPending, error } = await admin
     .from('projects')
     .select('id, name, project_type, objective, owner_id, pending_members, created_at')
     .eq('approval_status', 'pending')
     .order('created_at', { ascending: true })
-  if (profile.role === 'curator' && env.productMode() === 'builder') {
-    const { data: links, error: linksError } = await admin.from('agency_builders').select('builder_id').eq('agency_id', user.id)
-    if (linksError) throw linksError
-    const builderIds = (links ?? []).map((l) => l.builder_id)
-    if (builderIds.length === 0) return []
-    query = query.in('owner_id', builderIds)
-  }
-  const { data: projects, error } = await query
   if (error) throw error
-  if (!projects || projects.length === 0) return []
+  let projects = allPending ?? []
+  if (profile.role === 'curator' && projects.length > 0) {
+    const creatorIds = [...new Set(projects.map((p) => p.owner_id).filter((id): id is string => !!id))]
+    const { data: links, error: linksError } =
+      creatorIds.length > 0
+        ? await admin.from('agency_builders').select('builder_id, agency_id').in('builder_id', creatorIds)
+        : { data: [], error: null }
+    if (linksError) throw linksError
+    const agencyByBuilder = new Map((links ?? []).map((l) => [l.builder_id, l.agency_id]))
+    projects = projects.filter((p) => {
+      const agencyId = p.owner_id ? agencyByBuilder.get(p.owner_id) : undefined
+      return agencyId === undefined || agencyId === user.id
+    })
+  }
+  if (projects.length === 0) return []
 
   const ownerIds = [...new Set(projects.map((p) => p.owner_id).filter((id): id is string => !!id))]
   const { data: owners } = ownerIds.length > 0 ? await admin.from('profiles').select('id, email').in('id', ownerIds) : { data: [] }
@@ -86,22 +92,13 @@ async function loadProject(admin: Admin, projectId: string) {
 async function requireApprovalDecider(ctx: WorkbenchCallerContext, admin: Admin, ownerId: string | null): Promise<void> {
   if (ownerId === ctx.user.id) throw new AuthError('You cannot approve a project you created yourself')
   if (ctx.profile.role === 'admin') return
-  if (ctx.profile.role === 'curator' && env.productMode() === 'enterprise') return
-  if (ctx.profile.role === 'curator' && ownerId) {
-    const { data: link, error } = await admin
-      .from('agency_builders')
-      .select('builder_id')
-      .eq('builder_id', ownerId)
-      .eq('agency_id', ctx.user.id)
-      .maybeSingle()
-    if (error) throw error
-    if (link) return
+  if (ctx.profile.role !== 'curator') throw new AuthError('Only a curator or platform admin can decide this project')
+  if (!ownerId) return
+  const { data: link, error } = await admin.from('agency_builders').select('agency_id').eq('builder_id', ownerId).maybeSingle()
+  if (error) throw error
+  if (link && link.agency_id !== ctx.user.id) {
+    throw new AuthError('Only the creator\'s agency curator or a platform admin can decide this project')
   }
-  throw new AuthError(
-    env.productMode() === 'builder'
-      ? 'Only the creator\'s agency curator or a platform admin can decide this project'
-      : 'Only a curator or platform admin can decide this project'
-  )
 }
 
 // Best-effort, like presentation-notifications.ts: the decision already
@@ -225,8 +222,8 @@ export async function resubmitProjectForApproval(ctx: WorkbenchCallerContext, pr
 export interface ProjectApprovalState {
   status: ProjectApprovalStatus
   reason: string | null
-  // Who can approve it besides a platform admin: any curator (Enterprise),
-  // or the creator's agency curator if they have one (Builder).
+  // Who can approve it besides a platform admin: the creator's agency
+  // curator if they have one, otherwise any curator.
   approverLabel: string
   pendingMemberEmails: string[]
 }
@@ -241,9 +238,8 @@ export async function getProjectApprovalState(project: {
 }): Promise<ProjectApprovalState> {
   const admin = createAdminClient()
   const held = project.pending_members ?? []
-  const builderMode = env.productMode() === 'builder'
   const [{ data: link }, { data: heldProfiles }] = await Promise.all([
-    builderMode && project.owner_id
+    project.owner_id
       ? admin.from('agency_builders').select('agency_id').eq('builder_id', project.owner_id).maybeSingle()
       : Promise.resolve({ data: null }),
     held.length > 0 ? admin.from('profiles').select('email').in('id', held.map((m) => m.user_id)) : Promise.resolve({ data: [] }),
@@ -252,7 +248,7 @@ export async function getProjectApprovalState(project: {
   return {
     status: project.approval_status,
     reason: project.approval_decision_reason,
-    approverLabel: !builderMode
+    approverLabel: !link
       ? 'a curator or platform admin'
       : agency?.email
         ? `your agency (${agency.email}) or a platform admin`

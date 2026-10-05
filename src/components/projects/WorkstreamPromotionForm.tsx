@@ -8,8 +8,8 @@ import { submitWorkstreamForPromotionAction } from '@/app/actions/workstream-pro
 // on approval, a new Project is created for the promoted work (this
 // Project's other, unsubmitted content is never exposed). Visible to any
 // active member of this Project, and only when there's nothing already in
-// flight for it -- see the page's own gating. In builder mode this is how
-// an accepted client proposal becomes the client's own Project: the
+// flight for it -- see the page's own gating. On a builder's workspace this
+// is how an accepted client proposal becomes the client's own Project: the
 // builder names the client people to add as viewers, and their agency
 // approves.
 export function WorkstreamPromotionForm({

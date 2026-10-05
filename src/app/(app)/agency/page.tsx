@@ -23,7 +23,7 @@ export default async function AgencyPage() {
         </div>
         <p className="mt-1 text-sm text-zinc-500">
           Each builder&apos;s client proposals, the client projects created from accepted ones -- with their workstreams, knowledge
-          bases and completion -- and requests waiting on you.
+          bases and completion -- their AI budgets, and requests waiting on you.
           Status, dates and the progress updates builders choose to
           share -- their notebooks, conversations and drafts stay private to them.
         </p>

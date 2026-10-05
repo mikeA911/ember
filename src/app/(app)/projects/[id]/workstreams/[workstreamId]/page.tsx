@@ -29,7 +29,6 @@ import { Markdown } from '@/components/shared/Markdown'
 import { WorkstreamArtifactList } from '@/components/projects/WorkstreamArtifactList'
 import { artifactCountLabel, artifactPreview, countArtifacts, sortArtifactsForReview } from '@/lib/projects/artifact-summary'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { env } from '@/lib/env'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 
 const ARTIFACT_TYPE_LABELS: Record<ArtifactType, string> = {
@@ -50,7 +49,7 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   const { id, workstreamId } = await params
   const supabase = await createClient()
 
-  const { data: project } = await supabase.from('projects').select('id, name').eq('id', id).single()
+  const { data: project } = await supabase.from('projects').select('id, name, builder_id').eq('id', id).single()
   const { data: workstreamRow } = await supabase.from('project_workstreams').select('*').eq('id', workstreamId).eq('project_id', id).single()
   const workstream = workstreamRow as ProjectWorkstream | null
   if (!project || !workstream) notFound()
@@ -68,7 +67,7 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   let canEdit = false // curator+ -- define scope, mark deliverables done
   let canAttach = false // consultant+ -- attach evidence
   let isActiveMember = false // Workstream Promotion: any active member of this workstream's Project may submit it for promotion
-  let isProjectOwner = false // Builder Operations: Share Builder Update is owner-only (can_manage_project), no curator branch
+  let isProjectOwner = false // Builder Operations: Share Builder Update is owner-only (can_manage_project) -- or the builder of record once the agency owns it
   let canDraftWiki = false // platform curator/admin -- createAIAssistedDraftAction's own bar
   let presentation = null as Awaited<ReturnType<typeof getPresentation>>
   let viewerName: string | null = null // Proposal summary's "prepared by"
@@ -81,7 +80,7 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
     canDraftWiki = isAdmin || viewerProfile?.role === 'curator'
     viewerName = viewerProfile?.full_name && viewerProfile.email ? `${viewerProfile.full_name} (${viewerProfile.email})` : (viewerProfile?.email ?? null)
     isActiveMember = isAdmin || !!viewerMembership
-    isProjectOwner = isAdmin || viewerMembership?.role === 'owner'
+    isProjectOwner = isAdmin || viewerMembership?.role === 'owner' || project.builder_id === user.id
     canEdit = isAdmin || viewerMembership?.role === 'owner' || viewerMembership?.role === 'curator'
     canAttach = isAdmin || canEdit || viewerMembership?.role === 'consultant'
 
@@ -95,8 +94,8 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   // Offer promotion only when it would actually be accepted by
   // submitWorkstreamForPromotion -- an active member, completed, at least
   // one approved artifact, and nothing already in flight for it. Works the
-  // same in Builder mode (the solo builder) or an ordinary Enterprise team
-  // Project (any member, not just its owner/curator).
+  // same on a builder's own workspace or a team Project (any member, not
+  // just its owner/curator).
   let canOfferPromotion = false
   if (isActiveMember && workstream.status === 'completed' && artifacts.some((a) => a.status === 'approved')) {
     const { data: existingPromotion } = await supabase
@@ -108,9 +107,8 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
     canOfferPromotion = !existingPromotion
   }
 
-  // Builder Operations: only meaningful in builder-mode deployments, and
-  // only for this workstream's own Project owner.
-  const canOfferBuilderUpdate = env.productMode() === 'builder' && isProjectOwner
+  // Builder Operations: only for this workstream's own Project owner.
+  const canOfferBuilderUpdate = isProjectOwner
   let existingBuilderUpdate: ExistingBuilderUpdate | null = null
   if (canOfferBuilderUpdate) {
     const { data } = await supabase

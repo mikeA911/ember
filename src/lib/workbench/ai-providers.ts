@@ -39,8 +39,8 @@ export async function updateProviderEnabled(ctx: WorkbenchCallerContext, provide
   if (error) throw error
 }
 
-// Marks the provider as running on Sandz infrastructure. In Builder mode, a
-// Live client Project may use only these for content AI calls
+// Marks the provider as running on Sandz infrastructure. A Live client
+// Project may use only these for content AI calls
 // (src/lib/ai/hosting-policy.ts). Admin only (ai_providers RLS).
 export async function setProviderSelfHosted(ctx: WorkbenchCallerContext, providerId: string, isSelfHosted: boolean) {
   const { error } = await ctx.supabase.from('ai_providers').update({ is_self_hosted: isSelfHosted }).eq('id', providerId)

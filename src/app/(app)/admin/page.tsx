@@ -82,10 +82,7 @@ export default async function AdminPage() {
     listMcpActivity(callerCtx, { ownOnly: false, limit: 50 }),
   ])
 
-  // Builder Operations only makes sense in a builder-mode deployment --
-  // there's no "builder_lab" Project category to review in Enterprise mode.
-  const isBuilderMode = env.productMode() === 'builder'
-  const builderOperationsRows = isBuilderMode ? await listBuilderOperationsRows(callerCtx) : []
+  const builderOperationsRows = await listBuilderOperationsRows(callerCtx)
 
   // Checked server-side only -- reports Configured/Missing, never the value.
   const configuredByProvider = Object.fromEntries(aiProviders.map((p) => [p.id, Boolean(env.byName(p.api_key_env_var))]))
@@ -159,15 +156,11 @@ export default async function AdminPage() {
               />
             ),
           },
-          ...(isBuilderMode
-            ? [
-                {
-                  id: 'builder-operations',
-                  label: 'Builder Operations',
-                  content: <BuilderOperationsReview rows={builderOperationsRows} />,
-                },
-              ]
-            : []),
+          {
+            id: 'builder-operations',
+            label: 'Builder Operations',
+            content: <BuilderOperationsReview rows={builderOperationsRows} />,
+          },
         ]}
       />
 

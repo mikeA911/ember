@@ -14,7 +14,6 @@ import type {
 } from '@/types/database'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import { requireActiveKnowledgeBase } from '@/lib/knowledge-bases'
-import { env } from '@/lib/env'
 import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
 
 // Builder Ontology, Part A (docs/kbs-ontology-dev-req-3.md): a wizard-staged
@@ -111,22 +110,6 @@ export async function createProject(
   }
   if (!hasRequiredRole(profile.role, 'consultant')) {
     throw new AuthError('Your account needs to be a consultant or above to start a project')
-  }
-  // KB Sandbox Builder: a builder (consultant role) gets exactly one
-  // Project, auto-provisioned at account creation (provisionBuilderProject)
-  // -- each client proposal is a Workstream on it, not a new Project (see
-  // that function's own comment). A client Project only comes from an
-  // accepted proposal, via workstream promotion, never from here.
-  // Curator/admin (operator staff) are unaffected -- they aren't builders
-  // and may need several Projects for programme administration. 'member' role is already excluded by the role check
-  // above in both modes, so no separate case is needed there.
-  if (env.productMode() === 'builder' && profile.role === 'consultant') {
-    const { data: existing } = await supabase.from('projects').select('id').eq('owner_id', user.id).limit(1).maybeSingle()
-    if (existing) {
-      throw new ProjectValidationError(
-        'Builders work from one Project -- start a new Workstream there for each customer instead of creating another Project.'
-      )
-    }
   }
   if (input.knowledgeBaseId) await requireActiveKnowledgeBase(supabase, input.knowledgeBaseId)
 
@@ -465,6 +448,48 @@ export async function sendProjectBackToWorking(ctx: WorkbenchCallerContext, proj
 export async function markProjectLive(ctx: WorkbenchCallerContext, projectId: string) {
   await requireCanApprove(ctx, projectId)
   await transitionProjectStatus(projectId, 'completed', 'live', ctx.user.id)
+  await handOverLiveProjectToAgency(projectId)
+}
+
+// At go-live a builder's Project passes to their agency
+// (20261008100001_live_handover_and_builder_share.sql): Ember is then used
+// for maintenance and feature requests, and the agency holds the client
+// relationship even for a solo builder. The builder stays on as curator and
+// remains the builder of record (builder_id) -- their bonus, AI budget and
+// dashboard card follow them. Same membership moves as transferOwnership.
+// No-op when the owner is on no agency's roster, or is the agency already.
+// Service-role client: neither the agency (not yet the owner) nor the
+// builder may change builder_id themselves.
+export async function handOverLiveProjectToAgency(projectId: string): Promise<{ agencyId: string } | null> {
+  const admin = createAdminClient()
+  const { data: project, error: projectError } = await admin.from('projects').select('owner_id, builder_id').eq('id', projectId).single()
+  if (projectError || !project) throw projectError ?? new ProjectValidationError('Project not found')
+  if (!project.owner_id) return null
+
+  const { data: link, error: linkError } = await admin.from('agency_builders').select('agency_id').eq('builder_id', project.owner_id).maybeSingle()
+  if (linkError) throw linkError
+  if (!link || link.agency_id === project.owner_id) return null
+
+  const builderId = project.owner_id
+  const { error: updateError } = await admin
+    .from('projects')
+    .update({ owner_id: link.agency_id, builder_id: project.builder_id ?? builderId })
+    .eq('id', projectId)
+  if (updateError) throw updateError
+
+  const { error: agencyError } = await admin
+    .from('project_members')
+    .upsert({ project_id: projectId, user_id: link.agency_id, role: 'owner', status: 'active' }, { onConflict: 'project_id,user_id' })
+  if (agencyError) throw agencyError
+
+  const { error: builderError } = await admin
+    .from('project_members')
+    .update({ role: 'curator' })
+    .eq('project_id', projectId)
+    .eq('user_id', builderId)
+  if (builderError) throw builderError
+
+  return { agencyId: link.agency_id }
 }
 
 // Approved -> Working on it, when the client asks for changes before
@@ -627,8 +652,9 @@ export async function enrollInOrganizationHome(admin: ReturnType<typeof createAd
 }
 
 // KB Sandbox Builder (docs/dev-request-kb-sandbox-builder-product.md): each
-// builder gets exactly one Project, auto-provisioned once at account
-// creation -- not one Project per client/opportunity. A new client is a
+// builder gets a workspace Project, auto-provisioned once at account
+// creation -- not one Project per client/opportunity (they may still create
+// or be given other Projects). A new client is a
 // Workstream (the builder's proposal) on this same Project; once the client
 // accepts it, workstream promotion (workstream-promotions.ts) creates the
 // client Project, owned by the builder with the client as viewers. A
@@ -636,8 +662,7 @@ export async function enrollInOrganizationHome(admin: ReturnType<typeof createAd
 // workstream_artifacts evidence trail -- no new schema needed for that,
 // and the builder's own free-form research/CRM notes are a Working
 // Knowledge item on it. Called from createUserAction (app/actions/admin.ts)
-// only when the deployment is in builder mode and the new account's
-// platform role is 'consultant' -- gating lives at the call site, this
+// only when the new account's platform role is 'consultant' -- gating lives at the call site, this
 // function is unconditional (same separation as enrollInOrganizationHome
 // above). The projects_create_owner_membership trigger handles adding the
 // builder as 'owner' -- no separate project_members insert needed here.
@@ -664,10 +689,13 @@ export async function provisionBuilderProject(admin: ReturnType<typeof createAdm
 export async function isOwnBuilderLabProject(ctx: WorkbenchCallerContext, projectId: string): Promise<boolean> {
   const { data: project } = await ctx.supabase
     .from('projects')
-    .select('owner_id, portfolio_category')
+    .select('owner_id, builder_id, portfolio_category')
     .eq('id', projectId)
     .maybeSingle()
-  return project?.owner_id === ctx.user.id && project?.portfolio_category === 'builder_lab'
+  // The builder of record when there is one: a client Project the agency
+  // took over at go-live is still this builder's work, and never the
+  // agency's own metered spend.
+  return !!project && (project.builder_id ?? project.owner_id) === ctx.user.id && project.portfolio_category === 'builder_lab'
 }
 
 // Backs the Ember search_projects tool (docs/dev-request-ember-onboarding-

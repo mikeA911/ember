@@ -412,11 +412,9 @@ export async function runAssistantTurn(
 
   // Builder AI Usage Metering + BYOLLM (src/lib/ai/metering.ts,
   // src/lib/workbench/builder-llm-credentials.ts): only ever applies to a
-  // builder's own conversation on their own builder_lab Project, in a
-  // Builder-mode deployment -- an Enterprise conversation, or a builder's
-  // conversation on any other Project, is never metered or substituted.
-  const isBuilderOwnProject =
-    env.productMode() === 'builder' && resolvedProjectId ? await isOwnBuilderLabProject(ctx, resolvedProjectId) : false
+  // builder's own conversation on their own builder_lab Project -- a
+  // conversation on any other Project is never metered or substituted.
+  const isBuilderOwnProject = resolvedProjectId ? await isOwnBuilderLabProject(ctx, resolvedProjectId) : false
   // A Live client Project may use only Sandz-hosted AI (src/lib/ai/
   // hosting-policy.ts): no BYOLLM, and the chat model switches to a
   // Sandz-hosted one if the selection or default isn't.

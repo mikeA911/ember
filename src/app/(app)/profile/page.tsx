@@ -6,6 +6,8 @@ import { ProfileForm } from '@/components/ProfileForm'
 import { BuilderLlmCredentialForm } from '@/components/profile/BuilderLlmCredentialForm'
 import { getBuilderSpendSummary } from '@/lib/ai'
 import { getBuilderLlmCredentialStatus } from '@/lib/workbench/builder-llm-credentials'
+import { listMyMaintenanceShares } from '@/lib/workbench/client-billing'
+import { formatMoney, monthlyTotals } from '@/components/agency/money'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 import { env } from '@/lib/env'
 import { ConnectedAiApps, type ConnectedAppActivity, type ConnectedAppGrant } from '@/components/profile/ConnectedAiApps'
@@ -32,16 +34,17 @@ export default async function ProfilePage() {
   const profile = profileRow as Profile
 
   // Builder AI Usage Metering + BYOLLM: only ever relevant to a builder
-  // (consultant role, builder-mode deployment) -- an Enterprise account or
-  // platform staff never sees either card.
-  const isBuilder = env.productMode() === 'builder' && profile.role === 'consultant'
+  // (consultant role) -- a member or platform staff never sees either card.
+  const isBuilder = profile.role === 'consultant'
   let spendSummary: Awaited<ReturnType<typeof getBuilderSpendSummary>> | null = null
   let llmCredentialStatus: Awaited<ReturnType<typeof getBuilderLlmCredentialStatus>> = null
+  let maintenanceShares: Awaited<ReturnType<typeof listMyMaintenanceShares>> = []
   if (isBuilder) {
     const ctx = { user, profile, supabase } as unknown as WorkbenchCallerContext
-    ;[spendSummary, llmCredentialStatus] = await Promise.all([
+    ;[spendSummary, llmCredentialStatus, maintenanceShares] = await Promise.all([
       getBuilderSpendSummary(createAdminClient(), user.id),
       getBuilderLlmCredentialStatus(ctx),
+      listMyMaintenanceShares(ctx),
     ])
   }
 
@@ -118,9 +121,33 @@ export default async function ProfilePage() {
           <p className="mt-1 text-zinc-500">
             You have <span className="font-medium text-zinc-700">${Math.max(spendSummary.remainingUsd, 0).toFixed(2)}</span> of AI credit
             remaining this month. {spendSummary.remainingUsd <= 0 && spendSummary.stopAtAllowance
-              ? 'Ember replies are paused until your operator adds more credit, or you configure your own LLM below.'
-              : 'Ask your operator if you need more.'}
+              ? 'Ember replies are paused until your agency adds more credit, or you configure your own LLM below.'
+              : 'Ask your agency if you need more.'}
           </p>
+        </div>
+      )}
+
+      {isBuilder && maintenanceShares.length > 0 && (
+        <div className="rounded border border-zinc-200 bg-white p-4 text-sm">
+          <span className="font-medium">Your maintenance share</span>
+          <p className="mt-1 text-zinc-500">
+            Your share of each client project&apos;s maintenance fee, as agreed with your agency.
+            {monthlyTotals(maintenanceShares.map((s) => ({ currency: s.currency, monthlyAmount: s.monthlyAmount, platformMonthly: 0, builderMonthly: s.builderMonthly }))).map(
+              ([currency, t]) => ` ${formatMoney(t.builderMonthly, currency)}/month in total.`
+            )}
+          </p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {maintenanceShares.map((s) => (
+              <li key={s.projectId} className="flex flex-wrap justify-between gap-2 text-xs">
+                <Link href={`/projects/${s.projectId}`} className="text-zinc-700 underline">
+                  {s.projectName}
+                </Link>
+                <span className="tabular-nums text-zinc-600">
+                  {formatMoney(s.builderMonthly, s.currency)}/mo ({s.builderSharePct}% of {formatMoney(s.monthlyAmount, s.currency)})
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

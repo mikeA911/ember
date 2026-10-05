@@ -4,8 +4,9 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { grantBuilderCreditAction, setBuilderAllowanceAction } from '@/app/actions/builder-metering'
 
-// Curator/admin-only actions on the Builder Operations tab: top up a
-// builder's credit balance, or adjust their monthly allowance/stop
+// Budget actions for the builder's agency or the platform admin (metering.ts
+// requireBudgetManager), on the agency dashboard and the Builder Operations
+// tab: top up a builder's credit balance, or adjust their monthly allowance/stop
 // threshold. Deliberately no "reduce spend" or "refund" action -- spend is
 // an append-only log (ai_operation_logs), never edited.
 export function BuilderMeteringActions({
