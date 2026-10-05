@@ -75,6 +75,13 @@ export async function updateModelStatusAction(
   revalidatePath(`/admin/providers/${providerId}`)
 }
 
+export async function updateModelPricingAction(modelId: string, providerId: string, input: workbench.ModelPricingInput) {
+  const ctx = await requireRole('admin')
+  await workbench.updateModelPricing(ctx, modelId, input)
+  revalidatePath(`/admin/providers/${providerId}`)
+  revalidatePath('/admin')
+}
+
 export async function updateModelNotesAction(modelId: string, providerId: string, notes: string) {
   const ctx = await requireRole('admin')
   await workbench.updateModelNotes(ctx, modelId, notes)

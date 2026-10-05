@@ -547,10 +547,10 @@ export async function runAssistantTurn(
   let webSearchCalls = 0
   // Recomputed each iteration -- cheap (pure, in-memory) and the current
   // turn keeps growing as tool round-trips are appended to `history`.
-  // Sticky across iterations: once truncation has happened once this turn,
-  // treat the turn as truncated for the summary-refresh decision below even
-  // if a later iteration's smaller working set wouldn't trip it again.
-  let contextWasTruncated = false
+  // The most messages any iteration this turn cut from the front of the
+  // history -- the summary-refresh decision below needs to know whether the
+  // summary covers everything that was cut.
+  let contextOmittedMessages = 0
   // This turn's real retrieval/creation provenance, accumulated across
   // iterations -- citations are checked against these (never against what
   // the model merely asserts), and createdRecordRefs feeds the Artifacts
@@ -572,7 +572,7 @@ export async function runAssistantTurn(
   async function finishTurn(reply: string, structured: VerifiedAssistantEnvelope | null): Promise<AssistantTurnResult> {
     const usedEmbeddingRetrieval = toolsUsed.has('search_wiki') || toolsUsed.has(SEARCH_PROJECT_KNOWLEDGE_TOOL_NAME)
     const embeddingModelDisplayName = usedEmbeddingRetrieval ? (await getDefaultModel(ctx.supabase, 'embedding')).model.display_name : undefined
-    await maybeRefreshSummary(ctx, conversation.id, contextWasTruncated, projectContext ? projectContext.informationSensitivity : undefined, selfHostedOnly)
+    await maybeRefreshSummary(ctx, conversation.id, contextOmittedMessages, projectContext ? projectContext.informationSensitivity : undefined, selfHostedOnly)
     const resolvedCreatedRecords = (await Promise.all(createdRecordRefs.map((ref) => resolveCreatedRecord(ctx, ref)))).filter(
       (r): r is ResolvedCreatedRecord => r !== null
     )
@@ -642,7 +642,7 @@ export async function runAssistantTurn(
       contextWindow: chatProvider.contextWindow,
       maxOutputTokens: chatProvider.maxOutputTokens,
     })
-    contextWasTruncated = contextWasTruncated || working.wasTruncated
+    contextOmittedMessages = Math.max(contextOmittedMessages, working.omittedMessageCount)
     let result: Awaited<ReturnType<typeof chatProvider.provider.generateChat>>
     try {
       // Information Sensitivity Classification check -- runs every
@@ -674,6 +674,9 @@ export async function runAssistantTurn(
         system: systemPrompt,
         tools,
         maxOutputTokens: chatProvider.maxOutputTokens ?? undefined,
+        // Calls with the same system prompt and tools share a key: the
+        // project's, general chat's, or feedback's.
+        cacheKey: feedbackContext ? 'ember-feedback' : `ember-chat:${projectContext ? projectContext.id : 'general'}`,
       })
     } catch (err) {
       if (err instanceof AISensitivityError) {

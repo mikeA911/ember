@@ -113,6 +113,10 @@ export interface GenerateChatInput {
   tools?: ToolSpec[]
   maxOutputTokens?: number
   model?: string
+  // Groups calls that share a long prompt opening (system prompt + tools)
+  // so the provider can serve it from its prompt cache. Only OpenAI takes
+  // it (prompt_cache_key); others cache by prefix on their own and ignore it.
+  cacheKey?: string
 }
 
 export interface GenerateChatResult {

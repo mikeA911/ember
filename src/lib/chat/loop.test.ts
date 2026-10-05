@@ -246,6 +246,8 @@ describe('runAssistantTurn', () => {
     // must reach the actual provider call -- this is what makes an admin-set
     // cap (e.g. to control cost on a new provider) actually take effect.
     expect(generateChatMock).toHaveBeenCalledWith(expect.objectContaining({ maxOutputTokens: 2048 }))
+    // General chat shares one prompt-cache key (OpenAI prompt_cache_key).
+    expect(generateChatMock).toHaveBeenCalledWith(expect.objectContaining({ cacheKey: 'ember-chat:general' }))
     expect(callToolMock).not.toHaveBeenCalled()
     expect(getDefaultModelMock).not.toHaveBeenCalled()
     // A brand-new conversation (conversationId param was null) can't have a
@@ -254,7 +256,7 @@ describe('runAssistantTurn', () => {
     // Refreshed after a successful reply, with the turn's truncation status
     // and (for this non-project conversation) an undefined projectSensitivity
     // and no Sandz-hosted-only requirement.
-    expect(maybeRefreshSummaryMock).toHaveBeenCalledWith(expect.anything(), 'conv-1', false, undefined, false)
+    expect(maybeRefreshSummaryMock).toHaveBeenCalledWith(expect.anything(), 'conv-1', 0, undefined, false)
   })
 
   it('passes an explicit model selection straight through to resolveChatProvider', async () => {
@@ -543,7 +545,7 @@ describe('runAssistantTurn -- structured responses', () => {
       if (table === 'ai_provider_sensitivity_eligibility') {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { max_sensitivity: 'internal' }, error: null }) }) }) }
       }
-      return originalFrom(table)
+      return originalFrom(table as never)
     }) as unknown as typeof ctx.supabase.from
 
     const result = await runAssistantTurn(ctx, null, 'What does the restricted article say?')
@@ -578,7 +580,7 @@ describe('runAssistantTurn -- structured responses', () => {
       if (table === 'ai_provider_sensitivity_eligibility') {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { max_sensitivity: 'internal' }, error: null }) }) }) }
       }
-      return originalFrom(table)
+      return originalFrom(table as never)
     }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
 
@@ -643,7 +645,7 @@ describe('runAssistantTurn -- project-bound member tools', () => {
       if (table === 'project_knowledge_bases' || table === 'project_wiki_articles') {
         return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
       }
-      return originalFrom(table)
+      return originalFrom(table as never)
     }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
 
@@ -679,7 +681,7 @@ describe('runAssistantTurn -- create_workstream projectId and tool error message
       if (table === 'project_knowledge_bases' || table === 'project_wiki_articles') {
         return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
       }
-      return originalFrom(table)
+      return originalFrom(table as never)
     }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
     return ctx
@@ -796,7 +798,7 @@ describe('runAssistantTurn -- search_web', () => {
       if (table === 'project_knowledge_bases' || table === 'project_wiki_articles') {
         return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
       }
-      return originalFrom(table)
+      return originalFrom(table as never)
     }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
     return ctx
@@ -973,7 +975,7 @@ describe('runAssistantTurn -- working knowledge tools', () => {
       if (table === 'project_knowledge_bases' || table === 'project_wiki_articles') {
         return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
       }
-      return originalFrom(table)
+      return originalFrom(table as never)
     }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
     return ctx
@@ -1145,7 +1147,7 @@ describe('runAssistantTurn -- Live client Project (Sandz-hosted AI only)', () =>
       if (table === 'project_knowledge_bases' || table === 'project_wiki_articles') {
         return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
       }
-      return originalFrom(table)
+      return originalFrom(table as never)
     }) as unknown as typeof ctx.supabase.from
     createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
     return ctx
@@ -1169,7 +1171,7 @@ describe('runAssistantTurn -- Live client Project (Sandz-hosted AI only)', () =>
       expect.anything(),
       { selfHostedOnly: true }
     )
-    expect(maybeRefreshSummaryMock).toHaveBeenCalledWith(expect.anything(), 'conv-1', false, null, true)
+    expect(maybeRefreshSummaryMock).toHaveBeenCalledWith(expect.anything(), 'conv-1', 0, null, true)
   })
 
   it('explains, without calling any model, when no Sandz-hosted model is available', async () => {

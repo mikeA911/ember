@@ -68,49 +68,52 @@ export interface WorkingContextInput {
 export interface WorkingContextResult {
   messages: ChatMessage[]
   wasTruncated: boolean
+  // How many history messages, oldest first, were cut (0 when none).
+  omittedMessageCount: number
   summaryIncluded: boolean
 }
+
+// Once history is over budget, the cut moves forward in steps of this many
+// turns rather than one turn at a time. A cut that moved every turn would
+// change the start of the history on every call, so the provider's prompt
+// cache could only ever reuse the system prompt and tools; a cut that holds
+// for several turns keeps the whole kept history cacheable meanwhile.
+export const CUT_STEP_TURNS = 4
 
 // Bounds what actually gets sent to the provider on a turn -- the caller's
 // own persisted `history` array is untouched; this only shapes the payload.
 // Always keeps the newest turn regardless of budget (a turn in progress must
-// never be cut mid-tool-call), then walks older turns backwards while they
-// still fit. Turns that don't fit are replaced by the rolling summary (if
-// one exists) rather than silently vanishing.
+// never be cut mid-tool-call), then keeps as many older turns as fit, with
+// the cut rounded forward to a multiple of CUT_STEP_TURNS. Stateless: the
+// same history always gives the same cut. Turns that are cut are replaced
+// by the rolling summary (if one exists) rather than silently vanishing.
 export function composeWorkingContext({ history, summary, contextWindow, maxOutputTokens }: WorkingContextInput): WorkingContextResult {
   const turns = groupIntoTurns(history)
-  if (turns.length === 0) return { messages: [], wasTruncated: false, summaryIncluded: false }
+  if (turns.length === 0) return { messages: [], wasTruncated: false, omittedMessageCount: 0, summaryIncluded: false }
 
   const budget = computeBudget(contextWindow, maxOutputTokens)
-  const kept: ChatMessage[][] = []
-  let used = 0
-  let wasTruncated = false
-
-  for (let i = turns.length - 1; i >= 0; i--) {
-    const turn = turns[i]
-    const turnTokens = turn.reduce((sum, m) => sum + estimateMessageTokens(m), 0)
-    if (kept.length === 0) {
-      kept.unshift(turn)
-      used += turnTokens
-      continue
-    }
-    if (used + turnTokens <= budget) {
-      kept.unshift(turn)
-      used += turnTokens
-    } else {
-      wasTruncated = true
-      break
-    }
+  const newest = turns.length - 1
+  // The earliest turn that still fits, walking back from the newest.
+  let firstFitting = newest
+  let used = turns[newest].reduce((sum, m) => sum + estimateMessageTokens(m), 0)
+  for (let i = newest - 1; i >= 0; i--) {
+    const turnTokens = turns[i].reduce((sum, m) => sum + estimateMessageTokens(m), 0)
+    if (used + turnTokens > budget) break
+    used += turnTokens
+    firstFitting = i
   }
 
-  const messages = kept.flat()
+  const wasTruncated = firstFitting > 0
+  const start = wasTruncated ? Math.min(Math.ceil(firstFitting / CUT_STEP_TURNS) * CUT_STEP_TURNS, newest) : 0
+  const messages = turns.slice(start).flat()
+  const omittedMessageCount = history.length - messages.length
   if (wasTruncated && summary) {
     const summaryMessage: ChatMessage = {
       role: 'user',
       content: `[Context note -- earlier turns omitted for length. Conversation summary so far:]\n${formatSummary(summary)}`,
     }
-    return { messages: [summaryMessage, ...messages], wasTruncated, summaryIncluded: true }
+    return { messages: [summaryMessage, ...messages], wasTruncated, omittedMessageCount, summaryIncluded: true }
   }
 
-  return { messages, wasTruncated, summaryIncluded: false }
+  return { messages, wasTruncated, omittedMessageCount, summaryIncluded: false }
 }

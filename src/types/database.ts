@@ -1824,6 +1824,9 @@ export interface AIModelRow {
   context_window: number | null
   max_output_tokens: number | null
   input_cost_per_million: number | null
+  // Price of input tokens served from the provider's prompt cache; null =
+  // charge them at input_cost_per_million (20261011100001_ai_cost_report.sql).
+  cached_input_cost_per_million: number | null
   output_cost_per_million: number | null
   embedding_dimensions: number | null
   supports_structured_output: boolean
@@ -2772,6 +2775,26 @@ export type AIProviderInsert = Omit<AIProviderRow, 'id' | 'created_at' | 'update
 export type AIProviderUpdate = Partial<Omit<AIProviderRow, 'id' | 'created_at'>>
 
 export type AIModelInsert = Omit<AIModelRow, 'id' | 'created_at' | 'updated_at'>
+
+// Daily AI usage totals per task/provider/model/operation -- the
+// ai_cost_daily view (20261011100001_ai_cost_report.sql), admin-only via
+// ai_operation_logs' RLS. bigint/numeric columns can arrive as strings.
+export type AICostDailyRow = {
+  day: string
+  task: string
+  provider: string
+  model: string
+  operation: AIOperationName
+  calls: number
+  failed_calls: number
+  unpriced_calls: number
+  byo_llm_calls: number
+  input_tokens: number | string
+  cached_input_tokens: number | string
+  cache_reported_input_tokens: number | string
+  output_tokens: number | string
+  cost_usd: number | string
+}
 export type AIModelUpdate = Partial<Omit<AIModelRow, 'id' | 'provider_id' | 'created_at'>>
 
 // active_version_id is optional at insert time -- a graph is created before
@@ -3201,7 +3224,9 @@ interface DatabaseDefinition {
         Relationships: []
       }
     }
-    Views: Record<string, never>
+    Views: {
+      ai_cost_daily: { Row: AICostDailyRow; Relationships: [] }
+    }
     Functions: {
       is_admin: { Args: { uid: string }; Returns: boolean }
       is_curator_or_admin: { Args: { uid: string }; Returns: boolean }

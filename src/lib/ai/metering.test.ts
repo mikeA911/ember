@@ -45,6 +45,23 @@ describe('computeCost', () => {
     const result = await computeCost(supabase as never, 'openai', 'gpt-4o-mini', 1_000_000, 500_000)
     expect(result).toBe(10 + 10) // 1M input @ $10/M + 0.5M output @ $20/M
   })
+
+  it('charges cached input at the cached price', async () => {
+    const supabase = createFakeSupabase({
+      ai_providers: [{ data: { id: 'provider-1' }, error: null }],
+      ai_models: [{ data: { input_cost_per_million: 10, cached_input_cost_per_million: 2.5, output_cost_per_million: 20 }, error: null }],
+    })
+    // 0.6M uncached @ $10 + 0.4M cached @ $2.50 + 0.5M output @ $20
+    expect(await computeCost(supabase as never, 'openai', 'gpt-4o-mini', 1_000_000, 500_000, 400_000)).toBeCloseTo(6 + 1 + 10)
+  })
+
+  it('charges cached input at the full input price when no cached price is set', async () => {
+    const supabase = createFakeSupabase({
+      ai_providers: [{ data: { id: 'provider-1' }, error: null }],
+      ai_models: [{ data: { input_cost_per_million: 10, cached_input_cost_per_million: null, output_cost_per_million: 20 }, error: null }],
+    })
+    expect(await computeCost(supabase as never, 'openai', 'gpt-4o-mini', 1_000_000, 500_000, 400_000)).toBeCloseTo(20)
+  })
 })
 
 describe('getBuilderSpendSummary', () => {

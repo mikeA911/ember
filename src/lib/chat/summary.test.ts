@@ -60,7 +60,7 @@ describe('maybeRefreshSummary', () => {
     })
     listMessagesMock.mockResolvedValue(userRows(2))
 
-    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', false)
+    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', 0)
 
     expect(getActiveStructuredOutputProviderMock).not.toHaveBeenCalled()
   })
@@ -71,7 +71,7 @@ describe('maybeRefreshSummary', () => {
     })
     listMessagesMock.mockResolvedValue([])
 
-    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', true)
+    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', 1)
 
     expect(getActiveStructuredOutputProviderMock).not.toHaveBeenCalled()
   })
@@ -88,12 +88,12 @@ describe('maybeRefreshSummary', () => {
     const generateStructured = vi.fn().mockResolvedValue({ data: { objective: 'o' }, model: 'test-model' })
     getActiveStructuredOutputProviderMock.mockResolvedValue({ name: 'groq', generateStructured })
 
-    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', false)
+    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', 0)
 
     expect(generateStructured).toHaveBeenCalled()
   })
 
-  it('refreshes immediately when the working context was truncated, even with few turns', async () => {
+  it('refreshes immediately when the working context cut turns there is no summary of yet, even with few turns', async () => {
     const supabase = createFakeSupabase({
       conversations: [
         { data: { summary_json: null, summary_through_message_id: null }, error: null },
@@ -101,11 +101,11 @@ describe('maybeRefreshSummary', () => {
       ],
       ai_providers: [{ data: { id: 'provider-1' }, error: null }],
     })
-    listMessagesMock.mockResolvedValue(userRows(1))
+    listMessagesMock.mockResolvedValue(userRows(2))
     const generateStructured = vi.fn().mockResolvedValue({ data: { objective: 'o' }, model: 'test-model' })
     getActiveStructuredOutputProviderMock.mockResolvedValue({ name: 'groq', generateStructured })
 
-    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', true)
+    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', 1)
 
     expect(generateStructured).toHaveBeenCalled()
   })
@@ -140,7 +140,7 @@ describe('maybeRefreshSummary', () => {
     getActiveStructuredOutputProviderMock.mockResolvedValue({ name: 'groq', generateStructured })
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', false)
+    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', 0)
 
     expect(generateStructured).not.toHaveBeenCalled()
     expect(supabase._calls.find((c) => c.table === 'conversations' && c.method === 'update')).toBeUndefined()
@@ -155,7 +155,7 @@ describe('maybeRefreshSummary', () => {
     getActiveStructuredOutputProviderMock.mockRejectedValue(new Error('provider down'))
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    await expect(maybeRefreshSummary(fakeCtx(supabase), 'conv-1', false)).resolves.toBeUndefined()
+    await expect(maybeRefreshSummary(fakeCtx(supabase), 'conv-1', 0)).resolves.toBeUndefined()
 
     errorSpy.mockRestore()
   })
@@ -163,8 +163,43 @@ describe('maybeRefreshSummary', () => {
   it('does nothing when the conversation row lookup fails', async () => {
     const supabase = createFakeSupabase({ conversations: [{ data: null, error: new Error('not found') }] })
 
-    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', true)
+    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', 1)
 
     expect(listMessagesMock).not.toHaveBeenCalled()
+  })
+
+  // The cut moves in steps, so most truncated turns cut nothing new: those
+  // must not cost a summary call or change the start of the next prompt.
+  it('does not refresh when the summary already covers everything the context cut', async () => {
+    const supabase = createFakeSupabase({
+      conversations: [{ data: { summary_json: { objective: 'o' }, summary_through_message_id: 'm3' }, error: null }],
+    })
+    listMessagesMock.mockResolvedValue(userRows(6))
+
+    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', 4)
+
+    expect(getActiveStructuredOutputProviderMock).not.toHaveBeenCalled()
+  })
+
+  it('refreshes from the previous summary plus only the messages after it', async () => {
+    const supabase = createFakeSupabase({
+      conversations: [
+        { data: { summary_json: { objective: 'earlier objective' }, summary_through_message_id: 'm1' }, error: null },
+        { data: null, error: null },
+      ],
+      ai_providers: [{ data: { id: 'provider-1' }, error: null }],
+    })
+    listMessagesMock.mockResolvedValue(userRows(6))
+    const generateStructured = vi.fn().mockResolvedValue({ data: { objective: 'o' }, model: 'test-model' })
+    getActiveStructuredOutputProviderMock.mockResolvedValue({ name: 'groq', generateStructured })
+
+    await maybeRefreshSummary(fakeCtx(supabase), 'conv-1', 4)
+
+    const { prompt } = generateStructured.mock.calls[0][0] as { prompt: string }
+    expect(prompt).toContain('earlier objective')
+    expect(prompt).toContain('user: q2')
+    expect(prompt).toContain('user: q5')
+    expect(prompt).not.toContain('user: q0')
+    expect(prompt).not.toContain('user: q1')
   })
 })

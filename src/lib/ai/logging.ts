@@ -65,7 +65,7 @@ export function withLogging(provider: AIProvider, context: LogContext): AIProvid
     const admin = createAdminClient()
     const isByoLlm = context.isByoLlm ?? false
     const estimatedCostUsd =
-      outcome.success && !isByoLlm ? await computeCost(admin, provider.name, model, outcome.inputTokens, outcome.outputTokens) : null
+      outcome.success && !isByoLlm ? await computeCost(admin, provider.name, model, outcome.inputTokens, outcome.outputTokens, outcome.cachedInputTokens ?? null) : null
     const { data } = await admin
       .from('ai_operation_logs')
       .insert({
