@@ -1,8 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
+
+const embedKnowledgeGapMock = vi.fn(async () => null as { embedding: number[]; model: string } | null)
+vi.mock('./knowledge-gap-embedding', () => ({ embedKnowledgeGap: (...args: unknown[]) => embedKnowledgeGapMock(...(args as [])) }))
 
 const {
   reportEmberAnswer,
@@ -93,6 +96,8 @@ describe('reportEmberAnswer', () => {
 
     expect(result).toEqual({ gapId: 'gap-1', projectId: 'p1' })
     expect(inserts(supabase, 'project_knowledge_gaps')[0]).toEqual({
+      embedding: null,
+      embedding_model: null,
       project_id: 'p1',
       question: 'How are Mitel SIP trunks configured?',
       ember_answer: 'Mitel trunks use port 5060 …',
@@ -125,6 +130,18 @@ describe('reportEmberAnswer', () => {
 
     const badKind = makeCtx({})
     await expect(reportEmberAnswer(badKind.ctx, 'm1', { failureKind: 'nope' as never, details: '' })).rejects.toBeInstanceOf(KnowledgeGapValidationError)
+  })
+})
+
+describe('failure-report embedding (AI-based grouping)', () => {
+  it('stores the report’s embedding so later detections of the same question group with it', async () => {
+    embedKnowledgeGapMock.mockResolvedValueOnce({ embedding: [0.3, 0.4], model: 'text-embedding-3-small/2' })
+    const { supabase, ctx } = makeCtx({
+      project_knowledge_gaps: [{ data: { id: 'gap-3' }, error: null }],
+      project_members: [{ data: [], error: null }],
+    })
+    await reportTypedFailure(ctx, 'p1', { question: 'Which radio protocol does CCDRRMO use?', failureKind: 'could_not_answer', details: '' })
+    expect(inserts(supabase, 'project_knowledge_gaps')[0]).toMatchObject({ embedding: [0.3, 0.4], embedding_model: 'text-embedding-3-small/2' })
   })
 })
 

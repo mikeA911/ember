@@ -338,6 +338,19 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Boundaries:** Retrieval is RAG over approved, embedded chunks under the caller's own access; restricted sources stay hidden from members without a grant.
 - **Verification:** Code verified 2026-10-05.
 
+### Record and read a Project's requirements
+
+- **Intent:** Know what the Project's delivered solution must satisfy and where each requirement comes from; (curators) record and maintain them.
+- **Users and authority:** Every Project member reads. Project owners/curators and platform admins create and edit drafts, withdraw, and delete drafts.
+- **Prerequisites:** Project membership.
+- **Start:** `/projects/[id]/requirements`, or the Project page's **Requirements** section.
+- **Navigation:** Project → **Requirements** → **Open the requirements register** → a requirement. Curators: **New requirement**; on a draft, **Edit**, **+ Add a source**, **Change scope**, **+ Add a verification method**, **Withdraw**, **Delete draft**.
+- **Outcome:** A requirement with code, statement, category, priority and the stage it must be verified from; its sources (standard, regulation, contract, customer need, vendor claim) with clause locators and links into Project knowledge; the workstreams and objects it concerns; verification methods with pass criteria.
+- **Ember guidance:** Explain the register and link to it. Ember cannot create or change requirements yet. A vendor claim is a claim to verify, never evidence that a requirement is met. AI evaluation scores (`/evals`) are not evidence of solution conformance.
+- **Boundaries:** Only drafts can be edited; withdrawn requirements stay readable and cannot be reopened. Sources citing restricted evidence are hidden from people without a grant.
+- **Exposure:** Read-only candidate for MCP; writing stays a UI action.
+- **Verification:** Code verified 2026-10-05 (solution conformance, Stage 1); SQL behaviour checked against a local Postgres with stub tables.
+
 ### See or assess Ember readiness for a Project
 
 - **Intent:** Know how far to rely on Ember for this Project, and (curators) record that judgement.
@@ -462,7 +475,7 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **What evals measure:** Evals measure Ember and Agents (whether answers retrieve the right evidence and stay grounded), not a Project's delivered solution. Ember should not describe an eval score as evidence that a client system conforms to a standard.
 - **Exposure:** Results are candidates for admin read access only; running evaluations stays a UI action.
 - **Verification:** Code verified 2026-10-05 (Ember Readiness, Stage 1). Detailed workflows remain to be catalogued.
-- **Planned, not yet available:** `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` proposes a separate **Solution evaluation** area for requirements, verification evidence and conformance decisions. Until these ship, Ember must not tell users these features exist or direct them to them. If a user says Ember got something wrong or could not answer from Project knowledge, point them to **Report a problem** under the answer (see **Report an Ember failure** below).
+- **Planned, not yet available:** `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` adds a separate **Solution evaluation** area: the requirements register is live (see **Record and read a Project's requirements**); verification records, baselines and conformance decisions are not yet available. Until these ship, Ember must not tell users these features exist or direct them to them. If a user says Ember got something wrong or could not answer from Project knowledge, point them to **Report a problem** under the answer (see **Report an Ember failure** below).
 
 ### Graphs
 

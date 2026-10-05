@@ -1,6 +1,7 @@
 import 'server-only'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 import { notifyProjectCurators } from '@/lib/projects/knowledge-gaps'
+import { embedKnowledgeGap, GAP_SEMANTIC_SIMILARITY } from '@/lib/projects/knowledge-gap-embedding'
 import type { KnowledgeCoverage } from './response-envelope'
 import type { KnowledgeGapSignal } from '@/types/database'
 
@@ -53,19 +54,26 @@ export interface RecordedKnowledgeGap {
   occurrenceCount: number
 }
 
-// Records the detection (grouping with a similar open gap, in the
-// database) and notifies curators. Never throws: a failure here must never
+// Records the detection (grouping with the most similar open gap, in the
+// database -- by embedding when available, else word overlap) and notifies
+// curators. Never throws: a failure here must never
 // break the chat turn that already succeeded.
 export async function recordKnowledgeGap(
   ctx: WorkbenchCallerContext,
   input: { projectId: string; messageId: string; question: string; missingTopic: string | undefined; signal: KnowledgeGapSignal }
 ): Promise<RecordedKnowledgeGap | null> {
   try {
+    // AI-based grouping: the database groups by embedding similarity when
+    // this embeds, and falls back to word overlap when it doesn't.
+    const embedding = await embedKnowledgeGap(ctx, input.projectId, input.question, input.missingTopic)
     const { data, error } = await ctx.supabase.rpc('record_automatic_knowledge_gap', {
       p_message_id: input.messageId,
       p_question: input.question.slice(0, 2000),
       p_missing_topic: input.missingTopic ?? null,
       p_signal: input.signal,
+      p_embedding: embedding?.embedding ?? null,
+      p_embedding_model: embedding?.model ?? null,
+      p_min_similarity: GAP_SEMANTIC_SIMILARITY,
     })
     if (error) throw error
     const row = data?.[0]

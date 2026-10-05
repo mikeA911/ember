@@ -4,6 +4,12 @@ import path from 'node:path'
 import { createFakeSupabase } from '@/lib/test-support/fake-supabase'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 
+const embedKnowledgeGapMock = vi.fn()
+vi.mock('@/lib/projects/knowledge-gap-embedding', () => ({
+  GAP_SEMANTIC_SIMILARITY: 0.82,
+  embedKnowledgeGap: (...args: unknown[]) => embedKnowledgeGapMock(...args),
+}))
+
 const { detectKnowledgeGapSignal, recordKnowledgeGap, PROJECT_EVIDENCE_SIMILARITY } = await import('./knowledge-gap-detection')
 
 describe('detectKnowledgeGapSignal', () => {
@@ -44,19 +50,31 @@ describe('recordKnowledgeGap', () => {
     signal: 'declared' as const,
   }
 
-  it('records through the database function and tells the curators about a new gap', async () => {
+  it('embeds the gap, records it through the database function and tells the curators about a new gap', async () => {
+    embedKnowledgeGapMock.mockResolvedValueOnce({ embedding: [0.1, 0.2], model: 'text-embedding-3-small/2' })
     const { fake, rpc, ctx } = ctxWith({ gap_id: 'gap-1', occurrence_id: 'occ-1', is_new: true, occurrence_count: 1 })
     const result = await recordKnowledgeGap(ctx, input)
 
+    expect(embedKnowledgeGapMock).toHaveBeenCalledWith(ctx, 'p1', 'How are Mitel SIP trunks configured?', 'Mitel SIP trunk configuration')
     expect(rpc).toHaveBeenCalledWith('record_automatic_knowledge_gap', {
       p_message_id: 'msg-1',
       p_question: 'How are Mitel SIP trunks configured?',
       p_missing_topic: 'Mitel SIP trunk configuration',
       p_signal: 'declared',
+      p_embedding: [0.1, 0.2],
+      p_embedding_model: 'text-embedding-3-small/2',
+      p_min_similarity: 0.82,
     })
     expect(result).toEqual({ gapId: 'gap-1', occurrenceId: 'occ-1', isNew: true, occurrenceCount: 1 })
     const note = fake._calls.find((c) => c.table === 'project_notes' && c.method === 'insert')?.args as Record<string, unknown>
     expect(note).toMatchObject({ recipient_user_id: 'curator-1', subject: 'Ember found a knowledge gap', context_type: 'knowledge_gap', context_id: 'gap-1' })
+  })
+
+  it('still records when the gap could not be embedded, leaving grouping to word overlap', async () => {
+    embedKnowledgeGapMock.mockResolvedValueOnce(null)
+    const { rpc, ctx } = ctxWith({ gap_id: 'gap-1', occurrence_id: 'occ-1', is_new: true, occurrence_count: 1 })
+    await recordKnowledgeGap(ctx, input)
+    expect(rpc).toHaveBeenCalledWith('record_automatic_knowledge_gap', expect.objectContaining({ p_embedding: null, p_embedding_model: null }))
   })
 
   it('sends a digest note only at 3, 10 and 25 occurrences, not on every repeat', async () => {
