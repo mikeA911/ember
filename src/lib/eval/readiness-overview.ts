@@ -1,7 +1,7 @@
 import 'server-only'
 import { AuthError } from '@/lib/auth'
 import { summarizeResults } from './scoring'
-import type { EvalDatasetStatus, EvalResult } from '@/types/database'
+import type { EmberReadinessVerdict, EvalDatasetStatus, EvalResult } from '@/types/database'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
 
 // Admin -> Ember readiness (Ember Readiness, Stage 1 --
@@ -49,6 +49,8 @@ export interface ReadinessDatasetRow {
   projectName: string | null
   caseCount: number
   latestRun: ReadinessRunSummary | null
+  // The Project's current curator judgement (Stage 2), when there is one.
+  curatorJudgement: { confidencePercent: number; verdict: EmberReadinessVerdict; reviewDueAt: string } | null
 }
 
 export interface EmberReadinessOverview {
@@ -63,12 +65,16 @@ export interface ReadinessOverviewInput {
   cases: { dataset_id: string }[]
   runs: { id: string; dataset_id: string; name: string | null; status: string; is_baseline: boolean; completed_at: string | null }[]
   results: ResultRow[]
+  // project_ember_readiness rows, newest first.
+  judgements?: { project_id: string; confidence_percent: number; verdict: EmberReadinessVerdict; review_due_at: string }[]
 }
 
 // Pure, so the roll-up is unit-testable without a database. runs must be
 // newest first (the first completed run per dataset is its latest).
-export function buildReadinessOverview({ datasets, projects, cases, runs, results }: ReadinessOverviewInput): EmberReadinessOverview {
+export function buildReadinessOverview({ datasets, projects, cases, runs, results, judgements = [] }: ReadinessOverviewInput): EmberReadinessOverview {
   const projectNameById = new Map(projects.map((p) => [p.id, p.name]))
+  const judgementByProject = new Map<string, (typeof judgements)[number]>()
+  for (const j of judgements) if (!judgementByProject.has(j.project_id)) judgementByProject.set(j.project_id, j)
 
   const caseCountByDataset = new Map<string, number>()
   for (const c of cases) caseCountByDataset.set(c.dataset_id, (caseCountByDataset.get(c.dataset_id) ?? 0) + 1)
@@ -104,6 +110,7 @@ export function buildReadinessOverview({ datasets, projects, cases, runs, result
         unreviewedCount: unreviewed(run.id),
       }
     }
+    const judgement = d.project_id ? judgementByProject.get(d.project_id) : undefined
     return {
       datasetId: d.id,
       name: d.name,
@@ -113,6 +120,9 @@ export function buildReadinessOverview({ datasets, projects, cases, runs, result
       projectName: d.project_id ? (projectNameById.get(d.project_id) ?? null) : null,
       caseCount: caseCountByDataset.get(d.id) ?? 0,
       latestRun,
+      curatorJudgement: judgement
+        ? { confidencePercent: judgement.confidence_percent, verdict: judgement.verdict, reviewDueAt: judgement.review_due_at }
+        : null,
     }
   })
 
@@ -144,7 +154,7 @@ export async function getEmberReadinessOverview(ctx: WorkbenchCallerContext): Pr
   const projectIds = [...new Set((datasets ?? []).map((d) => d.project_id).filter((id): id is string => id !== null))]
   const completedRunIds = (runs ?? []).filter((r) => r.status === 'completed').map((r) => r.id)
 
-  const [{ data: projects, error: projectsError }, { data: results, error: resultsError }] = await Promise.all([
+  const [{ data: projects, error: projectsError }, { data: results, error: resultsError }, { data: judgements, error: judgementsError }] = await Promise.all([
     projectIds.length > 0 ? supabase.from('projects').select('id, name').in('id', projectIds) : Promise.resolve({ data: [], error: null }),
     completedRunIds.length > 0
       ? supabase
@@ -154,9 +164,19 @@ export async function getEmberReadinessOverview(ctx: WorkbenchCallerContext): Pr
           )
           .in('eval_run_id', completedRunIds)
       : Promise.resolve({ data: [], error: null }),
+    projectIds.length > 0
+      ? supabase
+          .from('project_ember_readiness')
+          .select('project_id, confidence_percent, verdict, review_due_at')
+          .in('project_id', projectIds)
+          .order('set_at', { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
   ])
   if (projectsError) throw projectsError
   if (resultsError) throw resultsError
+  // Curator judgements are an extra column; if they can't be read (e.g. the
+  // Stage 2 migration not applied yet) show the table without them.
+  if (judgementsError) console.error('Ember readiness judgements unavailable', judgementsError)
 
   return buildReadinessOverview({
     datasets: datasets ?? [],
@@ -164,5 +184,6 @@ export async function getEmberReadinessOverview(ctx: WorkbenchCallerContext): Pr
     cases: cases ?? [],
     runs: runs ?? [],
     results: (results ?? []) as ResultRow[],
+    judgements: judgementsError ? [] : (judgements ?? []),
   })
 }

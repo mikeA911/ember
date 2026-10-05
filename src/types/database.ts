@@ -720,6 +720,40 @@ export interface ProjectStatusHistoryEntry {
   created_at: string
 }
 
+// Ember Readiness, Stage 2 (20261013100001_project_ember_readiness.sql):
+// a Project curator's or platform admin's judgement of how ready Ember is
+// for the Project. Append-only -- the newest row per Project is current.
+export type EmberReadinessVerdict = 'ready' | 'needs_more_sources'
+
+export interface ProjectEmberReadiness {
+  id: string
+  project_id: string
+  confidence_percent: number
+  verdict: EmberReadinessVerdict
+  rationale: string
+  review_due_at: string
+  // 0..1, filled by the insert trigger from the latest eval run; null when
+  // none existed. numeric can arrive as a string.
+  measured_score_at_set: number | string | null
+  set_by: string | null
+  set_at: string
+}
+
+// project_ember_readiness_signals(): counts only, for Projects the caller is
+// a member of.
+export interface ProjectEmberReadinessSignals {
+  project_id: string
+  measured_run_id: string | null
+  measured_dataset_name: string | null
+  measured_at: string | null
+  measured_questions: number | null
+  measured_passed: number | null
+  source_count: number
+  searchable_source_count: number
+  wiki_article_count: number
+  last_source_added_at: string | null
+}
+
 // private = members/admin only (default, never auto-changed). internal =
 // any authenticated user can view (editing still gated by project_members).
 // public = a deliberately published presentation, visible with no session
@@ -3127,6 +3161,12 @@ interface DatabaseDefinition {
         Relationships: []
       }
       project_status_history: { Row: ProjectStatusHistoryEntry; Insert: ProjectStatusHistoryEntryInsert; Update: never; Relationships: [] }
+      project_ember_readiness: {
+        Row: ProjectEmberReadiness
+        Insert: Omit<ProjectEmberReadiness, 'id' | 'set_at' | 'measured_score_at_set'>
+        Update: never
+        Relationships: []
+      }
       platform_owners: { Row: PlatformOwner; Insert: PlatformOwner; Update: never; Relationships: [] }
       feedback_reports: { Row: FeedbackReport; Insert: FeedbackReportInsert; Update: FeedbackReportUpdate; Relationships: [] }
       feedback_report_status_history: {
@@ -3234,6 +3274,7 @@ interface DatabaseDefinition {
       increment_rejected_chunks: { Args: { doc_id: string }; Returns: void }
       decrement_approved_chunks: { Args: { doc_id: string }; Returns: void }
       mcp_rate_hit: { Args: { p_user_id: string; p_client_id: string; p_minute_limit: number; p_day_limit: number }; Returns: boolean }
+      project_ember_readiness_signals: { Args: { pids: string[] }; Returns: ProjectEmberReadinessSignals[] }
       match_documents: {
         Args: {
           query_embedding: number[]

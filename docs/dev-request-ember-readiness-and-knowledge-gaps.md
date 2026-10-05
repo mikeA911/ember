@@ -2,7 +2,7 @@
 
 ## Status
 
-Stage 1 (admin dashboard changes) built 5 October 2026; Stages 2–4 proposed. Companion to `docs/dev-request-solution-conformance-and-acceptance-evaluation.md`. Worked example: the `cebu-ng911` Project.
+Stages 1 (admin dashboard changes) and 2 (readiness section) built 5 October 2026; Stages 3–4 proposed. Companion to `docs/dev-request-solution-conformance-and-acceptance-evaluation.md`. Worked example: the `cebu-ng911` Project.
 
 ## Problem
 
@@ -52,6 +52,15 @@ Rules:
 - If the measured score and curator confidence disagree by more than a set margin, the section says so rather than picking one.
 - Viewers and consultants see the verdict, both signals and gap counts. Only curators and admins can change confidence or the verdict.
 - Gap and failure details respect evidence access; a member sees only gaps from conversations and sources they could already see.
+
+**As built (Stage 2, 5 October 2026):**
+
+- **Storage.** `project_ember_readiness` (`20261013100001_project_ember_readiness.sql`) is append-only: any Project member reads it, a Project owner/curator or platform admin inserts as themselves (`can_curate_project`), and there is no update or delete. The newest row is current; the Project page shows up to five earlier ones. The stored verdict is `ready` or `needs_more_sources`; *Not assessed* means no row exists.
+- **Measured score.** The latest completed run on any non-archived dataset attached to the Project, as "questions passed of questions asked". A question passes when a human reviewer accepted it; with no review, when the expected evidence was not missed and either the judge's outcome score is at least 0.7 or, with no judge, the expected evidence was retrieved. Members read it, and the knowledge coverage counts, through `project_ember_readiness_signals()`, a `SECURITY DEFINER` function that returns counts only and only for Projects the caller belongs to; the per-result rows stay admin and staff only.
+- **Coverage.** Active sources in the Project's own and attached knowledge bases, how many of them have at least one approved (searchable) chunk, approved Wiki articles linked to the Project or held in its knowledge bases, and when the last source was added.
+- **Review due.** The curator picks a review period (30, 60, 90 or 180 days; default 90). The judgement is marked *review due* when that date passes or when the measured score falls 15 points or more below the score recorded (server-side, by the insert trigger) when the judgement was set. The open-gaps rule arrives with Stage 3.
+- **Disagreement.** Shown when curator confidence and the measured score are more than 25 points apart.
+- **Where it shows.** The Project page's **Ember readiness** section (replacing the old *Evals* list; the Project's test-question datasets are linked there for curators), an **Ember readiness** table on every dashboard with one row per Project the viewer belongs to, and a *Curator verdict* column on Admin → Ember readiness.
 
 ## Failure reports ("Ember got this wrong")
 
@@ -122,7 +131,7 @@ Any member may attach a candidate source to a gap; only curators approve it into
 ## Delivery stages
 
 1. **Admin move** — eval runs, baselines and human review become platform-admin work (Server Actions and RLS); Evals leaves non-admin navigation and dashboards; Admin → Ember readiness. *Built.*
-2. **Readiness section** — curator confidence and verdict with history, measured score and knowledge coverage on Project pages and the non-admin dashboard.
+2. **Readiness section** — curator confidence and verdict with history, measured score and knowledge coverage on Project pages and the non-admin dashboard. *Built.*
 3. **Failure reports and the curator gap queue** — including promotion of a resolved gap to a draft eval case.
 4. **Automatic gap detection** — `knowledgeCoverage`, the retrieval signal, grouping and curator notification.
 

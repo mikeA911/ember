@@ -329,6 +329,19 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Exposure:** Not Ember-actionable; UI only.
 - **Verification:** `src/components/projects/SourceSubmissionsReview.tsx`, `src/lib/workbench/source-submissions.ts` (`approveSourceSubmission`, `rejectSourceSubmission`), reuses `src/lib/curator/chunks.ts` (`approveChunk`) unmodified; code verified 2026-09-04. Live-verified: a project owner approved a real member-submitted file and confirmed the resulting chunk was genuinely embedded (present in `kb_vectors` with the expected auto-approval marker) and separately visible/re-reviewable on `/review/[docId]`.
 
+### See or assess Ember readiness for a Project
+
+- **Intent:** Know how far to rely on Ember for this Project, and (curators) record that judgement.
+- **Users and authority:** Every active Project member, viewers included, sees it. Project owners/curators and platform admins assess it.
+- **Prerequisites:** Project membership. The measured score needs a completed admin eval run on a dataset attached to the Project.
+- **Start:** `/projects/[id]#ember-readiness`, or the dashboard's **Ember readiness** table.
+- **Navigation:** Open the Project → **Ember readiness** section. From the dashboard, select the Project's name in the **Ember readiness** table. Curators: **Assess readiness** / **Update readiness** in the section.
+- **Outcome:** A verdict (*Ready*, *Needs more sources* or *Not assessed*), the curator's confidence with reason, author, date and review date, the measured score (questions passed of questions asked, dataset, run date), knowledge coverage (sources, searchable sources, Wiki articles, last source added), *review due* and disagreement notices, earlier assessments, and (curators) links to the Project's test-question datasets.
+- **Ember guidance:** Explain the two signals and that they are deliberately separate; link to the section. Ember cannot set or change readiness. If a user says Ember could not answer from Project knowledge, suggest telling a Project curator or submitting a candidate source.
+- **Boundaries:** Assessments are append-only; each save adds to the history. Members see counts, never individual test results. The measured score at the time of an assessment is recorded server-side.
+- **Exposure:** Read-only candidate for MCP; assessing stays a UI action.
+- **Verification:** Code verified 2026-10-05 (Ember Readiness, Stage 2); SQL behaviour checked against a local Postgres with stub tables.
+
 ### Configure a Project's Ember starter prompt
 
 - **Intent:** Give a Project a short, clickable suggestion Ember offers to anyone starting a fresh conversation bound to it -- e.g. "Ask anything about the Sandz pilot, suggest an improvement, or report a problem" for a Q&A-style Project.
@@ -427,7 +440,7 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **What evals measure:** Evals measure Ember and Agents (whether answers retrieve the right evidence and stay grounded), not a Project's delivered solution. Ember should not describe an eval score as evidence that a client system conforms to a standard.
 - **Exposure:** Results are candidates for admin read access only; running evaluations stays a UI action.
 - **Verification:** Code verified 2026-10-05 (Ember Readiness, Stage 1). Detailed workflows remain to be catalogued.
-- **Planned, not yet available:** `docs/dev-request-ember-readiness-and-knowledge-gaps.md` Stages 2–4 add a per-Project **Ember Readiness** section (curator confidence, measured score, open knowledge gaps), failure reports from Ember answers, and automatic knowledge-gap reports to Project curators. `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` proposes a separate **Solution evaluation** area for requirements, verification evidence and conformance decisions. Until these ship, Ember must not tell users these features exist or direct them to them; if a user reports that Ember could not answer from Project knowledge, suggest they tell a Project curator or submit a candidate source.
+- **Planned, not yet available:** `docs/dev-request-ember-readiness-and-knowledge-gaps.md` Stages 3–4 add open knowledge-gap counts to the readiness section, failure reports from Ember answers, and automatic knowledge-gap reports to Project curators. `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` proposes a separate **Solution evaluation** area for requirements, verification evidence and conformance decisions. Until these ship, Ember must not tell users these features exist or direct them to them; if a user reports that Ember could not answer from Project knowledge, suggest they tell a Project curator or submit a candidate source.
 
 ### Graphs
 

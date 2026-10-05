@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { EmberReadinessOverview } from '@/lib/eval/readiness-overview'
+import { READINESS_VERDICT_LABELS, READINESS_VERDICT_STYLES } from '@/components/projects/ember-readiness-labels'
 
 const DATASET_STATUS_STYLES: Record<string, string> = {
   draft: 'bg-zinc-100 text-zinc-700',
@@ -53,11 +54,14 @@ export function EmberReadinessAdmin({ overview }: { overview: EmberReadinessOver
       )}
 
       <div className="overflow-x-auto rounded border border-zinc-200 bg-white">
-        <table className="w-full min-w-[44rem] text-left text-sm">
+        <table className="w-full min-w-[52rem] text-left text-sm">
           <thead className="bg-zinc-50 text-xs text-zinc-500">
             <tr>
               <th className="px-3 py-2 font-medium">Dataset</th>
               <th className="px-3 py-2 font-medium">Project</th>
+              <th className="px-3 py-2 font-medium" title="The Project curator's current judgement">
+                Curator verdict
+              </th>
               <th className="px-3 py-2 text-right font-medium">Questions</th>
               <th className="px-3 py-2 font-medium">Latest run</th>
               <th className="px-3 py-2 text-right font-medium" title="Share of questions where the expected evidence was retrieved">
@@ -88,6 +92,18 @@ export function EmberReadinessAdmin({ overview }: { overview: EmberReadinessOver
                     'Platform-wide'
                   )}
                 </td>
+                <td className="px-3 py-2">
+                  {d.curatorJudgement ? (
+                    <>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${READINESS_VERDICT_STYLES[d.curatorJudgement.verdict]}`}>
+                        {READINESS_VERDICT_LABELS[d.curatorJudgement.verdict]}
+                      </span>
+                      <span className="ml-2 text-xs text-zinc-600">{d.curatorJudgement.confidencePercent}%</span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-zinc-500">{d.projectId ? 'Not assessed' : '—'}</span>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-right">{d.caseCount}</td>
                 <td className="px-3 py-2 text-zinc-600">
                   {d.latestRun ? (
@@ -116,7 +132,7 @@ export function EmberReadinessAdmin({ overview }: { overview: EmberReadinessOver
             ))}
             {overview.datasets.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-zinc-500">
+                <td colSpan={9} className="px-3 py-6 text-center text-zinc-500">
                   No datasets yet. Create one from Evals, then attach it to its Project.
                 </td>
               </tr>

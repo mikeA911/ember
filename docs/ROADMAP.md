@@ -131,6 +131,7 @@ Status terms used below:
 - Assistant messages retain durable provider/model snapshots, allowing model changes within one conversation without rewriting history.
 - Guided-method reasoning has been tested against representative requirement-resolution scenarios.
 - Ember Readiness, Stage 1: running evaluations, marking baselines and human review are now platform-admin work, enforced in the Server Actions and RLS; Admin → **Ember readiness** lists every dataset with its Project and latest run, and Evals is removed from non-admin navigation and dashboards. Curators keep authoring test questions (5 Oct).
+- Ember Readiness, Stage 2: every Project page and dashboard shows how ready Ember is for each Project -- the curator's confidence, verdict and reason (append-only history, review date) beside the measured score from the latest admin run and the Project's knowledge coverage, with review-due and disagreement notices (5 Oct).
 
 ### Validate
 
@@ -142,7 +143,7 @@ Status terms used below:
 - Define a pre-beta Assistant evaluation rubric covering correctness, grounding, method fit, prerequisite detection, safe action boundaries, provenance, latency, and recovery from tool failure.
 - Record basic Wizard/method outcomes so the product can learn which guided methods work in practice.
 - Establish the evaluation criteria for the first external pilot.
-- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): Stage 1 is done (see Recent internal development). Remaining: a per-Project Ember Readiness section showing curator confidence, the measured eval score and open knowledge gaps; let Project members report Ember failures; detect knowledge gaps automatically in Project-bound chat and route them to the Project's curators; let a resolved gap become a draft eval case.
+- **Ember Readiness and knowledge gaps** (`docs/dev-request-ember-readiness-and-knowledge-gaps.md`): Stages 1 and 2 are done (see Recent internal development). Remaining: open knowledge-gap counts in the readiness section; let Project members report Ember failures; detect knowledge gaps automatically in Project-bound chat and route them to the Project's curators; let a resolved gap become a draft eval case.
 
 ### Future
 
