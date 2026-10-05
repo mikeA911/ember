@@ -219,5 +219,14 @@ revoke execute on function project_ember_readiness_signals(uuid[]) from public, 
 grant execute on function project_ember_readiness_signals(uuid[]) to authenticated;
 
 -- External MCP read-only guarantee: an OAuth client token can never write
--- the new table (20261005100001_external_mcp_access.sql).
-select apply_oauth_read_only_policies();
+-- the new table (20261005100001_external_mcp_access.sql). Guarded so this
+-- migration also applies to a database where that one hasn't run yet: when
+-- it does run, its own apply_oauth_read_only_policies() call covers every
+-- RLS table that exists by then, this one included.
+do $$
+begin
+  if to_regprocedure('public.apply_oauth_read_only_policies()') is not null then
+    perform apply_oauth_read_only_policies();
+  end if;
+end;
+$$;

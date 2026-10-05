@@ -48,8 +48,11 @@ describe('external MCP read-only enforcement', () => {
     for (const file of later) {
       const text = fs.readFileSync(path.join(dir, file), 'utf-8')
       if (/create table/i.test(text)) {
+        // Either the plain call, or the guarded form (for databases where
+        // the MCP migration hasn't run yet -- when it does, its own call
+        // covers every table that exists by then).
         expect(text, `${file} creates a table but never calls apply_oauth_read_only_policies()`).toMatch(
-          /select apply_oauth_read_only_policies\(\);/
+          /^select apply_oauth_read_only_policies\(\);$|if to_regprocedure\('public\.apply_oauth_read_only_policies\(\)'\) is not null then\s+perform apply_oauth_read_only_policies\(\);/m
         )
       }
     }

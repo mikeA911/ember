@@ -326,6 +326,6 @@ describe('project_knowledge_gaps migration', () => {
     expect(sql).toMatch(/open_gap_count integer/)
     expect(sql).toMatch(/g\.status in \('new', 'needs_source', 'wiki_needed'\)/)
     expect(sql).toMatch(/grant execute on function project_ember_readiness_signals\(uuid\[\]\) to authenticated/)
-    expect(sql).toMatch(/^select apply_oauth_read_only_policies\(\);$/m)
+    expect(sql).toMatch(/if to_regprocedure\('public\.apply_oauth_read_only_policies\(\)'\) is not null then\s+perform apply_oauth_read_only_policies\(\);/)
   })
 })
