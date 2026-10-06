@@ -2,7 +2,7 @@
 
 Date: 6 October 2026. Plan: [shared workspace sessions](../dev-request-shared-workspace-sessions.md#phase-3-as-built-6-october-2026). Earlier phases: [Phase 1](2026-10-06-shared-workspace-phase-1.md), [Phase 2](2026-10-06-shared-workspace-phase-2.md).
 
-Everything below ran in a cloud development container against **local, disposable** databases, with a stand-in AI model. The Phase 3 migration (`20261025100001_collaboration_shared_chat.sql`) is **not applied** to the live backend.
+Everything below ran in a cloud development container against **local, disposable** databases, with a stand-in AI model. The Phase 3 migration (`20261025100001_collaboration_shared_chat.sql`) was then applied to the live backend by the owner on 6 October 2026 and verified (see the end).
 
 ## What was tested
 
@@ -39,11 +39,15 @@ Hana (Project owner) and Gil (Project viewer) in a live session; Vera, a Project
 
 - **A real model.** Only the stand-in answered. Prompt quality, citation by title and refusal to act need a run on the preview.
 - **Retrieval with real vectors.** The local database has no embedded documents, so searches returned nothing; filtering of real hits is covered by the database checks on the same function, not by a browser run.
-- **The live backend.** The migration isn't applied.
+- **The live backend, beyond the migration.** The migration is applied and verified (below), but no shared chat has run there.
 - **Long answers near the limit.** The Route Handler allows 120 s; a lease is 150 s; a turn still running past that is retried once by the next poll, which can cost a second model call (never a second answer).
 - **No conversation summary.** Ember sees the latest 30 messages only.
 
-## Applying to the live backend (needs the owner's go-ahead)
+## Applied to the live backend (6 October 2026)
+
+The owner ran the three paste-in parts in the Supabase SQL Editor; the verification query below returned `11 | 79 | 35 | 34 | 1`, matching a local full build. The feature flag is still off there.
+
+### What the file does
 
 One migration: `supabase/migrations/20261025100001_collaboration_shared_chat.sql`. It adds two `collaboration_*` tables (RLS on), grants signed-in users SELECT on `collaboration_messages` only through its read policy, adds `collaboration_*` functions (three callable only by the service role), replaces the two Phase 2 snapshot functions with versions that also carry the chat's state, and calls `apply_oauth_read_only_policies()`, which only adds missing read-only policies. It changes no other table, policy or function and deletes nothing; re-running it is harmless. It needs the Phase 1 and 2 migrations (applied).
 
