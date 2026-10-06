@@ -20,6 +20,7 @@ import {
   type VerificationMethodInput,
 } from '@/lib/projects/requirements'
 import { recordVerification, type VerificationRecordInput } from '@/lib/projects/verification'
+import { recordChange, resolveReverification, setReviewInterval, type ChangeInput } from '@/lib/projects/reverification'
 
 // Solution conformance, Stages 1-2. Failures come back as { error } so the
 // reason survives Next's production masking of thrown Server Action errors.
@@ -31,7 +32,7 @@ function toError(err: unknown, fallback: string): string {
 
 function revalidate(projectId: string, requirementId?: string) {
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath(`/projects/${projectId}/requirements`)
+  revalidatePath(`/projects/${projectId}/requirements`, 'layout')
   if (requirementId) revalidatePath(`/projects/${projectId}/requirements/${requirementId}`)
 }
 
@@ -117,4 +118,17 @@ export async function supersedeRequirementAction(requirementId: string, input: {
   } catch (err) {
     return { error: toError(err, 'Could not supersede the requirement') }
   }
+}
+
+// Stage 4: re-verification.
+export async function recordChangeAction(projectId: string, input: ChangeInput) {
+  return run((ctx) => recordChange(ctx, projectId, input), 'Could not record the change')
+}
+
+export async function resolveReverificationAction(linkId: string, note: string) {
+  return run((ctx) => resolveReverification(ctx, linkId, note), 'Could not resolve it')
+}
+
+export async function setReviewIntervalAction(requirementId: string, months: number | null) {
+  return run((ctx) => setReviewInterval(ctx, requirementId, months), 'Could not save the review schedule', requirementId)
 }

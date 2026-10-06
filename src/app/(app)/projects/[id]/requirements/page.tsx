@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { listRequirements } from '@/lib/projects/requirements'
 import { loadRequirementsPageContext } from '@/lib/projects/requirements-page'
 import { listVerificationStatuses } from '@/lib/projects/verification'
+import { listReverificationDue, type ReverificationDue } from '@/lib/projects/reverification'
 import {
   CATEGORY_LABELS,
   PRIORITY_LABELS,
@@ -13,6 +14,7 @@ import {
   APPLIES_FROM_LABELS,
   VERIFICATION_STATUS_LABELS,
   VERIFICATION_STATUS_STYLES,
+  REVERIFY_BADGE,
 } from '@/components/projects/requirement-labels'
 import type { RequirementStatus, RequirementVerificationStatus } from '@/types/database'
 
@@ -38,12 +40,17 @@ export default async function RequirementsPage({
   const { project, canCurate, isMember } = await loadRequirementsPageContext(supabase, id, user.id)
   if (!project || !isMember) notFound()
 
-  const [all, verification] = await Promise.all([
+  const [all, verification, reverification] = await Promise.all([
     listRequirements(supabase, id),
     // Stage 2; no verification column data if the records can't be read.
     listVerificationStatuses(supabase, id).catch((err) => {
       console.error('Verification statuses unavailable', err)
       return new Map<string, RequirementVerificationStatus>()
+    }),
+    // Stage 4; nothing due if it can't be read.
+    listReverificationDue(supabase, id).catch((err) => {
+      console.error('Re-verification status unavailable', err)
+      return new Map<string, ReverificationDue>()
     }),
   ])
   const verificationOf = (r: { id: string; methodCount: number }): RequirementVerificationStatus => verification.get(r.id) ?? (r.methodCount === 0 ? 'no_method' : 'not_verified')
@@ -63,6 +70,7 @@ export default async function RequirementsPage({
     passed: open.filter((r) => verificationOf(r) === 'passed').length,
     failed: open.filter((r) => verificationOf(r) === 'failed').length,
     notVerified: open.filter((r) => verificationOf(r) === 'not_verified').length,
+    reverify: open.filter((r) => reverification.has(r.id)).length,
   }
   const workstreamNames = [...new Set(all.flatMap((r) => r.workstreamNames))].sort()
 
@@ -90,6 +98,9 @@ export default async function RequirementsPage({
             <Link href={`/projects/${id}/requirements/baselines`} className="text-sm underline">
               Baselines and decisions
             </Link>
+            <Link href={`/projects/${id}/requirements/changes`} className="text-sm underline">
+              Changes
+            </Link>
             {canCurate && (
               <Link href={`/projects/${id}/requirements/new`} className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white">
                 New requirement
@@ -105,6 +116,12 @@ export default async function RequirementsPage({
         <p className="text-sm text-zinc-600">
           Verification: {counts.passed} passed
           {counts.failed > 0 && <span className="text-red-700"> · {counts.failed} failed</span>} · {counts.notVerified} not verified yet
+          {counts.reverify > 0 && (
+            <Link href={`/projects/${id}/requirements/changes`} className="text-orange-800 underline">
+              {' '}
+              · {counts.reverify} need re-verification
+            </Link>
+          )}
         </p>
       </div>
 
@@ -174,6 +191,7 @@ export default async function RequirementsPage({
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${VERIFICATION_STATUS_STYLES[verificationOf(r)]}`}>
                     {VERIFICATION_STATUS_LABELS[verificationOf(r)]}
                   </span>
+                  {reverification.has(r.id) && <span className={`ml-1 rounded-full px-2 py-0.5 text-xs font-medium ${REVERIFY_BADGE}`}>Re-verify</span>}
                 </td>
                 <td className="px-3 py-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[r.status]}`}>{STATUS_LABELS[r.status]}</span>

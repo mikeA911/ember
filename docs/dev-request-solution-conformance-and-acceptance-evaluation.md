@@ -2,14 +2,14 @@
 
 ## Status
 
-Stages 1 (requirements register) and 2 (verification records) built 5 October 2026, Stage 3 (baselines and conformance decisions) 6 October 2026; Stages 4–5 proposed. Worked example: the `cebu-ng911` Project.
+Stages 1 (requirements register) and 2 (verification records) built 5 October 2026, Stages 3 (baselines and conformance decisions) and 4 (re-verification triggers) 6 October 2026; Stage 5 proposed. Worked example: the `cebu-ng911` Project.
 
 ## Delivery stages
 
 1. **Requirements register** — requirements with sources, scope and verification methods; the Project's Requirements area. *Built.*
 2. **Verification records** — append-only results with artifact evidence, against an identified solution state. *Built.*
 3. **Baselines and conformance decisions** — frozen baselines, verdict roll-up, waivers, decisions through approval policies and authorities. *Built.*
-4. **Re-verification triggers** — component changes, new source versions, review dates, threshold breaches.
+4. **Re-verification triggers** — component changes, new source versions, review dates, threshold breaches. *Built.*
 5. **Ember tools** — `propose_requirements`, `list_requirement_status`, `propose_verification_method`.
 
 **As built (Stage 1, 5 October 2026):**
@@ -42,7 +42,20 @@ Stages 1 (requirements register) and 2 (verification records) built 5 October 20
 - **Superseding a requirement:** a baselined requirement can be superseded by a new draft copying its content, sources, scope and methods (code suggested as `<code>-R2`); the old one is marked superseded and links to it.
 - **Notifications:** current holders of the approval type get a Project note when a waiver or decision needs them.
 - **UI:** `/projects/[id]/requirements/baselines` (list with latest decision), `/baselines/new`, and `/baselines/[baselineId]` (requirements with live roll-up, versions, activate, new version, waivers, decisions with approvals and the roll-up each rested on). Requirement pages show the baselines they are in, the replacement link, and **Supersede with a new version**.
-- **Not yet:** re-verification due and blocking a `production_change` decision until re-verified (Stage 4).
+- **Not yet (at Stage 3):** re-verification due and blocking a `production_change` decision until re-verified — built in Stage 4.
+
+**As built (Stage 4, 6 October 2026):**
+
+- **Tables** (`20261021100001_solution_reverification.sql`): `solution_reverification_events` (kind `component_change`/`source_revision`/`threshold_breach`/`other`, summary, versions or configuration, detail, component and workstream, cited source and its new version, the triggering record, recorded by/at) and `solution_reverification_event_requirements` (the requirements each event affects, with an optional curator resolution and note). `solution_requirements.review_interval_months` (1–120) sets a review schedule; it is operational, so it stays editable after baselining.
+- **When a requirement is due** (`project_reverification_due()`, the one definition used by the app and the decision check): an affected link is unresolved and some current verification method has no result other than *not run* recorded after the event (or the requirement has no method); or it is baselined with a review interval and its least recently verified method was last performed longer ago than that.
+- **Triggers:**
+  - *Component and other changes:* owners, curators and consultants record a change and the open requirements it affects. Choosing a component (Project object) preselects requirements scoped to it or its sub-components; choosing a workstream preselects requirements scoped to it. Owners and curators get a Project note.
+  - *New source version:* when a knowledge source's current version changes, every open requirement citing an earlier version is flagged, one event per Project (a failure only warns and never blocks the upload).
+  - *Threshold breach:* recording a fail on an operational measure creates an event for that requirement.
+  - *Scheduled review:* derived from the review interval; no job needed.
+- **Clearing:** recording a new result for each method clears the event for that requirement; a curator can instead resolve it with a reason (e.g. "revised clause doesn't affect us"). Past records, baselines and decisions are untouched.
+- **Production changes:** `decide_solution_conformance_decision()` refuses to approve a `production_change` decision while any requirement in the baseline is due; other approval types are unaffected.
+- **UI:** `/projects/[id]/requirements/changes` (what needs re-verification, **Record a change**, the change history with each requirement's state: needs re-verification, re-verified, resolved or requirement closed). Requirement pages show *Re-verification due* with the open events, **Resolve without re-verifying** (curators) and the review schedule. The register, baseline pages and the Project page's *Requirements* section show what needs re-verification.
 
 
 ## Problem
