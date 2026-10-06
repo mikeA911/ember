@@ -54,7 +54,7 @@ The runs found and fixed six real bugs: an observer who navigated away was pulle
 
 ## Not verified
 
-- **The live backend.** The migration isn't applied there, so nothing ran against the deployed schema or the Vercel preview.
+- **The live backend, beyond the migration.** The migration is applied and its objects and grants are verified (below), but no session has run against the deployed schema or the Vercel preview.
 - **Remote locations and real networks.** All browsers ran in one container. Latencies above are local; the plan's target (one second at p95 on the pilot network) is unmeasured.
 - **Realtime.** Not used; `MissingPartition` wasn't re-investigated (needs read access to the hosted project's Realtime settings and the owner's go-ahead).
 - **Supabase Auth itself.** The local gateway stands in for `/auth/v1` and accepts any password; token refresh over a long session wasn't exercised.
@@ -62,8 +62,8 @@ The runs found and fixed six real bugs: an observer who navigated away was pulle
 - **Real background tabs and phones.** Headless test pages are always visible, so the hidden-tab title and the 90-second window were checked by simulating visibility, not with a real backgrounded tab. Mobile browsers may suspend a background tab entirely: it then reads as not connected after 90 s, and as away after 10 minutes.
 - **The closing-tab signal across browsers.** Checked in Chromium only; where it doesn't arrive, presence lapses after 90 s instead.
 
-## Applying to the live backend (needs the owner's go-ahead)
+## Applied to the live backend (6 October 2026)
 
-One file: `supabase/migrations/20261023100001_collaboration_sessions.sql`. It only adds: seven `collaboration_*` tables (RLS on, no client grants), their indexes, and `collaboration_*` functions, then calls `apply_oauth_read_only_policies()`, which only adds missing read-only policies. It changes no existing table, policy or function and deletes nothing; re-running it is harmless. Afterwards, `supabase/migration_status_check_recent.sql` should report it applied with 64/64 objects. The feature stays invisible until a deployment sets `NEXT_PUBLIC_EMBER_COLLABORATION=true` and is rebuilt.
+One file: `supabase/migrations/20261023100001_collaboration_sessions.sql`. It only adds: seven `collaboration_*` tables (RLS on, no client grants), their indexes, and `collaboration_*` functions, then calls `apply_oauth_read_only_policies()`, which only adds missing read-only policies. It changes no existing table, policy or function and deletes nothing; re-running it is harmless. With the owner's go-ahead, the owner ran it in the Supabase SQL Editor on 6 October 2026 (this container can't reach the database host); it completed without errors. Checked afterwards with a short read-only query: 7 tables, 47 functions, 21 callable by signed-in users, 21 read-only (external MCP) policies on the new tables, 0 direct table grants to `anon`/`authenticated` -- identical to a local database built from every migration. (The long `migration_status_check_recent.sql` was cut off when pasted, so the short query was used instead.) The feature stays invisible until a deployment sets `NEXT_PUBLIC_EMBER_COLLABORATION=true` and is rebuilt.
 
 Then, on the preview, two real accounts that are both active members of one Project should repeat the steps above from two locations.
