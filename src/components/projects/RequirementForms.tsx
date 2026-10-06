@@ -13,6 +13,7 @@ import {
   removeVerificationMethodAction,
   withdrawRequirementAction,
   deleteDraftRequirementAction,
+  acceptDraftedRequirementAction,
 } from '@/app/actions/requirements'
 import type {
   RequirementAppliesFrom,
@@ -581,5 +582,27 @@ export function RequirementLifecycleActions({ projectId, requirementId, isDraft,
       )}
       {error && <span className="text-red-600">{error}</span>}
     </div>
+  )
+}
+
+// Stage 5: accepting a requirement Ember drafted, after reviewing it.
+export function AcceptDraftButton({ requirementId }: { requirementId: string }) {
+  const { error, isPending, run } = useAction()
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        disabled={isPending}
+        onClick={() => {
+          if (confirm('Accept this requirement as reviewed? It can then be added to a baseline. You can still edit it while it is a draft.')) {
+            run(() => acceptDraftedRequirementAction(requirementId))
+          }
+        }}
+        className={button}
+      >
+        Accept draft
+      </button>
+      {error && <span className="text-sm text-red-600">{error}</span>}
+    </span>
   )
 }

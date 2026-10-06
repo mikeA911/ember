@@ -60,6 +60,8 @@ export interface CandidateRequirement {
   title: string
   status: RequirementStatus
   hasMethod: boolean
+  // Drafted by Ember and not yet accepted by a curator -- can't be baselined.
+  awaitingAcceptance?: boolean
 }
 
 // --- Baseline fields -------------------------------------------------------------------
@@ -119,6 +121,7 @@ function RequirementChecklist({ candidates, selected, onChange }: { candidates: 
             <input
               type="checkbox"
               className="mt-1"
+              disabled={r.awaitingAcceptance && !selected.includes(r.id)}
               checked={selected.includes(r.id)}
               onChange={() => onChange(selected.includes(r.id) ? selected.filter((x) => x !== r.id) : [...selected, r.id])}
             />
@@ -126,6 +129,7 @@ function RequirementChecklist({ candidates, selected, onChange }: { candidates: 
               <span className="font-mono text-xs text-zinc-500">{r.code}</span> {r.title}{' '}
               <span className="text-xs text-zinc-500">· {STATUS_LABELS[r.status]}</span>
               {!r.hasMethod && <span className="text-xs text-amber-800"> · no verification method yet</span>}
+              {r.awaitingAcceptance && <span className="text-xs text-sky-800"> · Ember draft awaiting acceptance</span>}
             </span>
           </label>
         </li>

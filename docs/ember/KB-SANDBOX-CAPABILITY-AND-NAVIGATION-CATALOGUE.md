@@ -346,7 +346,7 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Start:** `/projects/[id]/requirements`, or the Project page's **Requirements** section.
 - **Navigation:** Project → **Requirements** → **Open the requirements register** → a requirement. Curators: **New requirement**; on a draft, **Edit**, **+ Add a source**, **Change scope**, **+ Add a verification method**, **Withdraw**, **Delete draft**.
 - **Outcome:** A requirement with code, statement, category, priority and the stage it must be verified from; its sources (standard, regulation, contract, customer need, vendor claim) with clause locators and links into Project knowledge; the workstreams and objects it concerns; verification methods with pass criteria.
-- **Ember guidance:** Explain the register and link to it. Ember cannot create or change requirements yet. A vendor claim is a claim to verify, never evidence that a requirement is met. AI evaluation scores (`/evals`) are not evidence of solution conformance.
+- **Ember guidance:** Explain the register and link to it. Ember can draft requirements from Project knowledge when a curator asks (see **Ask Ember to draft requirements or report on them**); it cannot edit, baseline or withdraw them. A vendor claim is a claim to verify, never evidence that a requirement is met. AI evaluation scores (`/evals`) are not evidence of solution conformance.
 - **Boundaries:** Only drafts can be edited; withdrawn requirements stay readable and cannot be reopened. Sources citing restricted evidence are hidden from people without a grant.
 - **Exposure:** Read-only candidate for MCP; writing stays a UI action.
 - **Verification:** Code verified 2026-10-05 (solution conformance, Stage 1); SQL behaviour checked against a local Postgres with stub tables.
@@ -389,6 +389,19 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Boundaries:** Only open requirements of the Project can be flagged. Resolving needs a reason. Nothing about past results, baselines or decisions changes.
 - **Exposure:** Read-only candidate for MCP; every write stays a UI action.
 - **Verification:** Code verified 2026-10-06 (solution conformance, Stage 4); SQL behaviour checked against a local Postgres with stub tables.
+
+### Ask Ember to draft requirements or report on them
+
+- **Intent:** Turn a standard or contract in the Project's knowledge into draft requirements with cited clauses, and ask what's open, failed, missing evidence or due for re-verification.
+- **Users and authority:** Any Project member can ask Ember for requirement status (it only sees what they can see). Only Project owners/curators and platform admins can have Ember create draft requirements or add verification methods. Only a curator can accept an Ember draft.
+- **Prerequisites:** A Project conversation; for drafting, the source (e.g. the NENA standard) in the Project's or a workstream's knowledge base, or a Wiki article attached to the Project.
+- **Start:** Ember chat in the Project, e.g. "Draft requirements for the K-Safety workstream from the NENA i3 standard" or "What's still missing evidence in K-Dispatch?"
+- **Navigation:** Ember shows the drafts in its reply (code, statement, source and clause, methods) → confirm or ask for changes → Ember creates them → each appears in the register as *Ember draft · awaiting acceptance* → a curator reviews it on the requirement page and clicks **Accept draft**.
+- **Outcome:** Draft requirements marked as drafted by Ember, citing their clauses and linked sources, with any verification methods; not in any baseline and not verified. Status answers list each requirement's verification status, methods missing evidence and re-verification flags, with links.
+- **Ember guidance:** Search the Project's knowledge first and cite each clause; never invent a clause or figure. Show the drafts and wait for explicit confirmation before creating them. Afterwards say they await a curator's acceptance. Ember can never record a result, mark a requirement as passed, waive, baseline, or request or approve a decision — say these are human decisions and link the page.
+- **Boundaries:** An Ember draft can't be added to a baseline until a curator accepts it (the database enforces this and records who accepted it). Ember only drafts into its own conversation's Project. Restricted sources and evidence stay hidden from Ember exactly as from the asking user.
+- **Exposure:** Chat tools only (`list_requirement_status`, `create_draft_requirements`, `add_verification_methods`); not in the external MCP registry.
+- **Verification:** Code verified 2026-10-06 (solution conformance, Stage 5); SQL behaviour checked against a local Postgres with stub tables.
 
 ### See or assess Ember readiness for a Project
 
@@ -514,7 +527,7 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **What evals measure:** Evals measure Ember and Agents (whether answers retrieve the right evidence and stay grounded), not a Project's delivered solution. Ember should not describe an eval score as evidence that a client system conforms to a standard.
 - **Exposure:** Results are candidates for admin read access only; running evaluations stays a UI action.
 - **Verification:** Code verified 2026-10-05 (Ember Readiness, Stage 1). Detailed workflows remain to be catalogued.
-- **Planned, not yet available:** `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` adds a separate **Solution evaluation** area: the requirements register, verification records, baselines and conformance decisions are live (see **Record and read a Project's requirements**, **Record verification results for a requirement** and **Baseline requirements and make conformance decisions**); re-verification is live too (see **Re-verify requirements after a change**). Ember tools for drafting requirements and answering traceability questions are not yet available; until they ship, Ember must not offer to draft requirements or claim it can. If a user says Ember got something wrong or could not answer from Project knowledge, point them to **Report a problem** under the answer (see **Report an Ember failure** below).
+- **Solution evaluation is separate:** `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` is the Project's **Solution evaluation** area — the requirements register, verification records, baselines and conformance decisions, and re-verification (see **Record and read a Project's requirements**, **Record verification results for a requirement**, **Baseline requirements and make conformance decisions**, **Re-verify requirements after a change** and **Ask Ember to draft requirements or report on them**). An eval score is never evidence that a delivered solution conforms. If a user says Ember got something wrong or could not answer from Project knowledge, point them to **Report a problem** under the answer (see **Report an Ember failure** below).
 
 ### Graphs
 

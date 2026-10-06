@@ -11,6 +11,7 @@ import {
   BASELINE_STATUS_LABELS,
   CATEGORY_LABELS,
   CHANGE_KIND_LABELS,
+  EMBER_DRAFT_BADGE,
   REVERIFY_BADGE,
   ENVIRONMENT_LABELS,
   METHOD_LABELS,
@@ -25,6 +26,7 @@ import {
   VERIFICATION_STATUS_STYLES,
 } from '@/components/projects/requirement-labels'
 import {
+  AcceptDraftButton,
   AddSourceForm,
   RemoveSourceButton,
   RemoveMethodButton,
@@ -113,6 +115,11 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
             {VERIFICATION_STATUS_LABELS[verification]}
           </span>
           {reverification.due && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${REVERIFY_BADGE}`}>Re-verification due</span>}
+          {r.created_via === 'assistant' && (
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${EMBER_DRAFT_BADGE}`}>
+              {r.awaiting_acceptance ? 'Drafted by Ember · awaiting acceptance' : 'Drafted by Ember'}
+            </span>
+          )}
         </div>
         <h1 className="mt-1 text-xl font-semibold">{r.title}</h1>
         <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">{r.statement}</p>
@@ -120,6 +127,18 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
         <p className="mt-2 text-xs text-zinc-500">
           {CATEGORY_LABELS[r.category]} · {PRIORITY_LABELS[r.priority]} · verify from {APPLIES_FROM_LABELS[r.applies_from].toLowerCase()}
         </p>
+        {r.awaiting_acceptance && (
+          <div className="mt-3 flex flex-col gap-2 rounded border border-sky-200 bg-sky-50 p-3 text-sm">
+            <p className="text-sky-900">
+              Ember drafted this requirement. Check the statement, sources and clauses against the source documents before accepting it; it can&rsquo;t be
+              baselined until a curator accepts it.
+            </p>
+            {canCurate && isDraft && <AcceptDraftButton requirementId={r.id} />}
+          </div>
+        )}
+        {r.created_via === 'assistant' && !r.awaiting_acceptance && r.accepted_at && (
+          <p className="mt-2 text-xs text-zinc-500">Drafted by Ember; accepted {new Date(r.accepted_at).toLocaleDateString()}.</p>
+        )}
         {canEdit && (
           <div className="mt-2">
             <RequirementFieldsEditor
@@ -281,6 +300,7 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium">
                   {METHOD_LABELS[m.method]} <span className="font-normal text-zinc-500">· {PERFORMER_LABELS[m.performed_by]}</span>
+                  {m.created_via === 'assistant' && <span className="ml-1 text-xs font-normal text-sky-800">· drafted by Ember</span>}
                 </span>
                 {canEdit && (
                   <span className="flex gap-3">

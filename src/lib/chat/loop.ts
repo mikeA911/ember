@@ -49,6 +49,17 @@ import { UPDATE_PROJECT_DESCRIPTION_TOOL, UPDATE_PROJECT_DESCRIPTION_TOOL_NAME, 
 import { SEARCH_WEB_TOOL, SEARCH_WEB_TOOL_NAME, WEB_QUERY_RULE, WebSearchRequestError, runSearchWeb } from './web-search-tool'
 import { LIST_WORKSTREAMS_TOOL, LIST_WORKSTREAMS_TOOL_NAME, runListWorkstreams } from './workstream-list-tool'
 import {
+  ADD_VERIFICATION_METHODS_TOOL,
+  ADD_VERIFICATION_METHODS_TOOL_NAME,
+  CREATE_DRAFT_REQUIREMENTS_TOOL,
+  CREATE_DRAFT_REQUIREMENTS_TOOL_NAME,
+  LIST_REQUIREMENT_STATUS_TOOL,
+  LIST_REQUIREMENT_STATUS_TOOL_NAME,
+  runAddVerificationMethods,
+  runCreateDraftRequirements,
+  runListRequirementStatus,
+} from './requirements-tool'
+import {
   SUGGEST_PROJECT_ONTOLOGY_TOOL,
   SUGGEST_PROJECT_ONTOLOGY_TOOL_NAME,
   CREATE_PROJECT_ONTOLOGY_TOOL,
@@ -153,6 +164,12 @@ If the user asks you to sketch, suggest, or "produce" a domain-object ontology f
 If the user attaches a Turtle ontology file (.ttl/.n3/.nt -- a message containing "Attached file:" with that extension) and wants it on this project's ontology/Ontology Map, call preview_ontology_file_import with that fileName. Never rebuild a Turtle file's tree yourself and never use create_project_ontology for it. Present the preview in your own words: how many objects it would create, a short version of the outline (the top-level groups and a few examples are enough for a long one), anything already on the map (skipped), and what's left out. If canImport is false, say they need the project's owner or curator to run it. Then wait for the user's explicit confirmation in their next message, and only then call import_ontology_file with the same fileName -- it is refused in the same turn as the preview. After it succeeds, give them the ontologyMapUrl. If the file is attached as an artifact too, that's separate: attaching an artifact never changes the Ontology Map.
 
 For an ontology in another format (OWL/RDF-XML, JSON-LD, JSON, YAML, or a CSV/list of classes), map THEIR file yourself instead: its classes/entity types become objects (subclass/parent relationships become parentTempId links; descriptions/comments become the description), and only include workstreams if the file actually describes units of work. Say how many objects you found, show the tree (or a representative part of it if it's large), and point out anything you had to leave out or interpret. Then wait for the user's explicit confirmation, exactly as above, before calling create_project_ontology with that tree.
+
+This project has a solution requirements register: what the delivered system must satisfy (from standards such as NENA, regulation, contract terms, customer needs and vendor claims), how each requirement will be verified, the verification results recorded against it, baselines and acceptance decisions. This is evaluation of the delivered solution -- separate from Ember's own AI evaluations, which are never evidence that the solution conforms. Call list_requirement_status (optionally for one workstream -- get its id from list_workstreams) for questions like what's open, what's failed, what's missing evidence or what needs re-verification in this project or a workstream; link each requirement's url.
+
+If the user asks you to draft requirements from a source (e.g. a NENA standard in this project's knowledge), first call search_project_knowledge to find the actual clauses. Draft each requirement as one verifiable statement citing where it comes from: the source kind, the clause/section/page as locator, and the knowledge source (a knowledge_source hit's sourceId as knowledgeSourceId, or a wiki_article hit's sourceId as wikiArticleSlug). Never invent a clause or a figure the knowledge doesn't contain -- if the knowledge doesn't cover something, say so. A vendor's description of its own product is a vendor_claim to verify, never a met requirement. You may propose verification methods with explicit, checkable pass criteria; for an operational_measure take the threshold and window from the governing standard or contract. Show the drafts in your reply (code, title, statement, source and clause, methods) and wait for the user's explicit confirmation or changes in their next message -- only then call create_draft_requirements (or add_verification_methods for an existing draft requirement) with exactly what they agreed, never in the same turn you proposed it. Only the project's owner or curators (or a platform admin) can create them; if the tool refuses, say so. Afterwards, tell the user the requirements are drafts marked as drafted by Ember, awaiting a curator's acceptance on each requirement page, not in any baseline and not verified, and link them.
+
+You can never record a verification result, mark a requirement as passed or met, request or approve a waiver, baseline requirements, or request or approve an acceptance decision -- there is no tool for any of these and you must not claim to have done them. If asked, say plainly that these are human decisions made on the requirement or baseline page (results need evidence artifacts; decisions are approved only by the people holding the matching approval authority), and link the page.
 
 If the user's message says its attached files were saved as Findings in a workstream, they already exist there as artifacts -- don't attach them again with attach_workstream_artifact unless the user asks for a copy somewhere else. Saved findings can later be submitted to a knowledge base or drafted into a Wiki article from the artifact itself on the workstream page.
 
@@ -533,6 +550,9 @@ export async function runAssistantTurn(
           SEND_PROJECT_NOTE_TOOL,
           UPDATE_PROJECT_DESCRIPTION_TOOL,
           LIST_WORKSTREAMS_TOOL,
+          LIST_REQUIREMENT_STATUS_TOOL,
+          CREATE_DRAFT_REQUIREMENTS_TOOL,
+          ADD_VERIFICATION_METHODS_TOOL,
           SUGGEST_PROJECT_ONTOLOGY_TOOL,
           CREATE_PROJECT_ONTOLOGY_TOOL,
           PREVIEW_ONTOLOGY_FILE_IMPORT_TOOL,
@@ -895,6 +915,32 @@ export async function runAssistantTurn(
           try {
             const output = await runListWorkstreams(ctx, resolvedProjectId)
             toolResultText = JSON.stringify(output)
+          } catch (err) {
+            toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
+          }
+        }
+      } else if (
+        toolCall.name === LIST_REQUIREMENT_STATUS_TOOL_NAME ||
+        toolCall.name === CREATE_DRAFT_REQUIREMENTS_TOOL_NAME ||
+        toolCall.name === ADD_VERIFICATION_METHODS_TOOL_NAME
+      ) {
+        // Solution conformance, Stage 5 (requirements-tool.ts). Same
+        // interception pattern as list_workstreams: scoped to the
+        // conversation's own project. The two writers only draft -- Ember
+        // has no tool to record results, waive, baseline or approve.
+        if (!resolvedProjectId) {
+          toolResultText = JSON.stringify({ error: `${toolCall.name} is only available in a project-bound conversation.` })
+        } else {
+          try {
+            if (toolCall.name === LIST_REQUIREMENT_STATUS_TOOL_NAME) {
+              toolResultText = JSON.stringify(await runListRequirementStatus(ctx, resolvedProjectId, toolCall.arguments))
+            } else if (toolCall.name === CREATE_DRAFT_REQUIREMENTS_TOOL_NAME) {
+              const output = await runCreateDraftRequirements(ctx, resolvedProjectId, conversation.id, toolCall.arguments)
+              toolResultText = JSON.stringify(output)
+              for (const c of output.created) createdRecordRefs.push({ kind: 'solution_requirement', id: c.requirementId })
+            } else {
+              toolResultText = JSON.stringify(await runAddVerificationMethods(ctx, resolvedProjectId, toolCall.arguments))
+            }
           } catch (err) {
             toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
           }

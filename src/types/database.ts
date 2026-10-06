@@ -891,6 +891,14 @@ export interface SolutionRequirement {
   superseded_by: string | null
   // Stage 4: re-verify at least this often once baselined; null = no schedule.
   review_interval_months: number | null
+  // Stage 5: drafted by Ember ('assistant') or a person ('ui'). An Ember
+  // draft is awaiting acceptance until a curator accepts it; until then it
+  // can't be baselined.
+  created_via: 'ui' | 'assistant'
+  assistant_conversation_id: string | null
+  awaiting_acceptance: boolean
+  accepted_by: string | null
+  accepted_at: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -930,6 +938,7 @@ export interface SolutionVerificationMethod {
   threshold: string | null
   measure_window: string | null
   performed_by: VerificationPerformer
+  created_via: 'ui' | 'assistant'
   created_by: string | null
   created_at: string
   updated_at: string
@@ -3505,8 +3514,8 @@ interface DatabaseDefinition {
       solution_requirements: {
         Row: SolutionRequirement
         Insert: Pick<SolutionRequirement, 'project_id' | 'code' | 'title' | 'statement' | 'category' | 'created_by'> &
-          Partial<Pick<SolutionRequirement, 'rationale' | 'priority' | 'applies_from'>>
-        Update: Partial<Pick<SolutionRequirement, 'code' | 'title' | 'statement' | 'rationale' | 'category' | 'priority' | 'applies_from' | 'status' | 'superseded_by' | 'review_interval_months'>>
+          Partial<Pick<SolutionRequirement, 'rationale' | 'priority' | 'applies_from' | 'created_via' | 'assistant_conversation_id'>>
+        Update: Partial<Pick<SolutionRequirement, 'code' | 'title' | 'statement' | 'rationale' | 'category' | 'priority' | 'applies_from' | 'status' | 'superseded_by' | 'review_interval_months' | 'awaiting_acceptance'>>
         Relationships: []
       }
       solution_requirement_sources: {
@@ -3526,7 +3535,7 @@ interface DatabaseDefinition {
       solution_verification_methods: {
         Row: SolutionVerificationMethod
         Insert: Pick<SolutionVerificationMethod, 'requirement_id' | 'project_id' | 'method' | 'pass_criteria'> &
-          Partial<Pick<SolutionVerificationMethod, 'procedure' | 'threshold' | 'measure_window' | 'performed_by' | 'created_by'>>
+          Partial<Pick<SolutionVerificationMethod, 'procedure' | 'threshold' | 'measure_window' | 'performed_by' | 'created_by' | 'created_via'>>
         Update: Partial<Pick<SolutionVerificationMethod, 'method' | 'procedure' | 'pass_criteria' | 'threshold' | 'measure_window' | 'performed_by'>>
         Relationships: []
       }

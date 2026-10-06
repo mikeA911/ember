@@ -256,15 +256,26 @@ function validateSource(input: RequirementSourceInput) {
 
 // A requirement needs at least one origin (the dev request: a requirement
 // without one is allowed only as a customer need with a named requester).
+// Stage 5: Ember drafts with createdVia 'assistant' (the database then marks
+// the draft awaiting a curator's acceptance) and may include verification
+// methods, saved with the requirement.
+export interface CreateRequirementOptions {
+  createdVia?: 'ui' | 'assistant'
+  conversationId?: string | null
+  methods?: VerificationMethodInput[]
+}
+
 export async function createRequirement(
   ctx: WorkbenchCallerContext,
   projectId: string,
-  input: RequirementFieldsInput & { sources: RequirementSourceInput[]; workstreamIds?: string[]; objectIds?: string[] }
-): Promise<{ requirementId: string }> {
+  input: RequirementFieldsInput & { sources: RequirementSourceInput[]; workstreamIds?: string[]; objectIds?: string[] },
+  options: CreateRequirementOptions = {}
+): Promise<{ requirementId: string; code: string }> {
   await requireCurator(ctx, projectId)
   const fields = validateFields(input)
   if (input.sources.length === 0) throw new RequirementValidationError('Add at least one source: a standard, regulation, contract, customer need or vendor claim')
   const sources = input.sources.map((s) => ({ input: s, ...validateSource(s) }))
+  const methods = (options.methods ?? []).map((m) => ({ input: m, ...validateMethod(m) }))
   const code = clean(input.code, 60) ?? (await nextRequirementCode(ctx.supabase, projectId))
 
   const { data: created, error } = await ctx.supabase
@@ -279,6 +290,8 @@ export async function createRequirement(
       priority: input.priority,
       applies_from: input.appliesFrom,
       created_by: ctx.user.id,
+      created_via: options.createdVia ?? 'ui',
+      assistant_conversation_id: options.conversationId ?? null,
     })
     .select('id')
     .single()
@@ -300,12 +313,29 @@ export async function createRequirement(
     )
     if (sourceError) throw sourceError
     await replaceScope(ctx, projectId, created.id, input.workstreamIds ?? [], input.objectIds ?? [])
+    if (methods.length) {
+      const { error: methodError } = await ctx.supabase.from('solution_verification_methods').insert(
+        methods.map((m) => ({
+          requirement_id: created.id,
+          project_id: projectId,
+          method: m.input.method,
+          procedure: m.procedure,
+          pass_criteria: m.passCriteria,
+          threshold: m.threshold,
+          measure_window: m.measureWindow,
+          performed_by: m.input.performedBy,
+          created_by: ctx.user.id,
+          created_via: options.createdVia ?? 'ui',
+        }))
+      )
+      if (methodError) throw methodError
+    }
   } catch (err) {
     // Keep the register consistent: no requirement without its sources.
     await ctx.supabase.from('solution_requirements').delete().eq('id', created.id)
     rethrow(err)
   }
-  return { requirementId: created.id }
+  return { requirementId: created.id, code }
 }
 
 async function loadRequirementForCurator(ctx: WorkbenchCallerContext, requirementId: string): Promise<SolutionRequirement> {
@@ -420,7 +450,12 @@ function validateMethod(input: VerificationMethodInput) {
   return { procedure: clean(input.procedure), passCriteria: required(input.passCriteria, 'Pass criteria'), threshold, measureWindow }
 }
 
-export async function addVerificationMethod(ctx: WorkbenchCallerContext, requirementId: string, input: VerificationMethodInput): Promise<{ projectId: string }> {
+export async function addVerificationMethod(
+  ctx: WorkbenchCallerContext,
+  requirementId: string,
+  input: VerificationMethodInput,
+  options: { createdVia?: 'ui' | 'assistant' } = {}
+): Promise<{ projectId: string }> {
   const requirement = await loadRequirementForCurator(ctx, requirementId)
   requireDraft(requirement)
   const method = validateMethod(input)
@@ -434,6 +469,7 @@ export async function addVerificationMethod(ctx: WorkbenchCallerContext, require
     measure_window: method.measureWindow,
     performed_by: input.performedBy,
     created_by: ctx.user.id,
+    created_via: options.createdVia ?? 'ui',
   })
   if (error) rethrow(error)
   return { projectId: requirement.project_id }
@@ -586,4 +622,15 @@ export async function supersedeRequirement(
     rethrow(err)
   }
   return { projectId: requirement.project_id, requirementId: created.id }
+}
+
+// Stage 5: a curator accepts a requirement Ember drafted, after reviewing it.
+// Only then can it be baselined; the database stamps who accepted it.
+export async function acceptDraftedRequirement(ctx: WorkbenchCallerContext, requirementId: string): Promise<{ projectId: string }> {
+  const requirement = await loadRequirementForCurator(ctx, requirementId)
+  requireDraft(requirement)
+  if (!requirement.awaiting_acceptance) throw new RequirementValidationError('This requirement is not awaiting acceptance')
+  const { error } = await ctx.supabase.from('solution_requirements').update({ awaiting_acceptance: false }).eq('id', requirementId)
+  if (error) rethrow(error)
+  return { projectId: requirement.project_id }
 }

@@ -14,6 +14,7 @@ import {
   withdrawRequirement,
   deleteDraftRequirement,
   supersedeRequirement,
+  acceptDraftedRequirement,
   RequirementValidationError,
   type RequirementFieldsInput,
   type RequirementSourceInput,
@@ -131,4 +132,9 @@ export async function resolveReverificationAction(linkId: string, note: string) 
 
 export async function setReviewIntervalAction(requirementId: string, months: number | null) {
   return run((ctx) => setReviewInterval(ctx, requirementId, months), 'Could not save the review schedule', requirementId)
+}
+
+// Stage 5: a curator accepts a requirement Ember drafted.
+export async function acceptDraftedRequirementAction(requirementId: string) {
+  return run((ctx) => acceptDraftedRequirement(ctx, requirementId), 'Could not accept the requirement', requirementId)
 }

@@ -282,6 +282,10 @@ As a member holding an approval authority in the Project (for example a customer
 As a Viewer, I want to see which requirements need re-verification and why — a component change, a new version of a cited source, an operational measure outside its threshold, or a scheduled review — so that I know where acceptance no longer holds.
 - *Changes* at `/projects/[id]/requirements/changes`; a *Re-verify* badge on the register, baseline pages and requirement pages. Past results and decisions are unchanged.
 
+**VWR-SOL-06 — Ask Ember where requirements stand**
+As a Viewer, I want to ask Ember what's open, failed, missing evidence or due for re-verification in the Project or a workstream, so that I get a quick answer with links instead of reading the whole register.
+- Ember answers from list_requirement_status under my own access; it never says a requirement passed unless a recorded result shows it, and it never records results or approves anything.
+
 ### PUB — Publishing, blog and trending
 
 **VWR-PUB-01 — Read the blog and public knowledge**
@@ -663,6 +667,10 @@ As a Project Curator, I want to request a decision (presales claim validation, f
 **CUR-SOL-07 — Manage re-verification** *(owner)*
 As a Project Curator, I want to resolve a re-verification flag with a reason when no re-test is needed, and set how often a requirement must be re-verified, so that flags reflect real risk.
 - A production-change decision can't be approved while any requirement in its baseline needs re-verification.
+
+**CUR-SOL-08 — Have Ember draft requirements from a source** *(owner)*
+As a Project Curator, I want to ask Ember to draft requirements (and verification methods) from a standard or contract in the Project's knowledge, each citing its clause, review the drafts in chat, and have Ember create the ones I confirm, so that building the register is faster without losing traceability.
+- Ember shows the drafts first and creates them only after I confirm. They are marked *drafted by Ember*, await a curator's acceptance (**Accept draft**), and can't be baselined until accepted.
 
 ### AGT — Graphs, agents and agent registry
 

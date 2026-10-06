@@ -24,6 +24,9 @@ export const NavigationTargetKindSchema = z.enum([
   'knowledge_source',
   'project_note',
   'working_knowledge',
+  // Solution conformance, Stage 5 -- /projects/[id]/requirements/[id],
+  // RLS-gated (members read the register).
+  'solution_requirement',
 ])
 export type NavigationTargetKind = z.infer<typeof NavigationTargetKindSchema>
 
