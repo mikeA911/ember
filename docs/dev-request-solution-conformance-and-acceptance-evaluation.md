@@ -2,12 +2,12 @@
 
 ## Status
 
-Stage 1 (requirements register) built 5 October 2026; Stages 2–5 proposed. Worked example: the `cebu-ng911` Project.
+Stages 1 (requirements register) and 2 (verification records) built 5 October 2026; Stages 3–5 proposed. Worked example: the `cebu-ng911` Project.
 
 ## Delivery stages
 
 1. **Requirements register** — requirements with sources, scope and verification methods; the Project's Requirements area. *Built.*
-2. **Verification records** — append-only results with artifact evidence, against an identified solution state.
+2. **Verification records** — append-only results with artifact evidence, against an identified solution state. *Built.*
 3. **Baselines and conformance decisions** — frozen baselines, verdict roll-up, waivers, decisions through approval policies and authorities.
 4. **Re-verification triggers** — component changes, new source versions, review dates, threshold breaches.
 5. **Ember tools** — `propose_requirements`, `list_requirement_status`, `propose_verification_method`.
@@ -20,6 +20,17 @@ Stage 1 (requirements register) built 5 October 2026; Stages 2–5 proposed. Wor
 - **What can be cited:** sources in the Project's and its workstreams' knowledge bases (the same scope as Ember's Project search) and Wiki articles attached to the Project. A standard held elsewhere can still be cited by clause locator.
 - **UI:** `/projects/[id]/requirements` (filters by status, workstream and category; counts of drafts, baselined, requirements without a verification method, and vendor-claim citations), `/requirements/new` (code suggested as the next `REQ-nnn` if left blank), and `/requirements/[requirementId]` (sources, scope, verification methods, edit while draft, withdraw, delete draft). A *Requirements* summary on the Project page.
 - **Not yet:** setting `baselined` (Stage 3); superseding with a linked replacement (Stage 3); requirements on the workstream page.
+
+**As built (Stage 2, 5 October 2026):**
+
+- **Tables** (`20261019100001_solution_verification_records.sql`): `solution_verification_records` (requirement, method, result, conditions, rationale, measured value, environment `lab`/`factory`/`staging`/`site`/`production`/`vendor`/`other`, build or component versions, configuration reference, date performed, observations, issue reference, `supersedes_id`, recorded by/at) and `solution_verification_evidence` (record ↔ workstream artifact).
+- **Append-only:** RLS has read policies only; writes go through `record_solution_verification()`, which saves a record and its evidence together, and a trigger refuses any update (except the method link clearing when a draft's method is removed). A correction is a new record superseding the old one; a record can be superseded once (unique index), and the history stays readable.
+- **What it was judged against:** each record copies the method kind, pass criteria, threshold and window, so editing a draft's method later never changes what a past result meant.
+- **Rules:** the Project's owner, curators and consultants (and platform admins) record (`can_run_project_evals`); viewers read. Results can be recorded on draft and baselined requirements, not withdrawn or superseded ones. A pass or conditional pass needs at least one evidence artifact; a conditional pass needs conditions; not applicable needs a rationale; an operational measure needs the measured value; the date can't be in the future. Evidence must be an artifact in one of the Project's workstreams that the recorder can see. A requirement with records can't be deleted, only withdrawn.
+- **Evidence access:** evidence citing a restricted artifact is hidden from anyone without a grant; the record itself (result, solution state) stays visible to members.
+- **Roll-up** (`src/lib/projects/verification.ts`): the current result per method is the latest in effect (not superseded) by date performed; a requirement is *failed* if any method's current result failed, *passed* if every method passed or is not applicable, *conditional* if every method passed, conditionally passed or is not applicable, *partly verified* if some have results, otherwise *not verified* (or *no method*).
+- **UI:** on a requirement, each method shows its current result and **Record result**; a **Verification history** lists every record with evidence links, corrections and what they superseded, with **Correct** on records in effect. The register gains a *Verification* column and passed/failed/not-verified counts; the Project page's *Requirements* section shows passed and failed.
+- **Not yet:** results rolled up into baselines and decisions (Stage 3); re-verification due (Stage 4); linking a system assessment answer as `inspection` evidence.
 
 
 ## Problem

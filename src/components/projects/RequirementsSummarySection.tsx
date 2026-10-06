@@ -1,14 +1,14 @@
 import Link from 'next/link'
 
-// Solution conformance, Stage 1: the Project page's pointer into the
-// requirements register.
+// Solution conformance, Stages 1-2: the Project page's pointer into the
+// requirements register, with verification counts.
 export function RequirementsSummarySection({
   projectId,
   counts,
   canCurate,
 }: {
   projectId: string
-  counts: { draft: number; baselined: number; withoutMethod: number }
+  counts: { draft: number; baselined: number; withoutMethod: number; passed: number; failed: number }
   canCurate: boolean
 }) {
   const total = counts.draft + counts.baselined
@@ -22,6 +22,9 @@ export function RequirementsSummarySection({
           <>
             {counts.draft} draft · {counts.baselined} baselined
             {counts.withoutMethod > 0 && <span className="text-amber-800"> · {counts.withoutMethod} without a verification method</span>}
+            {' · '}
+            {counts.passed} passed verification
+            {counts.failed > 0 && <span className="text-red-700"> · {counts.failed} failed</span>}
           </>
         )}
       </p>

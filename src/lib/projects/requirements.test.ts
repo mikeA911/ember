@@ -10,6 +10,7 @@ const {
   removeRequirementSource,
   addVerificationMethod,
   withdrawRequirement,
+  deleteDraftRequirement,
   nextRequirementCode,
   listRequirements,
   RequirementValidationError,
@@ -133,6 +134,16 @@ describe('editing a requirement', () => {
 
     const closed = makeCtx({ solution_requirements: [{ data: { ...draft, status: 'withdrawn' }, error: null }] })
     await expect(withdrawRequirement(closed.ctx, 'req-1')).rejects.toThrow('already closed')
+  })
+
+  it('refuses to delete a draft that has verification results, pointing to withdraw', async () => {
+    const { ctx } = makeCtx({
+      solution_requirements: [
+        { data: draft, error: null },
+        { data: null, error: Object.assign(new Error('update or delete on table "solution_requirements" violates foreign key constraint "solution_verification_records_requirement_id_fkey"'), { code: '23503' }) },
+      ],
+    })
+    await expect(deleteDraftRequirement(ctx, 'req-1')).rejects.toThrow('This requirement has verification results, so it can’t be deleted. Withdraw it instead.')
   })
 })
 

@@ -3,10 +3,20 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { listRequirements } from '@/lib/projects/requirements'
 import { loadRequirementsPageContext } from '@/lib/projects/requirements-page'
-import { CATEGORY_LABELS, PRIORITY_LABELS, SOURCE_KIND_LABELS, STATUS_LABELS, STATUS_STYLES, APPLIES_FROM_LABELS } from '@/components/projects/requirement-labels'
-import type { RequirementStatus } from '@/types/database'
+import { listVerificationStatuses } from '@/lib/projects/verification'
+import {
+  CATEGORY_LABELS,
+  PRIORITY_LABELS,
+  SOURCE_KIND_LABELS,
+  STATUS_LABELS,
+  STATUS_STYLES,
+  APPLIES_FROM_LABELS,
+  VERIFICATION_STATUS_LABELS,
+  VERIFICATION_STATUS_STYLES,
+} from '@/components/projects/requirement-labels'
+import type { RequirementStatus, RequirementVerificationStatus } from '@/types/database'
 
-// Solution conformance, Stage 1: the Project's requirements register --
+// Solution conformance, Stages 1-2: the Project's requirements register --
 // what the delivered solution must satisfy, traced to its sources and
 // scoped to workstreams and Project objects. Members read; Project
 // curators/admins author draft requirements.
@@ -28,7 +38,16 @@ export default async function RequirementsPage({
   const { project, canCurate, isMember } = await loadRequirementsPageContext(supabase, id, user.id)
   if (!project || !isMember) notFound()
 
-  const all = await listRequirements(supabase, id)
+  const [all, verification] = await Promise.all([
+    listRequirements(supabase, id),
+    // Stage 2; no verification column data if the records can't be read.
+    listVerificationStatuses(supabase, id).catch((err) => {
+      console.error('Verification statuses unavailable', err)
+      return new Map<string, RequirementVerificationStatus>()
+    }),
+  ])
+  const verificationOf = (r: { id: string; methodCount: number }): RequirementVerificationStatus => verification.get(r.id) ?? (r.methodCount === 0 ? 'no_method' : 'not_verified')
+  const open = all.filter((r) => r.status === 'draft' || r.status === 'baselined')
   const statusFilter = filters.status ?? 'open'
   const requirements = all.filter(
     (r) =>
@@ -41,6 +60,9 @@ export default async function RequirementsPage({
     baselined: all.filter((r) => r.status === 'baselined').length,
     withoutMethod: all.filter((r) => (r.status === 'draft' || r.status === 'baselined') && r.methodCount === 0).length,
     vendorClaims: all.filter((r) => (r.status === 'draft' || r.status === 'baselined') && r.sourceKinds.includes('vendor_claim')).length,
+    passed: open.filter((r) => verificationOf(r) === 'passed').length,
+    failed: open.filter((r) => verificationOf(r) === 'failed').length,
+    notVerified: open.filter((r) => verificationOf(r) === 'not_verified').length,
   }
   const workstreamNames = [...new Set(all.flatMap((r) => r.workstreamNames))].sort()
 
@@ -75,6 +97,10 @@ export default async function RequirementsPage({
           {counts.withoutMethod > 0 && <span className="text-amber-800"> · {counts.withoutMethod} without a verification method</span>}
           {counts.vendorClaims > 0 && <span> · {counts.vendorClaims} citing vendor claims to verify</span>}
         </p>
+        <p className="text-sm text-zinc-600">
+          Verification: {counts.passed} passed
+          {counts.failed > 0 && <span className="text-red-700"> · {counts.failed} failed</span>} · {counts.notVerified} not verified yet
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -102,7 +128,7 @@ export default async function RequirementsPage({
       )}
 
       <div className="overflow-x-auto rounded border border-zinc-200 bg-white">
-        <table className="w-full min-w-[48rem] text-left text-sm">
+        <table className="w-full min-w-[54rem] text-left text-sm">
           <thead className="bg-zinc-50 text-xs text-zinc-500">
             <tr>
               <th className="px-3 py-2 font-medium">Code</th>
@@ -111,6 +137,7 @@ export default async function RequirementsPage({
               <th className="px-3 py-2 font-medium">Priority</th>
               <th className="px-3 py-2 font-medium">Sources</th>
               <th className="px-3 py-2 text-right font-medium">Methods</th>
+              <th className="px-3 py-2 font-medium">Verification</th>
               <th className="px-3 py-2 font-medium">Status</th>
             </tr>
           </thead>
@@ -138,6 +165,11 @@ export default async function RequirementsPage({
                 <td className={`px-3 py-2 text-right ${r.methodCount === 0 && r.status !== 'withdrawn' && r.status !== 'superseded' ? 'text-amber-800' : ''}`}>
                   {r.methodCount}
                 </td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${VERIFICATION_STATUS_STYLES[verificationOf(r)]}`}>
+                    {VERIFICATION_STATUS_LABELS[verificationOf(r)]}
+                  </span>
+                </td>
                 <td className="px-3 py-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[r.status]}`}>{STATUS_LABELS[r.status]}</span>
                 </td>
@@ -145,7 +177,7 @@ export default async function RequirementsPage({
             ))}
             {requirements.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-zinc-500">
+                <td colSpan={8} className="px-3 py-6 text-center text-zinc-500">
                   {all.length === 0 ? 'No requirements yet.' : 'No requirements match these filters.'}
                 </td>
               </tr>

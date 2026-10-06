@@ -18,6 +18,7 @@ import { EmberReadinessSection } from '@/components/projects/EmberReadinessSecti
 import { listKnowledgeGaps, listKnowledgeGapOccurrences } from '@/lib/projects/knowledge-gaps'
 import { KnowledgeGapsSection } from '@/components/projects/KnowledgeGapsSection'
 import { RequirementsSummarySection } from '@/components/projects/RequirementsSummarySection'
+import { listVerificationStatuses } from '@/lib/projects/verification'
 import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton, PendingReviewBadge } from '@/components/projects/KnowledgeBaseAttachManager'
 import { getOrganizationExplorer } from '@/lib/projects/explorer'
 import { OrganizationExplorer } from '@/components/projects/OrganizationExplorer'
@@ -27,7 +28,7 @@ import { SourceSubmissionsReview } from '@/components/projects/SourceSubmissions
 import { WorkstreamPromotionsReview } from '@/components/projects/WorkstreamPromotionsReview'
 import { listPendingWorkstreamPromotionsForProject } from '@/lib/workbench/workstream-promotions'
 import type { WorkbenchCallerContext } from '@/lib/workbench/context'
-import type { WorkstreamArtifactStatus } from '@/types/database'
+import type { RequirementVerificationStatus, WorkstreamArtifactStatus } from '@/types/database'
 import { countArtifacts } from '@/lib/projects/artifact-summary'
 import { ProjectArchiveDeleteActions } from '@/components/projects/ProjectArchiveDeleteActions'
 import { ProjectCategorySelector } from '@/components/projects/ProjectCategorySelector'
@@ -252,9 +253,11 @@ export default async function ProjectPage({
     // Solution conformance, Stage 1 -- counts for the Requirements section;
     // hidden if the register can't be read (e.g. migration not applied).
     (async () => {
-      const [{ data: reqs, error }, { data: methods }] = await Promise.all([
+      const [{ data: reqs, error }, { data: methods }, verification] = await Promise.all([
         supabase.from('solution_requirements').select('id, status').eq('project_id', id),
         supabase.from('solution_verification_methods').select('requirement_id').eq('project_id', id),
+        // Stage 2 -- no verification counts if the records can't be read.
+        listVerificationStatuses(supabase, id).catch(() => new Map<string, RequirementVerificationStatus>()),
       ])
       if (error) {
         console.error('Requirements unavailable', error)
@@ -266,6 +269,8 @@ export default async function ProjectPage({
         draft: open.filter((r) => r.status === 'draft').length,
         baselined: open.filter((r) => r.status === 'baselined').length,
         withoutMethod: open.filter((r) => !withMethod.has(r.id)).length,
+        passed: open.filter((r) => verification.get(r.id) === 'passed').length,
+        failed: open.filter((r) => verification.get(r.id) === 'failed').length,
       }
     })(),
   ])

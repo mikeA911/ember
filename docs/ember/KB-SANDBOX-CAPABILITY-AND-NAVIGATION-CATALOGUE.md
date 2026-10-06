@@ -351,6 +351,19 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Exposure:** Read-only candidate for MCP; writing stays a UI action.
 - **Verification:** Code verified 2026-10-05 (solution conformance, Stage 1); SQL behaviour checked against a local Postgres with stub tables.
 
+### Record verification results for a requirement
+
+- **Intent:** Record whether a requirement was shown to be met — by test, demonstration, inspection, analysis, vendor evidence or operational measure — with the evidence; see where verification stands.
+- **Users and authority:** Every Project member reads results. The Project's owner, curators and consultants, and platform admins, record and correct them. Viewers can't record.
+- **Prerequisites:** Project membership; the requirement has a verification method; for a pass, the evidence (test results, evidence map, findings) is attached as an artifact to one of the Project's workstreams.
+- **Start:** a requirement at `/projects/[id]/requirements/[requirementId]`.
+- **Navigation:** Project → **Requirements** → **Open the requirements register** → a requirement → under a method, **Record result**; in **Verification history**, **Correct** on a record.
+- **Outcome:** A record with result (pass, fail, conditional pass with conditions, not run, not applicable with rationale), environment, build or component versions, configuration reference, date, observations, issue reference and evidence artifacts. The method shows its current result; the register shows each requirement's verification status and passed/failed/not-verified counts.
+- **Ember guidance:** Explain how to record a result and link to the requirement. Ember cannot record results or mark a requirement as passed. A pass needs evidence artifacts — a statement that something works is not evidence. A vendor claim is not a result. AI evaluation scores (`/evals`) are not evidence of solution conformance.
+- **Boundaries:** Records can't be edited or deleted; a correction supersedes a record once and both stay readable. Withdrawn and superseded requirements take no new results. A requirement with results can't be deleted, only withdrawn. Evidence citing a restricted artifact is hidden from people without a grant.
+- **Exposure:** Read-only candidate for MCP; recording stays a UI action.
+- **Verification:** Code verified 2026-10-05 (solution conformance, Stage 2); SQL behaviour checked against a local Postgres with stub tables.
+
 ### See or assess Ember readiness for a Project
 
 - **Intent:** Know how far to rely on Ember for this Project, and (curators) record that judgement.
@@ -475,7 +488,7 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **What evals measure:** Evals measure Ember and Agents (whether answers retrieve the right evidence and stay grounded), not a Project's delivered solution. Ember should not describe an eval score as evidence that a client system conforms to a standard.
 - **Exposure:** Results are candidates for admin read access only; running evaluations stays a UI action.
 - **Verification:** Code verified 2026-10-05 (Ember Readiness, Stage 1). Detailed workflows remain to be catalogued.
-- **Planned, not yet available:** `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` adds a separate **Solution evaluation** area: the requirements register is live (see **Record and read a Project's requirements**); verification records, baselines and conformance decisions are not yet available. Until these ship, Ember must not tell users these features exist or direct them to them. If a user says Ember got something wrong or could not answer from Project knowledge, point them to **Report a problem** under the answer (see **Report an Ember failure** below).
+- **Planned, not yet available:** `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` adds a separate **Solution evaluation** area: the requirements register and verification records are live (see **Record and read a Project's requirements** and **Record verification results for a requirement**); baselines and conformance decisions are not yet available. Until these ship, Ember must not tell users these features exist or direct them to them. If a user says Ember got something wrong or could not answer from Project knowledge, point them to **Report a problem** under the answer (see **Report an Ember failure** below).
 
 ### Graphs
 

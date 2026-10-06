@@ -18,8 +18,9 @@ import {
   type RequirementSourceInput,
   type VerificationMethodInput,
 } from '@/lib/projects/requirements'
+import { recordVerification, type VerificationRecordInput } from '@/lib/projects/verification'
 
-// Solution conformance, Stage 1. Failures come back as { error } so the
+// Solution conformance, Stages 1-2. Failures come back as { error } so the
 // reason survives Next's production masking of thrown Server Action errors.
 function toError(err: unknown, fallback: string): string {
   if (err instanceof AuthError || err instanceof RequirementValidationError) return err.message
@@ -96,4 +97,11 @@ export async function withdrawRequirementAction(requirementId: string) {
 
 export async function deleteDraftRequirementAction(requirementId: string) {
   return run((ctx) => deleteDraftRequirement(ctx, requirementId), 'Could not delete the requirement')
+}
+
+// Stage 2: one verification result (or a correction superseding an earlier
+// one). Consultants, curators and owners record; the database saves the
+// record and its evidence together.
+export async function recordVerificationAction(requirementId: string, input: VerificationRecordInput) {
+  return run((ctx) => recordVerification(ctx, requirementId, input), 'Could not record the result', requirementId)
 }
