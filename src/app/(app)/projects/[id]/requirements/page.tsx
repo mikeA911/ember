@@ -86,11 +86,16 @@ export default async function RequirementsPage({
               vendor claims to verify), what it concerns and how it will be verified.
             </p>
           </div>
-          {canCurate && (
-            <Link href={`/projects/${id}/requirements/new`} className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white">
-              New requirement
+          <div className="flex items-center gap-3">
+            <Link href={`/projects/${id}/requirements/baselines`} className="text-sm underline">
+              Baselines and decisions
             </Link>
-          )}
+            {canCurate && (
+              <Link href={`/projects/${id}/requirements/new`} className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white">
+                New requirement
+              </Link>
+            )}
+          </div>
         </div>
         <p className="mt-2 text-sm text-zinc-600">
           {counts.draft} draft · {counts.baselined} baselined

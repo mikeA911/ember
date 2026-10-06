@@ -2,13 +2,13 @@
 
 ## Status
 
-Stages 1 (requirements register) and 2 (verification records) built 5 October 2026; Stages 3–5 proposed. Worked example: the `cebu-ng911` Project.
+Stages 1 (requirements register) and 2 (verification records) built 5 October 2026, Stage 3 (baselines and conformance decisions) 6 October 2026; Stages 4–5 proposed. Worked example: the `cebu-ng911` Project.
 
 ## Delivery stages
 
 1. **Requirements register** — requirements with sources, scope and verification methods; the Project's Requirements area. *Built.*
 2. **Verification records** — append-only results with artifact evidence, against an identified solution state. *Built.*
-3. **Baselines and conformance decisions** — frozen baselines, verdict roll-up, waivers, decisions through approval policies and authorities.
+3. **Baselines and conformance decisions** — frozen baselines, verdict roll-up, waivers, decisions through approval policies and authorities. *Built.*
 4. **Re-verification triggers** — component changes, new source versions, review dates, threshold breaches.
 5. **Ember tools** — `propose_requirements`, `list_requirement_status`, `propose_verification_method`.
 
@@ -31,6 +31,18 @@ Stages 1 (requirements register) and 2 (verification records) built 5 October 20
 - **Roll-up** (`src/lib/projects/verification.ts`): the current result per method is the latest in effect (not superseded) by date performed; a requirement is *failed* if any method's current result failed, *passed* if every method passed or is not applicable, *conditional* if every method passed, conditionally passed or is not applicable, *partly verified* if some have results, otherwise *not verified* (or *no method*).
 - **UI:** on a requirement, each method shows its current result and **Record result**; a **Verification history** lists every record with evidence links, corrections and what they superseded, with **Correct** on records in effect. The register gains a *Verification* column and passed/failed/not-verified counts; the Project page's *Requirements* section shows passed and failed.
 - **Not yet:** results rolled up into baselines and decisions (Stage 3); re-verification due (Stage 4); linking a system assessment answer as `inspection` evidence.
+
+**As built (Stage 3, 6 October 2026):**
+
+- **Tables** (`20261020100001_solution_baselines_and_decisions.sql`): `solution_evaluation_baselines` (name, purpose, lifecycle stage, version, previous version, status `draft`/`active`/`superseded`), `solution_evaluation_baseline_items`, `solution_waivers` (waiver or deviation, rationale, conditions, approval type, status), `solution_conformance_decisions` (decision type, approval type, approvals needed and mode copied from the policy, status, snapshot) and `solution_conformance_decision_approvals` (one verdict per approver).
+- **Baselines:** curators create a draft and choose its requirements. Activating needs at least one requirement, each open and with a verification method; it moves draft requirements to `baselined` (fixing their content, sources, scope and methods) and freezes the baseline and its items (RLS and triggers). A new version is a draft copy with the next version number; requirements that were superseded are carried over as their replacements, withdrawn ones left out. Activating the new version supersedes the old one, which stays readable with its decisions.
+- **Authority:** `holds_project_authority()` — an active, in-date assignment of the approval type held by an active member. Platform admin status alone is never authority. Self-approval (the requester, or for decisions anyone who recorded evidence in effect for the baseline) is refused unless both the Project's policy and the approver's assignment allow it.
+- **Waivers:** owners, curators and consultants request one per requirement per active baseline, with a rationale; a holder of the named authority approves or rejects; the requester or a curator can withdraw a pending one. Approved waivers show as *waived* in every roll-up of that baseline (a pass still shows as passed).
+- **Decisions:** curators request a decision over an active baseline (presales claim validation, factory, site or customer acceptance, go-live, post-change re-verification) for an approval type the policy doesn't mark not applicable; one pending decision of each kind per baseline. Each holder gives one verdict; a rejection (with a reason) decides it, otherwise it is approved at the policy's minimum approvals, or when every current holder has approved for `all_assigned`. On deciding, the decision keeps a snapshot of each requirement's methods, the verification records in effect and any approved waiver, so its roll-up reads the same forever. Decided waivers and decisions can't change.
+- **Superseding a requirement:** a baselined requirement can be superseded by a new draft copying its content, sources, scope and methods (code suggested as `<code>-R2`); the old one is marked superseded and links to it.
+- **Notifications:** current holders of the approval type get a Project note when a waiver or decision needs them.
+- **UI:** `/projects/[id]/requirements/baselines` (list with latest decision), `/baselines/new`, and `/baselines/[baselineId]` (requirements with live roll-up, versions, activate, new version, waivers, decisions with approvals and the roll-up each rested on). Requirement pages show the baselines they are in, the replacement link, and **Supersede with a new version**.
+- **Not yet:** re-verification due and blocking a `production_change` decision until re-verified (Stage 4).
 
 
 ## Problem

@@ -972,6 +972,97 @@ export interface SolutionVerificationEvidence {
   created_at: string
 }
 
+// Solution conformance, Stage 3 (20261020100001_solution_baselines_and_decisions.sql).
+export type ConformanceDecisionType =
+  | 'presales_claim_validation'
+  | 'factory_acceptance'
+  | 'site_acceptance'
+  | 'customer_acceptance'
+  | 'go_live'
+  | 'post_change_reverification'
+// The approval types a conformance decision or waiver can need.
+export type ConformanceApprovalType = Extract<ApprovalType, 'technical' | 'security_compliance' | 'customer_acceptance' | 'production_change'>
+export type BaselineStatus = 'draft' | 'active' | 'superseded'
+export type ConformanceStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn'
+export type WaiverKind = 'waiver' | 'deviation'
+
+export interface SolutionEvaluationBaseline {
+  id: string
+  project_id: string
+  name: string
+  purpose: ConformanceDecisionType
+  lifecycle_stage: RequirementAppliesFrom
+  description: string | null
+  version: number
+  previous_baseline_id: string | null
+  status: BaselineStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  activated_by: string | null
+  activated_at: string | null
+}
+
+export interface SolutionEvaluationBaselineItem {
+  id: string
+  baseline_id: string
+  project_id: string
+  requirement_id: string
+  added_by: string | null
+  created_at: string
+}
+
+export interface SolutionWaiver {
+  id: string
+  project_id: string
+  baseline_id: string
+  requirement_id: string
+  kind: WaiverKind
+  rationale: string
+  conditions: string | null
+  approval_type: ConformanceApprovalType
+  status: ConformanceStatus
+  requested_by: string | null
+  requested_at: string
+  decided_by: string | null
+  decided_at: string | null
+  decision_note: string | null
+}
+
+// What a decision rested on, taken when it was decided.
+export interface ConformanceSnapshot {
+  taken_at: string
+  baseline_version: number
+  requirements: { requirement_id: string; method_ids: string[]; record_ids: string[]; waiver_id: string | null }[]
+}
+
+export interface SolutionConformanceDecision {
+  id: string
+  project_id: string
+  baseline_id: string
+  decision_type: ConformanceDecisionType
+  approval_type: ConformanceApprovalType
+  status: ConformanceStatus
+  request_note: string | null
+  required_approvals: number
+  approval_mode: 'any_authorized' | 'all_assigned'
+  requested_by: string | null
+  requested_at: string
+  decided_at: string | null
+  snapshot: ConformanceSnapshot | null
+}
+
+export interface SolutionConformanceDecisionApproval {
+  id: string
+  decision_id: string
+  project_id: string
+  approver_id: string | null
+  verdict: 'approve' | 'reject'
+  note: string | null
+  conditions: string | null
+  created_at: string
+}
+
 // private = members/admin only (default, never auto-changed). internal =
 // any authenticated user can view (editing still gated by project_members).
 // public = a deliberately published presentation, visible with no session
@@ -3409,6 +3500,22 @@ interface DatabaseDefinition {
       }
       solution_verification_records: { Row: SolutionVerificationRecord; Insert: never; Update: never; Relationships: [] }
       solution_verification_evidence: { Row: SolutionVerificationEvidence; Insert: never; Update: never; Relationships: [] }
+      solution_evaluation_baselines: {
+        Row: SolutionEvaluationBaseline
+        Insert: Pick<SolutionEvaluationBaseline, 'project_id' | 'name' | 'purpose' | 'created_by'> &
+          Partial<Pick<SolutionEvaluationBaseline, 'lifecycle_stage' | 'description'>>
+        Update: Partial<Pick<SolutionEvaluationBaseline, 'name' | 'purpose' | 'lifecycle_stage' | 'description'>>
+        Relationships: []
+      }
+      solution_evaluation_baseline_items: {
+        Row: SolutionEvaluationBaselineItem
+        Insert: Pick<SolutionEvaluationBaselineItem, 'baseline_id' | 'project_id' | 'requirement_id' | 'added_by'>
+        Update: never
+        Relationships: []
+      }
+      solution_waivers: { Row: SolutionWaiver; Insert: never; Update: never; Relationships: [] }
+      solution_conformance_decisions: { Row: SolutionConformanceDecision; Insert: never; Update: never; Relationships: [] }
+      solution_conformance_decision_approvals: { Row: SolutionConformanceDecisionApproval; Insert: never; Update: never; Relationships: [] }
       project_knowledge_gaps: {
         Row: ProjectKnowledgeGap
         Insert: ProjectKnowledgeGapInsert
@@ -3549,6 +3656,24 @@ interface DatabaseDefinition {
         Returns: { gap_id: string; occurrence_id: string; is_new: boolean; occurrence_count: number }[]
       }
       withdraw_knowledge_gap_occurrence: { Args: { p_occurrence_id: string }; Returns: void }
+      activate_solution_baseline: { Args: { p_baseline_id: string }; Returns: void }
+      new_solution_baseline_version: { Args: { p_baseline_id: string }; Returns: string }
+      request_solution_waiver: {
+        Args: { p_baseline_id: string; p_requirement_id: string; p_kind: WaiverKind; p_rationale: string; p_approval_type: ConformanceApprovalType; p_conditions?: string | null }
+        Returns: string
+      }
+      decide_solution_waiver: { Args: { p_waiver_id: string; p_approve: boolean; p_note?: string | null }; Returns: void }
+      withdraw_solution_waiver: { Args: { p_waiver_id: string }; Returns: void }
+      request_solution_conformance_decision: {
+        Args: { p_baseline_id: string; p_decision_type: ConformanceDecisionType; p_approval_type: ConformanceApprovalType; p_note?: string | null }
+        Returns: string
+      }
+      decide_solution_conformance_decision: {
+        Args: { p_decision_id: string; p_approve: boolean; p_note?: string | null; p_conditions?: string | null }
+        Returns: ConformanceStatus
+      }
+      withdraw_solution_conformance_decision: { Args: { p_decision_id: string }; Returns: void }
+      holds_project_authority: { Args: { p_project_id: string; p_uid: string; p_approval_type: string }; Returns: boolean }
       record_solution_verification: {
         Args: {
           p_requirement_id: string

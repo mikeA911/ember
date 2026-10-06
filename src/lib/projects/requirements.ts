@@ -489,3 +489,101 @@ export async function deleteDraftRequirement(ctx: WorkbenchCallerContext, requir
   if (error) rethrow(error)
   return { projectId: requirement.project_id }
 }
+
+// "REQ-001" -> "REQ-001-R2", "REQ-001-R2" -> "REQ-001-R3".
+export function nextRevisionCode(code: string): string {
+  const match = /^(.*)-R(\d+)$/.exec(code)
+  return match ? `${match[1]}-R${Number(match[2]) + 1}` : `${code}-R2`
+}
+
+// Stage 3: a baselined requirement's content is fixed, so changing it means
+// superseding it with a new draft -- a copy of its content, sources, scope
+// and verification methods, linked as its replacement. The old requirement
+// stays readable (with its results and the baselines and decisions that
+// cite it); the new one starts unverified.
+export async function supersedeRequirement(
+  ctx: WorkbenchCallerContext,
+  requirementId: string,
+  input: { code?: string } = {}
+): Promise<{ projectId: string; requirementId: string }> {
+  const requirement = await loadRequirementForCurator(ctx, requirementId)
+  if (requirement.status !== 'baselined') {
+    throw new RequirementValidationError(
+      requirement.status === 'draft' ? 'A draft can still be edited directly' : 'This requirement is already closed'
+    )
+  }
+  const [{ data: sources }, { data: links }, { data: methods }] = await Promise.all([
+    ctx.supabase.from('solution_requirement_sources').select('*').eq('requirement_id', requirementId),
+    ctx.supabase.from('solution_requirement_scope_links').select('workstream_id, project_object_id').eq('requirement_id', requirementId),
+    ctx.supabase.from('solution_verification_methods').select('*').eq('requirement_id', requirementId),
+  ])
+
+  const { data: created, error } = await ctx.supabase
+    .from('solution_requirements')
+    .insert({
+      project_id: requirement.project_id,
+      code: clean(input.code, 60) ?? nextRevisionCode(requirement.code),
+      title: requirement.title,
+      statement: requirement.statement,
+      rationale: requirement.rationale,
+      category: requirement.category,
+      priority: requirement.priority,
+      applies_from: requirement.applies_from,
+      created_by: ctx.user.id,
+    })
+    .select('id')
+    .single()
+  if (error || !created) rethrow(error ?? new Error('Could not create the replacement'))
+
+  try {
+    if (sources?.length) {
+      const { error: sourceError } = await ctx.supabase.from('solution_requirement_sources').insert(
+        sources.map((s) => ({
+          requirement_id: created.id,
+          project_id: requirement.project_id,
+          kind: s.kind,
+          knowledge_source_id: s.knowledge_source_id,
+          wiki_article_id: s.wiki_article_id,
+          locator: s.locator,
+          requester: s.requester,
+          note: s.note,
+          created_by: ctx.user.id,
+        }))
+      )
+      if (sourceError) throw sourceError
+    }
+    await replaceScope(
+      ctx,
+      requirement.project_id,
+      created.id,
+      (links ?? []).map((l) => l.workstream_id).filter((x): x is string => !!x),
+      (links ?? []).map((l) => l.project_object_id).filter((x): x is string => !!x)
+    )
+    if (methods?.length) {
+      const { error: methodError } = await ctx.supabase.from('solution_verification_methods').insert(
+        methods.map((m) => ({
+          requirement_id: created.id,
+          project_id: requirement.project_id,
+          method: m.method,
+          procedure: m.procedure,
+          pass_criteria: m.pass_criteria,
+          threshold: m.threshold,
+          measure_window: m.measure_window,
+          performed_by: m.performed_by,
+          created_by: ctx.user.id,
+        }))
+      )
+      if (methodError) throw methodError
+    }
+    const { error: closeError } = await ctx.supabase
+      .from('solution_requirements')
+      .update({ status: 'superseded', superseded_by: created.id })
+      .eq('id', requirementId)
+    if (closeError) throw closeError
+  } catch (err) {
+    // No half-made replacement: the new draft (and its children) goes.
+    await ctx.supabase.from('solution_requirements').delete().eq('id', created.id)
+    rethrow(err)
+  }
+  return { projectId: requirement.project_id, requirementId: created.id }
+}

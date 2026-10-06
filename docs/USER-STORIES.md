@@ -270,6 +270,14 @@ As a Viewer, I want to see each requirement's verification status and its full r
 - Each method shows its current result; the history keeps every record, with corrections and the records they superseded.
 - Evidence citing a restricted artifact is hidden unless I have a grant.
 
+**VWR-SOL-03 — Read baselines and decisions**
+As a Viewer, I want to see the Project's baselines, where each requirement stands in them, the waivers granted and the decisions made, with what each decision rested on, so that I know what was accepted and on what evidence.
+- Baselines and decisions at `/projects/[id]/requirements/baselines`; a decided decision shows the roll-up from when it was decided, even after later results.
+
+**VWR-SOL-04 — Approve as an assigned authority**
+As a member holding an approval authority in the Project (for example a customer representative with customer-acceptance authority), I want to approve or reject a conformance decision or waiver that needs my authority, with a note and conditions, so that acceptance is decided by the people accountable for it.
+- Only active, in-date authority counts; platform admin status alone does not. I can't approve what I requested, or a decision over evidence I recorded, unless the Project's policy and my assignment both allow self-approval. A rejection needs a reason.
+
 ### PUB — Publishing, blog and trending
 
 **VWR-PUB-01 — Read the blog and public knowledge**
@@ -383,6 +391,10 @@ As a Consultant, I want to record the result of a requirement's verification met
 **CON-SOL-02 — Correct a result without rewriting history**
 As a Consultant, I want to correct a result by recording a new one that supersedes it, so that mistakes are fixed while the original stays readable.
 - Records are never edited or deleted; a record can be superseded once, and the correction becomes the current result.
+
+**CON-SOL-03 — Request a waiver or deviation**
+As a Consultant, I want to request a waiver (accept a requirement as not met) or deviation (accept it met differently) for a requirement in an active baseline, with a rationale and any conditions, naming the authority that must approve it, so that known gaps are accepted explicitly rather than ignored.
+- One pending or approved waiver per requirement per baseline; I can withdraw mine while pending.
 
 ### AGT — Graphs, agents and agent registry
 
@@ -626,6 +638,18 @@ As a Project Curator, I want to edit a requirement only while it is a draft, wit
 - Content, sources, scope and methods are fixed once a requirement leaves draft; a withdrawn or superseded requirement cannot be reopened.
 - A requirement with verification results can't be deleted, only withdrawn.
 - Curators can also record and correct verification results (see CON-SOL-01 and CON-SOL-02).
+
+**CUR-SOL-04 — Baseline the requirements a decision is made against** *(owner)*
+As a Project Curator, I want to group requirements into a named baseline for a purpose and stage (e.g. Phase 1 site acceptance), activate it to freeze it, and create a new version when the scope changes, so that every decision is read against exactly what was agreed.
+- Activation needs at least one requirement, each with a verification method, and moves them to baselined. A new version copies the requirements (replacements in place of superseded ones); activating it supersedes the old version.
+
+**CUR-SOL-05 — Supersede a baselined requirement** *(owner)*
+As a Project Curator, I want to replace a baselined requirement with a new draft that copies its content, sources, scope and methods, so that I can change what was agreed without rewriting history.
+- The old requirement is marked superseded with a link to its replacement and keeps its results; the replacement starts unverified.
+
+**CUR-SOL-06 — Request a conformance decision** *(owner)*
+As a Project Curator, I want to request a decision (presales claim validation, factory/site/customer acceptance, go-live, post-change re-verification) over an active baseline, naming the approval authority it needs, so that the right people approve it with the verification roll-up in front of them.
+- The approvals needed and the self-approval rule come from the Project's approval policy; holders of the authority are notified.
 
 ### AGT — Graphs, agents and agent registry
 

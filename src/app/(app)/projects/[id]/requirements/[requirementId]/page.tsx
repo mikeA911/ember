@@ -1,11 +1,13 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getRequirement, getRequirementOptions } from '@/lib/projects/requirements'
+import { getRequirement, getRequirementOptions, nextRevisionCode } from '@/lib/projects/requirements'
+import { listBaselinesForRequirement } from '@/lib/projects/baselines'
 import { loadRequirementsPageContext } from '@/lib/projects/requirements-page'
 import { currentResultByMethod, listEvidenceArtifactOptions, listVerificationRecords, rollUpVerification } from '@/lib/projects/verification'
 import {
   APPLIES_FROM_LABELS,
+  BASELINE_STATUS_LABELS,
   CATEGORY_LABELS,
   ENVIRONMENT_LABELS,
   METHOD_LABELS,
@@ -29,6 +31,7 @@ import {
   VerificationMethodForm,
 } from '@/components/projects/RequirementForms'
 import { VerificationRecordForm } from '@/components/projects/VerificationRecordForm'
+import { SupersedeRequirementButton } from '@/components/projects/BaselineForms'
 import type { VerificationEnvironment, VerificationResult } from '@/types/database'
 
 export default async function RequirementPage({ params }: { params: Promise<{ id: string; requirementId: string }> }) {
@@ -49,7 +52,7 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
   const canEdit = canCurate && isDraft
   const isOpen = r.status === 'draft' || r.status === 'baselined'
   const canRecordHere = canRecord && isOpen && methods.length > 0
-  const [picker, records, artifacts] = await Promise.all([
+  const [picker, records, artifacts, baselines] = await Promise.all([
     canEdit ? getRequirementOptions(supabase, id) : Promise.resolve(null),
     // Stage 2; an empty history if the records can't be read (e.g. the
     // migration isn't applied yet).
@@ -58,6 +61,8 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
       return []
     }),
     canRecordHere ? listEvidenceArtifactOptions(supabase, id, workstreams.map((w) => w.id)) : Promise.resolve([]),
+    // Stage 3; none if baselines can't be read (e.g. migration not applied).
+    listBaselinesForRequirement(supabase, requirementId).catch(() => []),
   ])
   const current = currentResultByMethod(records)
   const verification = rollUpVerification(
@@ -120,8 +125,33 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
             />
           </div>
         )}
-        {canCurate && !isDraft && r.status === 'baselined' && (
-          <p className="mt-2 text-xs text-zinc-500">Baselined requirements can&rsquo;t be edited. Withdraw it, or supersede it with a new requirement.</p>
+        {canCurate && r.status === 'baselined' && (
+          <div className="mt-2 flex flex-col gap-1 text-sm">
+            <p className="text-xs text-zinc-500">
+              Baselined requirements can&rsquo;t be edited. To change it, supersede it with a new draft (a copy of its content, sources, scope and methods); this
+              one stays readable with its results.
+            </p>
+            <SupersedeRequirementButton projectId={id} requirementId={r.id} suggestedCode={nextRevisionCode(r.code)} />
+          </div>
+        )}
+        {r.superseded_by && (
+          <p className="mt-2 text-sm">
+            Superseded by{' '}
+            <Link href={`/projects/${id}/requirements/${r.superseded_by}`} className="underline">
+              its replacement
+            </Link>
+            .
+          </p>
+        )}
+        {baselines.length > 0 && (
+          <p className="mt-2 flex flex-wrap gap-2 text-xs">
+            <span className="text-zinc-500">In baselines:</span>
+            {baselines.map((bl) => (
+              <Link key={bl.id} href={`/projects/${id}/requirements/baselines/${bl.id}`} className="underline">
+                {bl.name} v{bl.version} ({BASELINE_STATUS_LABELS[bl.status].toLowerCase()})
+              </Link>
+            ))}
+          </p>
         )}
       </div>
 
