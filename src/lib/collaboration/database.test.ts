@@ -72,7 +72,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await db.exec(`
     reset role;
-    truncate collaboration_events, collaboration_participants, collaboration_invitations, collaboration_sessions,
+    truncate collaboration_events, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
       collaboration_conversations, conversations, project_members, project_workstreams, projects, profiles cascade;
     insert into profiles values ('${host}', 'host@example.test', 'Hana Host', true), ('${guest}', 'guest@example.test', 'Gil Guest', true),
       ('${outsider}', 'out@example.test', 'Olu Outsider', true), ('${third}', 'third@example.test', null, true);
@@ -486,5 +486,81 @@ describe('inactivity', () => {
     await as(host)
     expect((await call('collaboration_status', hostTab, null)).session.controlRequestedBy).toBeNull()
     expect((await errorOf(call('collaboration_answer_control_request', sessionId, hostTab, snap.controlGeneration, true))).message).toMatch(/no request/)
+  })
+})
+
+describe('viewers', () => {
+  async function conversationWithViewer() {
+    const { sessionId } = await liveSession()
+    const [conversation] = await call<Json[]>('collaboration_history')
+    await as(host)
+    await call('collaboration_add_viewer', conversation.id, third)
+    return { sessionId, conversationId: conversation.id as string }
+  }
+
+  it('either of the pair adds another active member; the bar lists them; re-adding is harmless', async () => {
+    const { conversationId } = await conversationWithViewer()
+    expect((await call('collaboration_status', hostTab, null)).session.viewers).toMatchObject([{ userId: third, name: 'third@example.test', addedByName: 'Hana Host' }])
+    await as(guest)
+    expect(await call('collaboration_add_viewer', conversationId, third)).toHaveLength(1)
+    expect((await errorOf(call('collaboration_add_viewer', conversationId, host))).message).toMatch(/other than the two of you/)
+    expect((await errorOf(call('collaboration_add_viewer', conversationId, outsider))).message).toMatch(/active members/)
+  })
+
+  it('a viewer, or anyone else, cannot add viewers', async () => {
+    const { conversationId } = await conversationWithViewer()
+    await as(third)
+    expect((await errorOf(call('collaboration_add_viewer', conversationId, guest))).code).toBe('42501')
+    await as(outsider)
+    expect((await errorOf(call('collaboration_add_viewer', conversationId, third))).code).toBe('42501')
+  })
+
+  it('a viewer sees the conversation in their history and its page, read-only, and never the live session', async () => {
+    const { sessionId, conversationId } = await conversationWithViewer()
+    await as(third)
+    expect(await call<Json[]>('collaboration_history')).toMatchObject([
+      { id: conversationId, myRole: 'viewer', otherUserId: null, otherName: 'Hana Host & Gil Guest' },
+    ])
+    const shell = await call('collaboration_conversation', conversationId)
+    expect(shell).toMatchObject({ myRole: 'viewer', otherUserId: null, pendingInvitation: null })
+    expect(shell.participants.map((p: Json) => p.name)).toEqual(['Hana Host', 'Gil Guest'])
+    // No live view: no session in their status, and no session commands.
+    expect((await call('collaboration_status', id(50), null)).session).toBeNull()
+    expect((await errorOf(call('collaboration_join', sessionId, id(50), false))).code).toBe('42501')
+    expect((await errorOf(call('collaboration_invite', project, host, conversationId))).code).toBe('42501')
+    expect((await errorOf(call('collaboration_end', sessionId))).code).toBe('42501')
+  })
+
+  it('removing a viewer (by the pair, or themselves) hides it from them; nothing is deleted', async () => {
+    const { conversationId } = await conversationWithViewer()
+    await as(third)
+    await call('collaboration_remove_viewer', conversationId, third)
+    expect(await call<Json[]>('collaboration_history')).toEqual([])
+    expect((await errorOf(call('collaboration_conversation', conversationId))).code).toBe('42501')
+    await as(host)
+    await call('collaboration_add_viewer', conversationId, third)
+    await as(guest)
+    expect(await call('collaboration_remove_viewer', conversationId, third)).toEqual([])
+    await db.exec('reset role')
+    const { rows } = await db.query<{ status: string; events: number }>(
+      `select (select status from collaboration_viewers) status, (select count(*)::int from collaboration_events where event like 'viewer_%') events`
+    )
+    await db.exec('set role authenticated')
+    expect(rows[0]).toEqual({ status: 'removed', events: 4 })
+  })
+
+  it('a viewer who loses Project access drops out without ending anything; losing the pair hides it from the viewer too', async () => {
+    const { conversationId } = await conversationWithViewer()
+    await asAdmin(`update project_members set status = 'inactive' where user_id = '${third}'`)
+    await as(third)
+    expect(await call<Json[]>('collaboration_history')).toEqual([])
+    await as(host)
+    const seen = (await call('collaboration_status', hostTab, null)).session
+    expect(seen).toMatchObject({ status: 'active', viewers: [] })
+    await asAdmin(`update project_members set status = 'active' where user_id = '${third}'`)
+    await asAdmin(`update project_members set status = 'inactive' where user_id = '${guest}'`)
+    await as(third)
+    expect(await call<Json[]>('collaboration_history')).toEqual([])
+    expect((await errorOf(call('collaboration_conversation', conversationId))).code).toBe('42501')
   })
 })

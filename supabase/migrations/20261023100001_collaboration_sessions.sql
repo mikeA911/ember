@@ -122,6 +122,8 @@ create table if not exists collaboration_events (
   conversation_id uuid references collaboration_conversations(id) on delete cascade,
   invitation_id uuid references collaboration_invitations(id) on delete cascade,
   actor_id uuid references profiles(id) on delete set null,
+  -- Who the event was about, when that isn't the actor (an added viewer).
+  subject_id uuid references profiles(id) on delete set null,
   event text not null,
   control_generation integer,
   created_at timestamptz not null default now()
@@ -129,13 +131,35 @@ create table if not exists collaboration_events (
 
 create index if not exists collaboration_events_session_idx on collaboration_events(session_id, created_at);
 
+-- Viewers of a shared conversation: other active members of the Project
+-- that either person in the pair has added. Phase 1: they see the
+-- conversation in their own history and its page, read-only, and are
+-- listed in the session bar -- they don't watch live sessions (no polling)
+-- and can't join, control or resume one. Phase 3: they read a recap of the
+-- shared Ember chat and can post to it. Removing a viewer only changes
+-- status.
+create table if not exists collaboration_viewers (
+  conversation_id uuid not null references collaboration_conversations(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  status text not null default 'active' check (status in ('active', 'removed')),
+  added_by uuid references profiles(id) on delete set null,
+  added_at timestamptz not null default now(),
+  removed_by uuid references profiles(id) on delete set null,
+  removed_at timestamptz,
+  primary key (conversation_id, user_id),
+  check ((status = 'removed') = (removed_at is not null))
+);
+
+create index if not exists collaboration_viewers_user_idx on collaboration_viewers(user_id, status);
+
 alter table collaboration_conversations enable row level security;
 alter table collaboration_invitations enable row level security;
 alter table collaboration_sessions enable row level security;
 alter table collaboration_participants enable row level security;
 alter table collaboration_events enable row level security;
+alter table collaboration_viewers enable row level security;
 revoke all on collaboration_conversations, collaboration_invitations, collaboration_sessions,
-  collaboration_participants, collaboration_events from anon, authenticated;
+  collaboration_participants, collaboration_events, collaboration_viewers from anon, authenticated;
 
 -- Internal helpers -----------------------------------------------------------------
 -- Errors meant for the person use SQLSTATE class EC (EC001 general, EC002
@@ -386,6 +410,31 @@ language sql security definer set search_path = public as $$
   values (s.id, s.conversation_id, p_actor, p_event, s.control_generation);
 $$;
 
+-- The conversation's current viewers who still have access to its Project.
+create or replace function collaboration_viewers_json(p_conversation uuid)
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('userId', v.user_id, 'name', collaboration_display_name(v.user_id),
+           'addedByName', collaboration_display_name(v.added_by), 'addedAt', v.added_at)
+           order by v.added_at), '[]'::jsonb)
+  from collaboration_viewers v join collaboration_conversations c on c.id = v.conversation_id
+  where v.conversation_id = p_conversation and v.status = 'active' and collaboration_has_access(c.project_id, v.user_id);
+$$;
+
+-- The caller's role in a conversation they can open: 'participant' (one of
+-- the pair), 'viewer', or null. Both of the pair, and a viewer, need
+-- current access to the Project.
+create or replace function collaboration_conversation_role(c collaboration_conversations, p_user uuid)
+returns text
+language sql stable security definer set search_path = public as $$
+  select case
+    when not collaboration_has_access(c.project_id, c.user_a) or not collaboration_has_access(c.project_id, c.user_b) then null
+    when p_user in (c.user_a, c.user_b) then 'participant'
+    when exists (select 1 from collaboration_viewers v where v.conversation_id = c.id and v.user_id = p_user and v.status = 'active')
+         and collaboration_has_access(c.project_id, p_user) then 'viewer'
+  end;
+$$;
+
 -- What a participant's browser sees. Never includes connection ids.
 create or replace function collaboration_snapshot(p_session uuid, p_actor uuid, p_connection uuid)
 returns jsonb
@@ -434,6 +483,7 @@ begin
     -- The caller is present from some other tab.
     'otherTabActive', me.connection_id is distinct from p_connection and coalesce(collaboration_is_present(me), false),
     'iLeft', me.left_at is not null,
+    'viewers', collaboration_viewers_json(s.conversation_id),
     -- Seconds until the session ends on its own, and which rule ends it.
     'endsInSeconds', case when s.status = 'active' then greatest(0, floor(extract(epoch from d.ends_at - now())))::int end,
     'endingReason', case when s.status = 'active' then d.reason end,
@@ -484,6 +534,8 @@ revoke all on function collaboration_in_live_session(uuid) from public, anon, au
 revoke all on function collaboration_lock(uuid, uuid, uuid) from public, anon, authenticated;
 revoke all on function collaboration_log(collaboration_sessions, uuid, text) from public, anon, authenticated;
 revoke all on function collaboration_snapshot(uuid, uuid, uuid) from public, anon, authenticated;
+revoke all on function collaboration_viewers_json(uuid) from public, anon, authenticated;
+revoke all on function collaboration_conversation_role(collaboration_conversations, uuid) from public, anon, authenticated;
 revoke all on function collaboration_invitation_dto(collaboration_invitations) from public, anon, authenticated;
 
 -- Reads ---------------------------------------------------------------------------
@@ -507,9 +559,10 @@ begin
 end;
 $$;
 
--- The caller's shared conversations, newest activity first. A conversation
--- disappears from both histories while either person lacks access to its
--- Project (fail closed); it returns if access does.
+-- The caller's shared conversations (as one of the pair, or a viewer),
+-- newest activity first. A conversation disappears from every history
+-- while either of the pair lacks access to its Project (fail closed), and
+-- from a viewer's while they do; it returns if access does.
 create or replace function collaboration_history()
 returns jsonb
 language plpgsql stable security definer set search_path = public as $$
@@ -521,8 +574,13 @@ begin
       'id', c.id,
       'projectId', c.project_id,
       'projectName', pr.name,
-      'otherUserId', case when c.user_a = v_actor then c.user_b else c.user_a end,
-      'otherName', collaboration_display_name(case when c.user_a = v_actor then c.user_b else c.user_a end),
+      'myRole', collaboration_conversation_role(c, v_actor),
+      -- For a viewer there's no "other person": the pair is shown instead.
+      'otherUserId', case when c.user_a = v_actor then c.user_b when c.user_b = v_actor then c.user_a end,
+      'otherName', case
+        when c.user_a = v_actor then collaboration_display_name(c.user_b)
+        when c.user_b = v_actor then collaboration_display_name(c.user_a)
+        else collaboration_display_name(c.user_a) || ' & ' || collaboration_display_name(c.user_b) end,
       'createdAt', c.created_at,
       'lastActivityAt', c.last_activity_at,
       -- Not "live" once past its deadline, even before anyone has settled it.
@@ -530,9 +588,7 @@ begin
                           and (select ends_at from collaboration_deadline(s.id)) > now())
     ) order by c.last_activity_at desc)
     from collaboration_conversations c join projects pr on pr.id = c.project_id
-    where v_actor in (c.user_a, c.user_b)
-      and collaboration_has_access(c.project_id, c.user_a)
-      and collaboration_has_access(c.project_id, c.user_b)
+    where collaboration_conversation_role(c, v_actor) is not null
   ), '[]'::jsonb);
 end;
 $$;
@@ -545,26 +601,35 @@ declare
   v_actor uuid := collaboration_actor();
   c collaboration_conversations;
   v_other uuid;
+  v_role text;
 begin
   select * into c from collaboration_conversations where id = p_conversation;
-  if not found or v_actor not in (c.user_a, c.user_b)
-     or not collaboration_has_access(c.project_id, c.user_a) or not collaboration_has_access(c.project_id, c.user_b) then
+  if not found then
     raise exception 'Collaboration access denied' using errcode = '42501';
   end if;
-  v_other := case when c.user_a = v_actor then c.user_b else c.user_a end;
+  v_role := collaboration_conversation_role(c, v_actor);
+  if v_role is null then
+    raise exception 'Collaboration access denied' using errcode = '42501';
+  end if;
+  v_other := case when c.user_a = v_actor then c.user_b when c.user_b = v_actor then c.user_a end;
   return jsonb_build_object(
     'id', c.id,
     'projectId', c.project_id,
     'projectName', (select name from projects where id = c.project_id),
+    'myRole', v_role,
+    'participants', jsonb_build_array(
+      jsonb_build_object('userId', c.user_a, 'name', collaboration_display_name(c.user_a)),
+      jsonb_build_object('userId', c.user_b, 'name', collaboration_display_name(c.user_b))),
+    'viewers', collaboration_viewers_json(c.id),
     'otherUserId', v_other,
-    'otherName', collaboration_display_name(v_other),
+    'otherName', case when v_other is null then null else collaboration_display_name(v_other) end,
     'createdAt', c.created_at,
     'lastActivityAt', c.last_activity_at,
-    'pendingInvitation', (
+    'pendingInvitation', case when v_role = 'participant' then (
       select collaboration_invitation_dto(i) from collaboration_invitations i
       where i.conversation_id = c.id and i.status = 'pending' and i.expires_at > now()
       order by i.created_at desc limit 1
-    ),
+    ) end,
     'sessions', coalesce((
       -- A session past its deadline reads as ended (with the reason it
       -- will be settled with), even before anyone has settled it.
@@ -787,6 +852,62 @@ begin
   insert into collaboration_events(invitation_id, session_id, conversation_id, actor_id, event, control_generation)
     values (i.id, s.id, c.id, v_actor, 'invitation_accepted', s.control_generation);
   return jsonb_build_object('invitation', collaboration_invitation_dto(i), 'sessionId', s.id);
+end;
+$$;
+
+-- Viewers ---------------------------------------------------------------------------
+
+-- Either of the pair adds another active member of the Project as a viewer
+-- (at most 20). Re-adding a removed viewer reactivates them.
+create or replace function collaboration_add_viewer(p_conversation uuid, p_user uuid)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_actor uuid := collaboration_writer();
+  c collaboration_conversations;
+begin
+  select * into c from collaboration_conversations where id = p_conversation for update;
+  if not found or collaboration_conversation_role(c, v_actor) is distinct from 'participant' then
+    raise exception 'Collaboration access denied' using errcode = '42501';
+  end if;
+  if p_user is null or p_user in (c.user_a, c.user_b) then
+    raise exception 'Choose someone other than the two of you' using errcode = 'EC001';
+  end if;
+  if not collaboration_has_access(c.project_id, p_user) then
+    raise exception 'Viewers must be active members of this Project' using errcode = 'EC001';
+  end if;
+  if not exists (select 1 from collaboration_viewers where conversation_id = c.id and user_id = p_user and status = 'active') then
+    if (select count(*) from collaboration_viewers where conversation_id = c.id and status = 'active') >= 20 then
+      raise exception 'A conversation can have at most 20 viewers' using errcode = 'EC001';
+    end if;
+    insert into collaboration_viewers(conversation_id, user_id, added_by)
+      values (c.id, p_user, v_actor)
+      on conflict (conversation_id, user_id) do update
+        set status = 'active', added_by = excluded.added_by, added_at = now(), removed_by = null, removed_at = null;
+    insert into collaboration_events(conversation_id, actor_id, subject_id, event) values (c.id, v_actor, p_user, 'viewer_added');
+  end if;
+  return collaboration_viewers_json(c.id);
+end;
+$$;
+
+-- Either of the pair removes a viewer, or a viewer removes themselves.
+create or replace function collaboration_remove_viewer(p_conversation uuid, p_user uuid)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_actor uuid := collaboration_writer();
+  c collaboration_conversations;
+begin
+  select * into c from collaboration_conversations where id = p_conversation for update;
+  if not found or (collaboration_conversation_role(c, v_actor) is distinct from 'participant' and v_actor is distinct from p_user) then
+    raise exception 'Collaboration access denied' using errcode = '42501';
+  end if;
+  update collaboration_viewers set status = 'removed', removed_by = v_actor, removed_at = now()
+    where conversation_id = c.id and user_id = p_user and status = 'active';
+  if found then
+    insert into collaboration_events(conversation_id, actor_id, subject_id, event) values (c.id, v_actor, p_user, 'viewer_removed');
+  end if;
+  return collaboration_viewers_json(c.id);
 end;
 $$;
 
@@ -1062,6 +1183,8 @@ revoke all on function collaboration_answer_control_request(uuid, uuid, integer,
 revoke all on function collaboration_reclaim_control(uuid, uuid) from public, anon;
 revoke all on function collaboration_leave(uuid) from public, anon;
 revoke all on function collaboration_end(uuid) from public, anon;
+revoke all on function collaboration_add_viewer(uuid, uuid) from public, anon;
+revoke all on function collaboration_remove_viewer(uuid, uuid) from public, anon;
 grant execute on function collaboration_candidates(uuid) to authenticated;
 grant execute on function collaboration_history() to authenticated;
 grant execute on function collaboration_conversation(uuid) to authenticated;
@@ -1078,6 +1201,8 @@ grant execute on function collaboration_answer_control_request(uuid, uuid, integ
 grant execute on function collaboration_reclaim_control(uuid, uuid) to authenticated;
 grant execute on function collaboration_leave(uuid) to authenticated;
 grant execute on function collaboration_end(uuid) to authenticated;
+grant execute on function collaboration_add_viewer(uuid, uuid) to authenticated;
+grant execute on function collaboration_remove_viewer(uuid, uuid) to authenticated;
 
 -- External MCP read-only guarantee (20261005100001_external_mcp_access.sql),
 -- guarded so this migration also applies before that one has run.
