@@ -225,6 +225,64 @@ try {
     }
     check(ok, `taking control from an away host racing the host's reclaim stays consistent (${ROUNDS} rounds; seen: ${[...outcomes].join('; ')})`)
   }
+
+  // 7. Phase 2: the controller saves a draft at the same moment as handing
+  //    over control. Either the save commits first (saved by the old
+  //    controller) or it is refused -- and then the draft is still open
+  //    for the new controller. Never saved on a stale generation.
+  {
+    let ok = true
+    const outcomes = new Set()
+    for (let i = 0; i < ROUNDS; i++) {
+      const [h, g] = await seedUsers(2, project.id)
+      await admin.query("update project_members set role = 'curator' where project_id = $1 and user_id in ($2, $3)", [project.id, h, g])
+      const [ch, ch2, cg] = await Promise.all([connectAs(h), connectAs(h), connectAs(g)])
+      const s = await startSession(project, h, g, ch, cg)
+      const gen = s.snap.controlGeneration
+      const text = `Objective ${randomUUID().slice(0, 8)}`
+      await rpc(ch, 'collaboration_set_draft', s.sessionId, s.hostTab, gen, 'project_objective', project.id, text, false)
+      await rpc(cg, 'collaboration_request_control', s.sessionId, s.guestTab, false)
+      // Alternate which goes first, a few milliseconds apart, so both
+      // orderings happen.
+      const pause = (ms) => new Promise((r) => setTimeout(r, ms))
+      const saveCall = () => rpc(ch, 'collaboration_save_field', s.sessionId, s.hostTab, gen, 'project_objective', project.id, randomUUID())
+      const grantCall = () => rpc(ch2, 'collaboration_answer_control_request', s.sessionId, s.hostTab, gen, true)
+      const [save] =
+        i % 2 === 0
+          ? await settle([saveCall(), pause(i % 4).then(grantCall)])
+          : await settle([pause(i % 4).then(saveCall), grantCall()])
+      const { rows: [proj] } = await admin.query('select objective from projects where id = $1', [project.id])
+      const { rows: [draft] } = await admin.query("select status from collaboration_drafts where session_id = $1 and field = 'project_objective'", [s.sessionId])
+      if (save.status === 'fulfilled') ok &&= proj.objective === text && draft.status === 'saved'
+      else ok &&= proj.objective !== text && draft.status === 'open'
+      outcomes.add(save.status === 'fulfilled' ? 'saved before handover' : 'refused, draft kept')
+      await Promise.all([ch.end(), ch2.end(), cg.end()])
+    }
+    check(ok, `a save racing a handover saves once or keeps the draft (${ROUNDS} rounds; seen: ${[...outcomes].join('; ')})`)
+  }
+
+  // 8. The same save request sent twice at once: one save, both answered.
+  {
+    let ok = true
+    for (let i = 0; i < ROUNDS; i++) {
+      const [h, g] = await seedUsers(2, project.id)
+      await admin.query("update project_members set role = 'curator' where project_id = $1 and user_id = $2", [project.id, h])
+      const [ch, ch2, cg] = await Promise.all([connectAs(h), connectAs(h), connectAs(g)])
+      const s = await startSession(project, h, g, ch, cg)
+      const gen = s.snap.controlGeneration
+      await rpc(ch, 'collaboration_set_draft', s.sessionId, s.hostTab, gen, 'project_starter_prompt', project.id, `Prompt ${i}`, false)
+      const request = randomUUID()
+      const results = await settle([
+        rpc(ch, 'collaboration_save_field', s.sessionId, s.hostTab, gen, 'project_starter_prompt', project.id, request),
+        rpc(ch2, 'collaboration_save_field', s.sessionId, s.hostTab, gen, 'project_starter_prompt', project.id, request),
+      ])
+      const { rows: [n] } = await admin.query('select count(*)::int n from collaboration_saves where request_id = $1', [request])
+      const { rows: [ev] } = await admin.query("select count(*)::int n from collaboration_events where session_id = $1 and event = 'saved:project_starter_prompt'", [s.sessionId])
+      ok &&= results.every((r) => r.status === 'fulfilled') && n.n === 1 && ev.n === 1
+      await Promise.all([ch.end(), ch2.end(), cg.end()])
+    }
+    check(ok, `a duplicated save request saves exactly once and answers both (${ROUNDS} rounds)`)
+  }
 } finally {
   await admin.end()
 }

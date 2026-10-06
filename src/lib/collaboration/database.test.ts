@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 // stand-in for the tables it references. Never reads .env.local or
 // contacts Supabase. PGlite has one connection, so lock races are covered
 // separately by scripts/collaboration-concurrency-check.mjs.
-const MIGRATION = 'supabase/migrations/20261023100001_collaboration_sessions.sql'
+const MIGRATIONS = ['supabase/migrations/20261023100001_collaboration_sessions.sql', 'supabase/migrations/20261024100001_collaboration_shared_editing.sql']
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const host = id(1), guest = id(2), outsider = id(3), third = id(4)
 const project = id(10), otherProject = id(11)
@@ -56,30 +56,40 @@ beforeAll(async () => {
     create schema auth;
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.actor', true), '')::uuid $$;
     create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('test.jwt', true), ''), '{}')::jsonb $$;
-    create table profiles(id uuid primary key, email text not null, full_name text, is_active boolean not null default true);
-    create table projects(id uuid primary key, name text not null);
+    create table profiles(id uuid primary key, email text not null, full_name text, is_active boolean not null default true, role text not null default 'member');
+    create table projects(id uuid primary key, name text not null, goal text, objective text, starter_prompt text);
     create table project_members(project_id uuid references projects(id), user_id uuid references profiles(id), role text not null default 'viewer', status text not null default 'active');
-    create table project_workstreams(id uuid primary key, project_id uuid references projects(id), name text not null);
+    create table project_workstreams(id uuid primary key, project_id uuid references projects(id), name text not null, summary text, deliverables jsonb not null default '[]');
+    -- The app's permission helpers, as defined in 20260808190009 / 20260810120001.
+    create function is_admin(uid uuid) returns boolean language sql stable as $$ select exists (select 1 from profiles where id = uid and role = 'admin' and is_active) $$;
+    create function can_manage_project(pid uuid, uid uuid) returns boolean language sql stable as $$
+      select is_admin(uid) or exists (select 1 from project_members where project_id = pid and user_id = uid and status = 'active' and role = 'owner') $$;
+    create function can_curate_project(pid uuid, uid uuid) returns boolean language sql stable as $$
+      select is_admin(uid) or exists (select 1 from project_members where project_id = pid and user_id = uid and status = 'active' and role in ('owner', 'curator')) $$;
     create table conversations(id uuid primary key, user_id uuid references profiles(id));
     grant usage on schema auth to authenticated;
   `)
-  const migration = readFileSync(MIGRATION, 'utf8')
-  await db.exec(migration)
-  // Safe to re-run.
-  await db.exec(migration)
+  for (const file of MIGRATIONS) {
+    const migration = readFileSync(file, 'utf8')
+    await db.exec(migration)
+    // Safe to re-run.
+    await db.exec(migration)
+  }
 }, 60000)
 
 beforeEach(async () => {
   await db.exec(`
     reset role;
-    truncate collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
+    truncate collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
       collaboration_conversations, conversations, project_members, project_workstreams, projects, profiles cascade;
     insert into profiles values ('${host}', 'host@example.test', 'Hana Host', true), ('${guest}', 'guest@example.test', 'Gil Guest', true),
       ('${outsider}', 'out@example.test', 'Olu Outsider', true), ('${third}', 'third@example.test', null, true);
     insert into projects values ('${project}', 'Test Project'), ('${otherProject}', 'Other Project');
     insert into project_members values ('${project}', '${host}', 'owner', 'active'), ('${project}', '${guest}', 'viewer', 'active'),
       ('${project}', '${third}', 'curator', 'active'), ('${otherProject}', '${outsider}', 'owner', 'active');
-    insert into project_workstreams values ('${workstream}', '${project}', 'Intake'), ('${foreignWorkstream}', '${otherProject}', 'Elsewhere');
+    insert into project_workstreams(id, project_id, name, deliverables) values
+      ('${workstream}', '${project}', 'Intake', '[{"label":"Call flow","completed":false},{"label":"Staffing","completed":false}]'),
+      ('${foreignWorkstream}', '${otherProject}', 'Elsewhere', '[]');
     insert into conversations values ('${id(40)}', '${host}'), ('${id(41)}', '${guest}');
     set role authenticated;
   `)
@@ -658,5 +668,166 @@ describe('watching', () => {
     await call('collaboration_respond_invitation', own.id, true, id(71))
     await as(third)
     expect((await errorOf(call('collaboration_watch', sessionId, viewerTab))).message).toMatch(/in a live session yourself/)
+  })
+})
+
+describe('shared editing (Phase 2)', () => {
+  const field = (snap: Json, name: string) => snap.fields.find((f: Json) => f.field === name)
+  const asRole = (user: string, role: string) => asAdmin(`update project_members set role = '${role}' where user_id = '${user}' and project_id = '${project}'`)
+  const saved = async (column: string) => {
+    await db.exec('reset role')
+    const { rows } = await db.query<{ v: string | null }>(`select ${column} as v from projects where id = '${project}'`)
+    await db.exec('set role authenticated')
+    return rows[0].v
+  }
+
+  it('the controller drafts, the other person sees it as it is typed, and Save writes it', async () => {
+    const { sessionId, snap } = await liveSession()
+    expect(field(snap, 'project_goal')).toMatchObject({ saved: null, draft: null, canEdit: true })
+    await call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, '  Ship the new CAD  ', false)
+    await as(guest)
+    const seen = (await call('collaboration_status', guestTab, null)).session
+    expect(field(seen, 'project_goal')).toMatchObject({ saved: null, canEdit: false, draft: { value: '  Ship the new CAD  ', editorName: 'Hana Host', baseChanged: false } })
+    expect(seen.openDrafts).toMatchObject([{ field: 'project_goal', editorName: 'Hana Host' }])
+    await as(host)
+    const after = await call('collaboration_save_field', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, id(80))
+    expect(field(after, 'project_goal')).toMatchObject({ saved: 'Ship the new CAD', draft: null })
+    expect(after.openDrafts).toEqual([])
+    expect(await saved('goal')).toBe('Ship the new CAD')
+  })
+
+  it('a retried save returns the first result and never saves twice', async () => {
+    const { sessionId, snap } = await liveSession()
+    await call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_objective', project, 'First', false)
+    await call('collaboration_save_field', sessionId, hostTab, snap.controlGeneration, 'project_objective', project, id(81))
+    await asAdmin(`update projects set objective = 'Changed later' where id = '${project}'`)
+    // The same request again: no error, and the later text isn't overwritten.
+    await call('collaboration_save_field', sessionId, hostTab, snap.controlGeneration, 'project_objective', project, id(81))
+    expect(await saved('objective')).toBe('Changed later')
+  })
+
+  it('only the controller edits, on the page being shared', async () => {
+    const { sessionId, snap } = await liveSession()
+    await as(guest)
+    expect((await errorOf(call('collaboration_set_draft', sessionId, guestTab, snap.controlGeneration, 'project_goal', project, 'x', false))).message).toMatch(/Ask for control/)
+    await as(host)
+    expect((await errorOf(call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'workstream_summary', workstream, 'x', false))).message).toMatch(/isn't on the page being shared/)
+    const moved = await call('collaboration_navigate', sessionId, hostTab, snap.controlGeneration, workstream)
+    expect(moved.fields.map((f: Json) => f.field)).toEqual(['workstream_summary', 'workstream_deliverables'])
+    expect((await errorOf(call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, 'x', false))).message).toMatch(/isn't on the page being shared/)
+    expect((await errorOf(call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'workstream_summary', foreignWorkstream, 'x', false))).message).toMatch(/isn't on the page being shared/)
+    await call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'workstream_summary', workstream, 'Findings', false)
+    expect(field(await call('collaboration_status', hostTab, null).then((r: Json) => r.session), 'workstream_summary').draft.value).toBe('Findings')
+  })
+
+  it('control never lends anyone else’s rights: each field keeps its own permission rule', async () => {
+    const { sessionId, snap } = await liveSession()
+    await as(guest)
+    await call('collaboration_request_control', sessionId, guestTab, false)
+    await as(host)
+    const granted = await call('collaboration_answer_control_request', sessionId, hostTab, snap.controlGeneration, true)
+    await as(guest)
+    // Gil is a Project viewer: in control, but may edit nothing.
+    const mine = (await call('collaboration_status', guestTab, null)).session
+    expect(mine.fields.every((f: Json) => f.canEdit === false)).toBe(true)
+    expect((await errorOf(call('collaboration_set_draft', sessionId, guestTab, granted.controlGeneration, 'project_objective', project, 'x', false))).message).toMatch(/can't edit this field/)
+    // As a curator: the description yes, the goal (owner only) no.
+    await asRole(guest, 'curator')
+    await as(guest)
+    await call('collaboration_set_draft', sessionId, guestTab, granted.controlGeneration, 'project_objective', project, 'Curated', false)
+    expect((await errorOf(call('collaboration_set_draft', sessionId, guestTab, granted.controlGeneration, 'project_goal', project, 'x', false))).message).toMatch(/can't edit this field/)
+  })
+
+  it('a handover keeps the draft: the new controller saves it; the old one can’t', async () => {
+    const { sessionId, snap } = await liveSession()
+    await asRole(guest, 'curator')
+    await as(host)
+    await call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_starter_prompt', project, 'Ask about the cutover', false)
+    await as(guest)
+    await call('collaboration_request_control', sessionId, guestTab, false)
+    await as(host)
+    const granted = await call('collaboration_answer_control_request', sessionId, hostTab, snap.controlGeneration, true)
+    // Hana's save, sent before the handover landed, is refused; the draft stays.
+    expect((await errorOf(call('collaboration_save_field', sessionId, hostTab, snap.controlGeneration, 'project_starter_prompt', project, id(82)))).message).toMatch(/Ask for control/)
+    await as(guest)
+    const inherited = (await call('collaboration_status', guestTab, null)).session
+    expect(field(inherited, 'project_starter_prompt').draft).toMatchObject({ value: 'Ask about the cutover', editorName: 'Hana Host' })
+    // A save on the old generation is refused even from the new controller's tab.
+    expect((await errorOf(call('collaboration_save_field', sessionId, guestTab, snap.controlGeneration, 'project_starter_prompt', project, id(83)))).code).toBe('EC003')
+    await call('collaboration_save_field', sessionId, guestTab, granted.controlGeneration, 'project_starter_prompt', project, id(84))
+    expect(await saved('starter_prompt')).toBe('Ask about the cutover')
+  })
+
+  it('a change made outside the session is a visible conflict, never silently overwritten', async () => {
+    const { sessionId, snap } = await liveSession()
+    await asAdmin(`update projects set goal = 'Original' where id = '${project}'`)
+    await as(host)
+    await call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, 'Mine', false)
+    await asAdmin(`update projects set goal = 'Theirs' where id = '${project}'`)
+    await as(host)
+    const seen = (await call('collaboration_status', hostTab, null)).session
+    expect(field(seen, 'project_goal')).toMatchObject({ saved: 'Theirs', draft: { value: 'Mine', baseChanged: true } })
+    expect((await errorOf(call('collaboration_save_field', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, id(85)))).code).toBe('EC004')
+    expect(await saved('goal')).toBe('Theirs')
+    // Choosing to keep the draft moves its base to the current text; then it saves.
+    await call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, 'Mine', true)
+    await call('collaboration_save_field', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, id(86))
+    expect(await saved('goal')).toBe('Mine')
+  })
+
+  it('Cancel discards the draft and leaves the saved text alone', async () => {
+    const { sessionId, snap } = await liveSession()
+    await call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, 'Never mind', false)
+    const after = await call('collaboration_discard_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project)
+    expect(field(after, 'project_goal')).toMatchObject({ saved: null, draft: null })
+    expect((await errorOf(call('collaboration_save_field', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, id(87)))).message).toMatch(/no unsaved draft/)
+  })
+
+  it('deliverables are set to a value, guarded against a changed list, and a retry can’t flip them back', async () => {
+    const { sessionId, snap } = await liveSession()
+    await call('collaboration_navigate', sessionId, hostTab, snap.controlGeneration, workstream)
+    const done = await call('collaboration_set_deliverable', sessionId, hostTab, snap.controlGeneration, workstream, 0, 'Call flow', true, id(88))
+    expect(field(done, 'workstream_deliverables').deliverables[0]).toEqual({ label: 'Call flow', completed: true })
+    // The same request again, and a new request with the same value: still done.
+    await call('collaboration_set_deliverable', sessionId, hostTab, snap.controlGeneration, workstream, 0, 'Call flow', true, id(88))
+    const again = await call('collaboration_set_deliverable', sessionId, hostTab, snap.controlGeneration, workstream, 0, 'Call flow', true, id(89))
+    expect(field(again, 'workstream_deliverables').deliverables[0].completed).toBe(true)
+    expect((await errorOf(call('collaboration_set_deliverable', sessionId, hostTab, snap.controlGeneration, workstream, 1, 'Renamed', true, id(90)))).code).toBe('EC004')
+    expect((await errorOf(call('collaboration_set_deliverable', sessionId, hostTab, snap.controlGeneration, workstream, 5, 'Call flow', true, id(91)))).code).toBe('EC004')
+    await as(guest)
+    expect(field((await call('collaboration_status', guestTab, null)).session, 'workstream_deliverables')).toMatchObject({ canEdit: false, deliverables: [{ completed: true }, { completed: false }] })
+  })
+
+  it('ending the session keeps unsaved drafts as abandoned and never saves them', async () => {
+    const { sessionId, snap } = await liveSession()
+    await call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, 'Half-written', false)
+    await call('collaboration_navigate', sessionId, hostTab, snap.controlGeneration, workstream)
+    // The draft on the Project page still counts while the view is elsewhere.
+    expect((await call('collaboration_status', hostTab, null)).session.openDrafts).toMatchObject([{ field: 'project_goal' }])
+    await call('collaboration_end', sessionId)
+    expect(await saved('goal')).toBeNull()
+    await db.exec('reset role')
+    const { rows } = await db.query<{ status: string }>('select status from collaboration_drafts')
+    await db.exec('set role authenticated')
+    expect(rows).toEqual([{ status: 'abandoned' }])
+  })
+
+  it('watchers see the fields and drafts, never with edit rights', async () => {
+    const { sessionId, snap } = await liveSession()
+    const [conversation] = await call<Json[]>('collaboration_history')
+    await call('collaboration_add_viewer', conversation.id, third)
+    await call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, 'Draft', false)
+    await as(third)
+    const watching = await call('collaboration_watch', sessionId, id(60))
+    expect(field(watching, 'project_goal')).toMatchObject({ canEdit: false, draft: { value: 'Draft' } })
+    // third is a Project curator, but a watcher has no edit functions at all.
+    expect((await errorOf(call('collaboration_set_draft', sessionId, id(60), snap.controlGeneration, 'project_objective', project, 'x', false))).code).toBe('42501')
+  })
+
+  it('refuses over-long text and external MCP clients', async () => {
+    const { sessionId, snap } = await liveSession()
+    expect((await errorOf(call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, 'x'.repeat(20001), false))).message).toMatch(/too long/)
+    await as(host, { client_id: 'chatbot' })
+    expect((await errorOf(call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, 'x', false))).code).toBe('42501')
   })
 })
