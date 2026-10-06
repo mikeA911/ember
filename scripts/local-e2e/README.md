@@ -47,5 +47,8 @@ PLAYWRIGHT_DIR=/dir/whose/node_modules/has/playwright-core CHROMIUM_PATH=/path/t
   SHOTS=/tmp/shots node scripts/local-e2e/collaboration-two-browsers.mjs
 ```
 
-Sign-in is `hana@e2e.local` / `gil@e2e.local` with any password. The
+For Phase 2 (shared editing), run `collaboration-shared-editing.mjs` the
+same way.
+
+Sign-in is `hana@e2e.local` / `gil@e2e.local` / `vera@e2e.local` with any password. The
 script resets only the collaboration tables before it runs.

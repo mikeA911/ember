@@ -23,6 +23,18 @@ The `codex/shared-workspace-phase0` prototype (one `collaboration_command` funct
 
 Decided defaults (each a one-line function in the migration): connected = polled within 90 seconds (a closing tab reports at once); away = no input for 10 minutes; the session ends after 30 minutes with nobody active, after either person has been inactive for 60 minutes, or after 12 hours, with a 5-minute warning; while the controller is away or not connected the other person may take control (recorded; the host can still reclaim); invitation lifetime 1 hour; one live session per person. Invitations show within about 5 seconds for someone using Ember, within 30 seconds otherwise.
 
+### Phase 2 as built (6 October 2026)
+
+Shared editing on the Project and Workstream pages, for the fields in the inventory below (R2, R3):
+
+- **Fields.** Project page: goal, description (objective), starter prompt. Workstream page: summary, deliverables checklist. Only the fields on the page the session is showing can be edited, only by the person in control, and only if their own account may edit that field (the ordinary forms' rules; control never lends rights).
+- **Drafts.** Text fields are shared drafts: the controller's typing is sent after a 400 ms pause and the others (including watchers) see it within a poll, marked unsaved; the bar lists every unsaved draft in the session. Save and Cancel are explicit. Typing not yet sent goes out before the controller gives control or leaves, so the next controller continues from exactly that text; a host reclaiming control mid-sentence can lose the last half-second of typing.
+- **Conflicts.** A draft remembers the saved text it started from; a save is refused if the field changed outside the session since, and the person sees the saved text and chooses **Keep my text** (then saves over it) or **Discard my changes**. Detected from the field itself -- no version column was added to existing tables. Ordinary edits made outside a session are not themselves version-checked (unchanged behaviour); a later shared save detects them.
+- **Checklist.** Each tick saves at once as "set item *n* to done/not done", guarded by the item's label (a reordered or renamed list is refused), so retries never flip an item back.
+- **Retries and races.** Saves carry a request id; the same request twice saves once. A save and a handover can't interleave: one commits first and the other is refused, and a refused save leaves the draft open for the next controller.
+- **Ending.** Ending the session (by the host or on its own) keeps open drafts marked abandoned and never saves them; End warns which drafts are unsaved. Leaving with drafts leaves them for the other person.
+- **Data.** `20261024100001_collaboration_shared_editing.sql` -- additive, re-runnable, never deletes, alters no existing table. Not yet applied to the live backend.
+
 ### Requirements and design decisions
 
 The user requested the following outcomes and constraints:
@@ -167,7 +179,7 @@ These are planning ranges in engineering weeks for one experienced developer wit
 |---|---|---|---|
 | 0: prove the difficult parts | Two-browser prototype; private Realtime connectivity; atomic handover/save approach; common chat-access design; field inventory | 1–2 weeks | Demonstrate join, navigation, reconnect and rejection of stale/unauthorized writes; resolve chat isolation design |
 | 1: session foundation | Ember invitation entry, shared-conversation shell in both histories, session bar, presence, host/end controls, shared navigation, control requests, lease and revocation | 2–3 weeks | Remote pair can join, follow, exchange control and recover without ambiguity; shared AI turns remain disabled until Phase 3 |
-| 2: Project and Workstream editing | Shared drafts and saves for allowlisted fields; conflict detection; unsaved-state and unsupported-route behavior | 2–3 weeks | Both users can edit in turn with no lost acknowledged drafts or silent overwrites |
+| 2: Project and Workstream editing (built 6 Oct, see above) | Shared drafts and saves for allowlisted fields; conflict detection; unsaved-state and unsupported-route behavior | 2–3 weeks | Both users can edit in turn with no lost acknowledged drafts or silent overwrites |
 | 3: shared Ember chat | Shared conversation/history, author attribution, common evidence scope, single-turn coordination; viewers read a recap and can post to the same chat, restricted tool set | 3–4 weeks | Both see one consistent conversation; isolation and duplicate-execution tests pass |
 | 4: remote-location pilot and release | Feature flag, operational monitoring, browser/network validation, usability fixes and deployment docs | 1–2 weeks | Pilot users complete real remote work; recovery and access-revocation cases pass |
 | 5: voice and optional transcription | Session audio, mute/reconnect, consent, attributed transcript and reviewable summary | Estimate after media/provider spike; excluded below | Two-location audio and relay tests pass; consent, access, retention and failure recovery verified |
