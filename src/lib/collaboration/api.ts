@@ -3,6 +3,8 @@ import type { Database } from '@/types/database'
 import { toCollaborationError } from './errors'
 import type {
   CollaborationCandidate,
+  CollaborationViewer,
+  WatchSnapshot,
   CollaborationInvitation,
   CollaborationStatus,
   SessionSnapshot,
@@ -74,19 +76,38 @@ export const collaborationApi = {
     }),
   reclaimControl: (c: Client, sessionId: string, connection: string) =>
     call<SessionSnapshot>(c, 'collaboration_reclaim_control', { p_session: sessionId, p_connection: connection }),
+  addViewer: (c: Client, conversationId: string, userId: string) =>
+    call<CollaborationViewer[]>(c, 'collaboration_add_viewer', { p_conversation: conversationId, p_user: userId }),
+  removeViewer: (c: Client, conversationId: string, userId: string) =>
+    call<CollaborationViewer[]>(c, 'collaboration_remove_viewer', { p_conversation: conversationId, p_user: userId }),
+  watch: (c: Client, sessionId: string, connection: string) =>
+    call<WatchSnapshot>(c, 'collaboration_watch', { p_session: sessionId, p_connection: connection }),
+  watchStatus: (c: Client, sessionId: string, connection: string) =>
+    call<WatchSnapshot>(c, 'collaboration_watch_status', { p_session: sessionId, p_connection: connection }),
+  stopWatching: (c: Client, sessionId: string, connection: string) =>
+    call<null>(c, 'collaboration_stop_watching', { p_session: sessionId, p_connection: connection }),
   takeControl: (c: Client, sessionId: string, connection: string) =>
     call<SessionSnapshot>(c, 'collaboration_take_control', { p_session: sessionId, p_connection: connection }),
   leave: (c: Client, sessionId: string) => call<SessionSnapshot>(c, 'collaboration_leave', { p_session: sessionId }),
   end: (c: Client, sessionId: string) => call<SessionSnapshot>(c, 'collaboration_end', { p_session: sessionId }),
 }
 
-// Tells the database this tab is closing, so the other person sees "not
-// connected" straight away. Sent from a pagehide handler, where an
-// ordinary request may be cut off: a keepalive fetch survives the unload.
-// Best effort -- if it never arrives, presence lapses after 90 seconds.
-export function sendDisconnectBeacon(input: { supabaseUrl: string; anonKey: string; accessToken: string; sessionId: string; connection: string }) {
+// Tells the database this tab is closing -- a participant's tab
+// (collaboration_disconnect: the other person sees "not connected" straight
+// away) or a watcher's (collaboration_stop_watching). Sent from a pagehide
+// handler, where an ordinary request may be cut off: a keepalive fetch
+// survives the unload. Best effort -- if it never arrives, presence lapses
+// after 90 seconds.
+export function sendDisconnectBeacon(input: {
+  supabaseUrl: string
+  anonKey: string
+  accessToken: string
+  sessionId: string
+  connection: string
+  fn?: 'collaboration_disconnect' | 'collaboration_stop_watching'
+}) {
   try {
-    void fetch(`${input.supabaseUrl}/rest/v1/rpc/collaboration_disconnect`, {
+    void fetch(`${input.supabaseUrl}/rest/v1/rpc/${input.fn ?? 'collaboration_disconnect'}`, {
       method: 'POST',
       keepalive: true,
       headers: { 'content-type': 'application/json', apikey: input.anonKey, authorization: `Bearer ${input.accessToken}` },

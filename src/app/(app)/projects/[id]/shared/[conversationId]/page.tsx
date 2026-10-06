@@ -5,11 +5,13 @@ import { collaborationApi } from '@/lib/collaboration/api'
 import { collaborationEnabled } from '@/lib/collaboration/flag'
 import type { SharedConversationShell } from '@/lib/collaboration/types'
 import { SharedConversationActions } from '@/components/collaboration/SharedConversationActions'
+import { ConversationViewers } from '@/components/collaboration/ConversationViewers'
 
-// A shared conversation, as both participants see it in their history
-// (shared workspace sessions, Phase 1 shell). Read through
-// collaboration_conversation, which admits only the two participants while
-// both are still active members of the Project. Shared Ember messages
+// A shared conversation, as the pair and its viewers see it in their
+// history (shared workspace sessions, Phase 1 shell). Read through
+// collaboration_conversation, which admits only the pair (while both are
+// active members of the Project) and the viewers they added (while they
+// are too). Viewers can watch a live session but never control one. Shared Ember messages
 // arrive in Phase 3; nothing from either person's private chats is here.
 
 const END_REASONS: Record<string, string> = {
@@ -37,12 +39,15 @@ export default async function SharedConversationPage({ params }: { params: Promi
   }
   if (shell.projectId !== id) notFound()
   const live = shell.sessions.find((s) => s.status === 'active') ?? null
+  const isViewer = shell.myRole === 'viewer'
+  const pairNames = shell.participants.map((p) => p.name).join(' & ')
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div>
         <p className="text-xs uppercase tracking-wide text-zinc-500">Shared conversation</p>
-        <h1 className="text-xl font-semibold">With {shell.otherName}</h1>
+        <h1 className="text-xl font-semibold">{isViewer ? pairNames : `With ${shell.otherName}`}</h1>
+        {isViewer && <p className="text-sm text-zinc-500">You’re a viewer of this conversation.</p>}
         <p className="mt-1 text-sm text-zinc-500">
           <Link href={`/projects/${shell.projectId}`} className="underline">
             {shell.projectName}
@@ -52,17 +57,30 @@ export default async function SharedConversationPage({ params }: { params: Promi
       </div>
 
       <p className="text-sm text-zinc-600">
-        Only you and {shell.otherName} can see this conversation, and only while you’re both members of this Project. Shared Ember chat for
-        live sessions is coming in a later release; nothing from either of your private Ember chats is copied here.
+        {isViewer
+          ? `Only ${pairNames} and the viewers they added can see this conversation, while they're members of this Project. You can watch their live sessions; you can't control them.`
+          : `Only you, ${shell.otherName} and any viewers you add can see this conversation, while they're members of this Project.`}{' '}
+        Shared Ember chat for live sessions is coming in a later release; nothing from anyone’s private Ember chats is copied here.
       </p>
 
-      <SharedConversationActions
+      {!isViewer && shell.otherUserId && shell.otherName && (
+        <SharedConversationActions
+          projectId={shell.projectId}
+          conversationId={shell.id}
+          otherUserId={shell.otherUserId}
+          otherName={shell.otherName}
+          liveSessionId={live?.id ?? null}
+          pendingInvitationId={shell.pendingInvitation?.id ?? null}
+        />
+      )}
+
+      <ConversationViewers
         projectId={shell.projectId}
         conversationId={shell.id}
-        otherUserId={shell.otherUserId}
-        otherName={shell.otherName}
+        isViewer={isViewer}
+        participantIds={shell.participants.map((p) => p.userId)}
+        initialViewers={shell.viewers}
         liveSessionId={live?.id ?? null}
-        pendingInvitationId={shell.pendingInvitation?.id ?? null}
       />
 
       <section className="flex flex-col gap-2">

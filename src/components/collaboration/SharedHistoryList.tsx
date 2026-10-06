@@ -45,7 +45,7 @@ export function SharedHistoryList() {
           className="block w-full truncate rounded px-2 py-1 text-left text-xs hover:bg-zinc-100"
         >
           {c.liveSessionId && <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-red-500 align-middle" aria-label="Live now" />}
-          With {c.otherName} · {c.projectName}
+          {c.myRole === 'viewer' ? `Viewing: ${c.otherName}` : `With ${c.otherName}`} · {c.projectName}
         </Link>
       ))}
     </div>

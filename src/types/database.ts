@@ -3686,6 +3686,11 @@ interface DatabaseDefinition {
       collaboration_status: { Args: { p_connection?: string | null; p_session?: string | null; p_active?: boolean }; Returns: unknown }
       collaboration_take_control: { Args: { p_session: string; p_connection: string }; Returns: unknown }
       collaboration_disconnect: { Args: { p_session: string; p_connection: string }; Returns: unknown }
+      collaboration_add_viewer: { Args: { p_conversation: string; p_user: string }; Returns: unknown }
+      collaboration_remove_viewer: { Args: { p_conversation: string; p_user: string }; Returns: unknown }
+      collaboration_watch: { Args: { p_session: string; p_connection: string }; Returns: unknown }
+      collaboration_watch_status: { Args: { p_session: string; p_connection: string }; Returns: unknown }
+      collaboration_stop_watching: { Args: { p_session: string; p_connection: string }; Returns: unknown }
       collaboration_candidates: { Args: { p_project: string }; Returns: unknown }
       collaboration_history: { Args: Record<string, never>; Returns: unknown }
       collaboration_conversation: { Args: { p_conversation: string }; Returns: unknown }

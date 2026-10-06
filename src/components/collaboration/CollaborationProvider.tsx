@@ -9,7 +9,7 @@ import { CollaborationError } from '@/lib/collaboration/errors'
 import { decideFollow, followTarget } from '@/lib/collaboration/follow'
 import { sharedPath } from '@/lib/collaboration/locations'
 import { nextPollDelay, POLL } from '@/lib/collaboration/transport'
-import type { CollaborationInvitation, CollaborationStatus, SessionSnapshot } from '@/lib/collaboration/types'
+import type { CollaborationInvitation, CollaborationStatus, SessionSnapshot, WatchableSession, WatchSnapshot } from '@/lib/collaboration/types'
 
 // Shared workspace sessions, Phase 1 (docs/dev-request-shared-workspace-
 // sessions.md). Mounted by the signed-in layout only when the feature flag
@@ -18,6 +18,8 @@ import type { CollaborationInvitation, CollaborationStatus, SessionSnapshot } fr
 // Project and Workstream pages, and reports the controller's own moves.
 // It also reports whether the person is using the tab (any input), which
 // drives "away", the inactivity end and the faster invitation poll.
+// A viewer who chooses Watch gets the same following in that one tab,
+// polling the session only while watching.
 // The database decides everything; this only renders and asks.
 
 // Input this long after the previous input counts as coming back: poll at
@@ -32,6 +34,11 @@ interface CollaborationContextValue {
   incoming: CollaborationInvitation[]
   outgoing: CollaborationInvitation[]
   endedSession: SessionSnapshot | null
+  // A viewer's watching: the session this tab watches, live sessions they
+  // could watch, and the last watched one if it ended.
+  watch: WatchSnapshot | null
+  watchable: WatchableSession[]
+  endedWatch: WatchSnapshot | null
   following: boolean
   busy: boolean
   error: string | null
@@ -47,6 +54,9 @@ interface CollaborationContextValue {
   rejoin: () => Promise<void>
   leave: () => Promise<void>
   end: () => Promise<void>
+  watchSession: (sessionId: string) => Promise<void>
+  stopWatching: () => Promise<void>
+  dismissEndedWatch: () => void
   followAgain: () => void
   dismissEnded: () => void
   dismissError: () => void
@@ -84,8 +94,10 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
   const pathname = usePathname()
 
   const [connection, setConnection] = useState<string | null>(null)
-  const [status, setStatus] = useState<CollaborationStatus>({ session: null, incoming: [], outgoing: [] })
+  const [status, setStatus] = useState<CollaborationStatus>({ session: null, incoming: [], outgoing: [], watchable: [] })
   const [endedSession, setEndedSession] = useState<SessionSnapshot | null>(null)
+  const [watch, setWatch] = useState<WatchSnapshot | null>(null)
+  const [endedWatch, setEndedWatch] = useState<WatchSnapshot | null>(null)
   const [following, setFollowing] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,6 +110,10 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
   const joiningRef = useRef<string | null>(null)
   const reportingRef = useRef<string | null>(null)
   const sessionRef = useRef<SessionSnapshot | null>(null)
+  const watchRef = useRef<WatchSnapshot | null>(null)
+  // While watching, the general status poll (invitations, watchable
+  // sessions) runs at its usual idle pace, not every watch poll.
+  const lastStatusAtRef = useRef(0)
   // Last input in this tab, and the last input already reported.
   const lastInputRef = useRef(0)
   const lastReportedRef = useRef(0)
@@ -110,6 +126,9 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
   useEffect(() => {
     sessionRef.current = status.session
   }, [status.session])
+  useEffect(() => {
+    watchRef.current = watch
+  }, [watch])
 
   useEffect(() => {
     getTabConnectionId().then(setConnection)
@@ -133,6 +152,20 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     })
   }, [])
 
+  // The watched session's latest state; ends watching when the session
+  // ended or another of this person's tabs took over.
+  const applyWatch = useCallback((next: WatchSnapshot | null) => {
+    if (!next || next.status === 'ended' || !next.thisTabWatching) {
+      if (next?.status === 'ended') setEndedWatch(next)
+      watchRef.current = null
+      setWatch(null)
+      return
+    }
+    if (watchRef.current?.id !== next.id) setFollowing(!readAway(next.id))
+    watchRef.current = next
+    setWatch((prev) => (prev && prev.id === next.id && next.stateRevision < prev.stateRevision ? prev : next))
+  }, [])
+
   const poll = useCallback(async () => {
     if (timerRef.current) clearTimeout(timerRef.current)
     // From this response, not sessionRef: the ref only catches up after
@@ -143,27 +176,48 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     const startedAt = Date.now()
     lastPollStartRef.current = startedAt
     const active = lastInputRef.current > lastReportedRef.current
-    try {
-      const result = await collaborationApi.status(supabase, connection, lastSessionRef.current, active)
-      if (active) lastReportedRef.current = startedAt
-      failuresRef.current = 0
-      setStatus((prev) => ({ ...prev, incoming: result.incoming, outgoing: result.outgoing }))
-      applySession(result.session)
-      inSession = result.session?.status === 'active'
-      waiting = result.outgoing.length > 0
-      if (inSession) accessTokenRef.current = (await supabase.auth.getSession()).data.session?.access_token ?? null
-    } catch {
-      failuresRef.current += 1
+    const recentlyActive = Date.now() - lastInputRef.current < POLL.recentlyActiveMs
+    let watching = false
+    const watched = watchRef.current
+    if (watched && connection) {
+      try {
+        const next = await collaborationApi.watchStatus(supabase, watched.id, connection)
+        applyWatch(next)
+        watching = next.status === 'active' && next.thisTabWatching
+        failuresRef.current = 0
+      } catch (err) {
+        if (err instanceof CollaborationError && err.kind === 'denied') applyWatch(null)
+        else {
+          failuresRef.current += 1
+          watching = true
+        }
+      }
     }
+    const statusDue = !watching || startedAt - lastStatusAtRef.current >= (recentlyActive ? POLL.idleActiveVisibleMs : POLL.idleVisibleMs)
+    if (statusDue) {
+      try {
+        const result = await collaborationApi.status(supabase, connection, lastSessionRef.current, active)
+        lastStatusAtRef.current = startedAt
+        if (active) lastReportedRef.current = startedAt
+        if (!watching) failuresRef.current = 0
+        setStatus((prev) => ({ ...prev, incoming: result.incoming, outgoing: result.outgoing, watchable: result.watchable ?? [] }))
+        applySession(result.session)
+        inSession = result.session?.status === 'active'
+        waiting = result.outgoing.length > 0
+      } catch {
+        if (!watching) failuresRef.current += 1
+      }
+    }
+    if (inSession || watching) accessTokenRef.current = (await supabase.auth.getSession()).data.session?.access_token ?? null
     const delay = nextPollDelay({
-      inSession,
+      inSession: inSession || watching,
       waiting,
-      recentlyActive: Date.now() - lastInputRef.current < POLL.recentlyActiveMs,
+      recentlyActive,
       hidden: typeof document !== 'undefined' && document.visibilityState === 'hidden',
       consecutiveFailures: failuresRef.current,
     })
     timerRef.current = setTimeout(() => pollRef.current(), delay)
-  }, [supabase, connection, applySession])
+  }, [supabase, connection, applySession, applyWatch])
   useEffect(() => {
     pollRef.current = poll
   }, [poll])
@@ -181,14 +235,21 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     // other person sees "not connected" without waiting out the window.
     // A reload sends it too and then rejoins as the same tab.
     const onHide = () => {
+      if (!accessTokenRef.current) return
       const s = sessionRef.current
-      if (!s?.thisTabJoined || !accessTokenRef.current) return
+      const w = watchRef.current
+      const target = s?.thisTabJoined
+        ? { sessionId: s.id, fn: 'collaboration_disconnect' as const }
+        : w?.thisTabWatching
+          ? { sessionId: w.id, fn: 'collaboration_stop_watching' as const }
+          : null
+      if (!target) return
       sendDisconnectBeacon({
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
         anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         accessToken: accessTokenRef.current,
-        sessionId: s.id,
         connection,
+        ...target,
       })
     }
     document.addEventListener('visibilitychange', onVisible)
@@ -311,7 +372,10 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
   // A following observer's tab goes wherever the shared location is. Keyed
   // on the target, not the current path, so the person's own navigation
   // never gets undone here (it stops them following instead, below).
-  const target = followTarget(session, userId, following)
+  // A watcher's tab follows the same way (watchers never have control).
+  const target =
+    followTarget(session, userId, following) ??
+    (watch && following && !session?.thisTabJoined ? sharedPath(watch.projectId, watch.location.workstreamId) : null)
   useEffect(() => {
     if (target && window.location.pathname.replace(/\/+$/, '').toLowerCase() !== target.toLowerCase()) router.push(target)
   }, [target, router])
@@ -319,9 +383,16 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
   // An observer who navigates somewhere else on their own stops following
   // until they choose to follow again (or come back to the shared page).
   useEffect(() => {
-    const current = sessionRef.current
-    if (!current || !current.thisTabJoined || current.controllerId === userId) return
-    const target = sharedPath(current.projectId, current.location.workstreamId)
+    const s = sessionRef.current
+    const w = watchRef.current
+    const current =
+      s?.thisTabJoined && s.controllerId !== userId
+        ? { id: s.id, projectId: s.projectId, workstreamId: s.location.workstreamId }
+        : w && !s?.thisTabJoined
+          ? { id: w.id, projectId: w.projectId, workstreamId: w.location.workstreamId }
+          : null
+    if (!current) return
+    const target = sharedPath(current.projectId, current.workstreamId)
     const away = pathname.replace(/\/+$/, '').toLowerCase() !== target.toLowerCase()
     writeAway(current.id, away)
     setFollowing(!away)
@@ -347,6 +418,9 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     incoming: status.incoming,
     outgoing: status.outgoing,
     endedSession,
+    watch,
+    watchable: status.watchable,
+    endedWatch,
     following,
     busy,
     error,
@@ -359,6 +433,8 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
         if (result.sessionId) {
           setEndedSession(null)
           lastSessionRef.current = result.sessionId
+          // Joining a session of your own ends watching (the database too).
+          applyWatch(null)
         }
         return result
       }).then(() => undefined),
@@ -375,8 +451,25 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     rejoin: () => withSession((s, tab) => collaborationApi.join(supabase, s.id, tab, false)),
     leave: () => withSession((s) => collaborationApi.leave(supabase, s.id)),
     end: () => withSession((s) => collaborationApi.end(supabase, s.id)),
+    watchSession: (sessionId) =>
+      run(async () => {
+        if (!connection) return null
+        const next = await collaborationApi.watch(supabase, sessionId, connection)
+        setEndedWatch(null)
+        applyWatch(next)
+        return next
+      }).then(() => undefined),
+    stopWatching: () =>
+      run(async () => {
+        const w = watchRef.current
+        if (w && connection) await collaborationApi.stopWatching(supabase, w.id, connection)
+        applyWatch(null)
+        return null
+      }).then(() => undefined),
+    dismissEndedWatch: () => setEndedWatch(null),
     followAgain: () => {
-      if (sessionRef.current) writeAway(sessionRef.current.id, false)
+      const id = sessionRef.current?.thisTabJoined ? sessionRef.current.id : watchRef.current?.id
+      if (id) writeAway(id, false)
       setFollowing(true)
     },
     dismissEnded: () => setEndedSession(null),

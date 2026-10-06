@@ -14,6 +14,13 @@ export interface CollaborationPerson {
   inactiveSeconds: number
 }
 
+export interface CollaborationViewer {
+  userId: string
+  name: string
+  addedByName: string | null
+  addedAt: string
+}
+
 export interface SessionSnapshot {
   id: string
   conversationId: string
@@ -38,6 +45,35 @@ export interface SessionSnapshot {
   endingReason: 'inactive' | 'participant_inactive' | 'expired' | null
   // The controller is away or not connected, so the caller may take control.
   canTakeControl: boolean
+  // Viewers added to the conversation, and those watching right now.
+  viewers: CollaborationViewer[]
+  watching: { userId: string; name: string }[]
+}
+
+// A live session on a conversation the caller views, which they may watch.
+export interface WatchableSession {
+  sessionId: string
+  conversationId: string
+  projectId: string
+  projectName: string
+  hostName: string
+  guestName: string
+}
+
+// What a watcher's tab sees.
+export interface WatchSnapshot {
+  id: string
+  conversationId: string
+  projectId: string
+  projectName: string
+  status: 'active' | 'ended'
+  endReason: SessionSnapshot['endReason']
+  host: Omit<CollaborationPerson, 'inactiveSeconds'>
+  guest: Omit<CollaborationPerson, 'inactiveSeconds'>
+  controllerId: string
+  stateRevision: number
+  location: { workstreamId: string | null; workstreamName: string | null }
+  thisTabWatching: boolean
 }
 
 export interface CollaborationInvitation {
@@ -58,6 +94,7 @@ export interface CollaborationStatus {
   session: SessionSnapshot | null
   incoming: CollaborationInvitation[]
   outgoing: CollaborationInvitation[]
+  watchable: WatchableSession[]
 }
 
 export interface CollaborationCandidate {
@@ -70,7 +107,10 @@ export interface SharedConversationSummary {
   id: string
   projectId: string
   projectName: string
-  otherUserId: string
+  myRole: 'participant' | 'viewer'
+  // The other person, for one of the pair; null for a viewer.
+  otherUserId: string | null
+  // The other person's name, or "A & B" for a viewer.
   otherName: string
   createdAt: string
   lastActivityAt: string
@@ -81,8 +121,11 @@ export interface SharedConversationShell {
   id: string
   projectId: string
   projectName: string
-  otherUserId: string
-  otherName: string
+  myRole: 'participant' | 'viewer'
+  participants: { userId: string; name: string }[]
+  viewers: CollaborationViewer[]
+  otherUserId: string | null
+  otherName: string | null
   createdAt: string
   lastActivityAt: string
   pendingInvitation: CollaborationInvitation | null

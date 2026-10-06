@@ -34,6 +34,8 @@ function session(over: Partial<SessionSnapshot> = {}): SessionSnapshot {
     endsInSeconds: 1800,
     endingReason: 'inactive',
     canTakeControl: false,
+    viewers: [],
+    watching: [],
     ...over,
   }
 }

@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { isAtSharedLocation } from '@/lib/collaboration/follow'
 import { minutesLabel } from '@/lib/collaboration/format'
 import { sharedPath } from '@/lib/collaboration/locations'
-import type { CollaborationPerson, SessionSnapshot } from '@/lib/collaboration/types'
+import type { CollaborationPerson, SessionSnapshot, WatchSnapshot } from '@/lib/collaboration/types'
 import { END_WARNING_SECONDS, useCollaboration } from './CollaborationProvider'
 
 // The persistent session bar under the header: who is in the live session,
@@ -27,9 +27,17 @@ const button = 'rounded border px-2 py-0.5 text-xs font-medium disabled:opacity-
 const primary = `${button} border-amber-700 bg-amber-700 text-white hover:bg-amber-800`
 const secondary = `${button} border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50`
 
-function Presence({ person, inControl, you }: { person: CollaborationPerson; inControl: boolean; you: boolean }) {
+function Presence({ person, inControl, you }: { person: Omit<CollaborationPerson, 'inactiveSeconds'> & { inactiveSeconds?: number }; inControl: boolean; you: boolean }) {
   // Left > not connected > away > connected.
-  const state = person.left ? 'left' : !person.present ? 'not connected' : person.away ? `away ${minutesLabel(person.inactiveSeconds)}` : 'connected'
+  const state = person.left
+    ? 'left'
+    : !person.present
+      ? 'not connected'
+      : person.away
+        ? person.inactiveSeconds != null
+          ? `away ${minutesLabel(person.inactiveSeconds)}`
+          : 'away'
+        : 'connected'
   const dot = person.left ? 'bg-zinc-300' : !person.present ? 'bg-amber-400' : person.away ? 'bg-zinc-400' : 'bg-emerald-500'
   return (
     <span className="inline-flex items-center gap-1">
@@ -50,7 +58,7 @@ export function SessionBar() {
   const pathname = usePathname()
   const [confirmEnd, setConfirmEnd] = useState(false)
   if (!collab) return null
-  const { session, incoming, outgoing, endedSession, busy, error } = collab
+  const { session, incoming, outgoing, endedSession, watch, watchable, endedWatch, busy, error } = collab
 
   const notices: React.ReactNode[] = []
 
@@ -85,6 +93,38 @@ export function SessionBar() {
         </div>
       )
     }
+    // Viewers: live sessions they could watch. Nothing polls the session
+    // until they choose Watch.
+    if (!watch) {
+      for (const live of watchable) {
+        notices.push(
+          <div key={`watch-${live.sessionId}`} className="flex flex-wrap items-center gap-2" role="status">
+            <span>
+              <strong>{live.hostName}</strong> and <strong>{live.guestName}</strong> are live on <strong>{live.projectName}</strong>.
+            </span>
+            <button type="button" className={primary} disabled={busy} onClick={() => collab.watchSession(live.sessionId)}>
+              Watch
+            </button>
+          </div>
+        )
+      }
+    }
+    if (endedWatch && !watch) {
+      notices.push(
+        <div key="ended-watch" className="flex flex-wrap items-center gap-2" role="status">
+          <span>
+            The live session you were watching has ended
+            {endedWatch.endReason && endedWatch.endReason !== 'access_revoked' ? ` (${END_REASONS[endedWatch.endReason].replace(/^The live session /, '').replace(/\.$/, '')})` : ''}.
+          </span>
+          <Link href={`/projects/${endedWatch.projectId}/shared/${endedWatch.conversationId}`} className="text-xs underline">
+            Open shared conversation
+          </Link>
+          <button type="button" className={secondary} onClick={collab.dismissEndedWatch}>
+            Dismiss
+          </button>
+        </div>
+      )
+    }
     if (endedSession) {
       notices.push(
         <div key="ended" className="flex flex-wrap items-center gap-2" role="status">
@@ -103,6 +143,7 @@ export function SessionBar() {
   }
 
   if (session) notices.unshift(<LiveSession key="live" session={session} pathname={pathname} confirmEnd={confirmEnd} setConfirmEnd={setConfirmEnd} />)
+  else if (watch) notices.unshift(<Watching key="watching" watch={watch} pathname={pathname} />)
 
   if (notices.length === 0 && !error) return null
   return (
@@ -153,6 +194,7 @@ function LiveSession({
       <Presence person={session.host} inControl={session.controllerId === session.host.id} you={isHost} />
       <Presence person={session.guest} inControl={session.controllerId === session.guest.id} you={!isHost} />
       <span className="text-xs text-zinc-500">Showing: {sharedLabel}</span>
+      <Viewers session={session} />
     </div>
   )
 
@@ -319,5 +361,79 @@ function EndingWarning({ session }: { session: SessionSnapshot }) {
         </button>
       )}
     </span>
+  )
+}
+
+// Who else can see this conversation: viewers the pair added, and which of
+// them are watching right now. Managed on the conversation page.
+function Viewers({ session }: { session: SessionSnapshot }) {
+  const watchingIds = new Set(session.watching.map((w) => w.userId))
+  const href = `/projects/${session.projectId}/shared/${session.conversationId}#viewers`
+  if (session.viewers.length === 0) {
+    return (
+      <Link href={href} className="text-xs text-zinc-500 underline">
+        Add viewers
+      </Link>
+    )
+  }
+  return (
+    <span className="text-xs text-zinc-500">
+      Viewers:{' '}
+      {session.viewers.map((v, i) => (
+        <span key={v.userId}>
+          {i > 0 ? ', ' : ''}
+          {v.name}
+          {watchingIds.has(v.userId) ? ' (watching)' : ''}
+        </span>
+      ))}{' '}
+      ·{' '}
+      <Link href={href} className="underline">
+        Manage
+      </Link>
+    </span>
+  )
+}
+
+// A viewer watching a live session in this tab: who is in it, who has
+// control, what is shown -- no controls, just Follow again and Stop.
+function Watching({ watch, pathname }: { watch: WatchSnapshot; pathname: string }) {
+  const collab = useCollaboration()!
+  const sharedHref = sharedPath(watch.projectId, watch.location.workstreamId)
+  const sharedLabel = watch.location.workstreamName ? `${watch.location.workstreamName} (workstream)` : `${watch.projectName} (Project page)`
+  const here = pathname.replace(/\/+$/, '').toLowerCase() === sharedHref.toLowerCase()
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="inline-flex items-center gap-1 font-medium text-amber-900">
+          <span aria-hidden className="inline-block h-2 w-2 animate-pulse rounded-full bg-red-500" />
+          Watching live · {watch.projectName}
+        </span>
+        <Presence person={watch.host} inControl={watch.controllerId === watch.host.id} you={false} />
+        <Presence person={watch.guest} inControl={watch.controllerId === watch.guest.id} you={false} />
+        <span className="text-xs text-zinc-500">Showing: {sharedLabel}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {here ? (
+          <span className="text-zinc-600">You’re watching: your view follows the pages they open. You can’t take control.</span>
+        ) : collab.following ? (
+          <span className="text-zinc-600">Catching up…</span>
+        ) : (
+          <>
+            <span>You’ve stepped away from the shared view.</span>
+            <button type="button" className={secondary} onClick={collab.followAgain}>
+              Follow again
+            </button>
+          </>
+        )}
+        <span className="ml-auto flex items-center gap-2">
+          <Link href={`/projects/${watch.projectId}/shared/${watch.conversationId}`} className="underline text-zinc-600">
+            Shared conversation
+          </Link>
+          <button type="button" className={secondary} disabled={collab.busy} onClick={collab.stopWatching}>
+            Stop watching
+          </button>
+        </span>
+      </div>
+    </div>
   )
 }
