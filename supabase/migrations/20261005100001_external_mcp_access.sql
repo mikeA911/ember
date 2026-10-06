@@ -27,10 +27,13 @@ create table if not exists mcp_access_users (
 
 alter table mcp_access_users enable row level security;
 
+drop policy if exists "mcp_access_users_select_self_or_admin" on mcp_access_users;
 create policy "mcp_access_users_select_self_or_admin" on mcp_access_users
   for select to authenticated using (user_id = auth.uid() or is_admin(auth.uid()));
+drop policy if exists "mcp_access_users_admin_insert" on mcp_access_users;
 create policy "mcp_access_users_admin_insert" on mcp_access_users
   for insert to authenticated with check (is_admin(auth.uid()));
+drop policy if exists "mcp_access_users_admin_delete" on mcp_access_users;
 create policy "mcp_access_users_admin_delete" on mcp_access_users
   for delete to authenticated using (is_admin(auth.uid()));
 
@@ -52,12 +55,16 @@ alter table mcp_approved_clients enable row level security;
 
 -- Readable by any signed-in user: the consent page shows the label, and a
 -- redirect URI is not a secret.
+drop policy if exists "mcp_approved_clients_select_authenticated" on mcp_approved_clients;
 create policy "mcp_approved_clients_select_authenticated" on mcp_approved_clients
   for select to authenticated using (true);
+drop policy if exists "mcp_approved_clients_admin_insert" on mcp_approved_clients;
 create policy "mcp_approved_clients_admin_insert" on mcp_approved_clients
   for insert to authenticated with check (is_admin(auth.uid()));
+drop policy if exists "mcp_approved_clients_admin_update" on mcp_approved_clients;
 create policy "mcp_approved_clients_admin_update" on mcp_approved_clients
   for update to authenticated using (is_admin(auth.uid())) with check (is_admin(auth.uid()));
+drop policy if exists "mcp_approved_clients_admin_delete" on mcp_approved_clients;
 create policy "mcp_approved_clients_admin_delete" on mcp_approved_clients
   for delete to authenticated using (is_admin(auth.uid()));
 
@@ -92,6 +99,7 @@ create index if not exists mcp_access_log_created_idx on mcp_access_log (created
 
 alter table mcp_access_log enable row level security;
 
+drop policy if exists "mcp_access_log_select_self_or_admin" on mcp_access_log;
 create policy "mcp_access_log_select_self_or_admin" on mcp_access_log
   for select to authenticated using (user_id = auth.uid() or is_admin(auth.uid()));
 
@@ -187,10 +195,13 @@ revoke all on function apply_oauth_read_only_policies() from public, anon, authe
 
 select apply_oauth_read_only_policies();
 
+drop policy if exists "oauth_clients_no_insert" on storage.objects;
 create policy "oauth_clients_no_insert" on storage.objects
   as restrictive for insert to public with check ((auth.jwt() ->> 'client_id') is null);
+drop policy if exists "oauth_clients_no_update" on storage.objects;
 create policy "oauth_clients_no_update" on storage.objects
   as restrictive for update to public using ((auth.jwt() ->> 'client_id') is null) with check ((auth.jwt() ->> 'client_id') is null);
+drop policy if exists "oauth_clients_no_delete" on storage.objects;
 create policy "oauth_clients_no_delete" on storage.objects
   as restrictive for delete to public using ((auth.jwt() ->> 'client_id') is null);
 

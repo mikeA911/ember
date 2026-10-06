@@ -11,16 +11,17 @@
 -- later rate change never rewrites what was already agreed. The agency or
 -- admin can correct a fee afterwards; that keeps the recorded rate.
 
+alter table workstream_promotions drop constraint if exists workstream_promotions_proposed_fee_complete;
 alter table workstream_promotions
-  add column proposed_fee_amount numeric(12, 2) check (proposed_fee_amount >= 0),
-  add column proposed_fee_currency text check (proposed_fee_currency in ('PHP', 'USD')),
-  add column proposed_fee_period text check (proposed_fee_period in ('monthly', 'annual')),
+  add column if not exists proposed_fee_amount numeric(12, 2) check (proposed_fee_amount >= 0),
+  add column if not exists proposed_fee_currency text check (proposed_fee_currency in ('PHP', 'USD')),
+  add column if not exists proposed_fee_period text check (proposed_fee_period in ('monthly', 'annual')),
   add constraint workstream_promotions_proposed_fee_complete check (
     (proposed_fee_amount is null and proposed_fee_currency is null and proposed_fee_period is null)
     or (proposed_fee_amount is not null and proposed_fee_currency is not null and proposed_fee_period is not null)
   );
 
-create table client_project_fees (
+create table if not exists client_project_fees (
   project_id uuid primary key references projects(id) on delete cascade,
   amount numeric(12, 2) not null check (amount >= 0),
   currency text not null check (currency in ('PHP', 'USD')),
@@ -31,6 +32,7 @@ create table client_project_fees (
   updated_at timestamptz not null default now()
 );
 
+drop trigger if exists client_project_fees_set_updated_at on client_project_fees;
 create trigger client_project_fees_set_updated_at before update on client_project_fees
   for each row execute function set_updated_at();
 
@@ -50,6 +52,7 @@ alter table client_project_fees enable row level security;
 
 -- The builder sees the fee on their own client Project; their agency and
 -- the admin see and set it.
+drop policy if exists "client_project_fees_select_owner_agency_or_admin" on client_project_fees;
 create policy "client_project_fees_select_owner_agency_or_admin" on client_project_fees
   for select using (
     is_admin(auth.uid())
@@ -59,6 +62,7 @@ create policy "client_project_fees_select_owner_agency_or_admin" on client_proje
     )
   );
 
+drop policy if exists "client_project_fees_write_agency_or_admin" on client_project_fees;
 create policy "client_project_fees_write_agency_or_admin" on client_project_fees
   for all
   using (

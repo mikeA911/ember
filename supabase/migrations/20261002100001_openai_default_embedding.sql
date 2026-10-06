@@ -23,6 +23,14 @@ begin
   if v_model is null then
     return;
   end if;
+  -- Re-run safe: only replace the original seed default (or no default),
+  -- never an embedding model an admin has chosen since.
+  if exists (
+    select 1 from ai_models m
+    where m.model_type = 'embedding' and m.is_default and m.id <> v_model and m.model_id <> 'gemini-embedding-001'
+  ) then
+    return;
+  end if;
   if exists (select 1 from kb_vectors where embedding_model is distinct from 'text-embedding-3-small')
      or exists (select 1 from wiki_vectors where embedding_model is distinct from 'text-embedding-3-small') then
     return;

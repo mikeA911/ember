@@ -50,7 +50,8 @@ alter table client_project_fees
 
 -- The builder of record sees their own fee and share; their agency (by the
 -- builder, whoever owns the Project now) and the admin see and set it.
-drop policy "client_project_fees_select_owner_agency_or_admin" on client_project_fees;
+drop policy if exists "client_project_fees_select_owner_agency_or_admin" on client_project_fees;
+drop policy if exists "client_project_fees_select_builder_agency_or_admin" on client_project_fees;
 create policy "client_project_fees_select_builder_agency_or_admin" on client_project_fees
   for select using (
     is_admin(auth.uid())
@@ -66,7 +67,7 @@ create policy "client_project_fees_select_builder_agency_or_admin" on client_pro
     )
   );
 
-drop policy "client_project_fees_write_agency_or_admin" on client_project_fees;
+drop policy if exists "client_project_fees_write_agency_or_admin" on client_project_fees;
 create policy "client_project_fees_write_agency_or_admin" on client_project_fees
   for all
   using (
@@ -86,7 +87,8 @@ create policy "client_project_fees_write_agency_or_admin" on client_project_fees
 
 -- After the hand-over the builder is no longer the owner, but still shares
 -- progress updates on the Project they maintain.
-drop policy "builder_progress_updates_insert_owner" on builder_progress_updates;
+drop policy if exists "builder_progress_updates_insert_owner" on builder_progress_updates;
+drop policy if exists "builder_progress_updates_insert_owner_or_builder" on builder_progress_updates;
 create policy "builder_progress_updates_insert_owner_or_builder" on builder_progress_updates
   for insert to authenticated
   with check (
@@ -97,7 +99,8 @@ create policy "builder_progress_updates_insert_owner_or_builder" on builder_prog
     )
   );
 
-drop policy "builder_progress_updates_update_owner" on builder_progress_updates;
+drop policy if exists "builder_progress_updates_update_owner" on builder_progress_updates;
+drop policy if exists "builder_progress_updates_update_owner_or_builder" on builder_progress_updates;
 create policy "builder_progress_updates_update_owner_or_builder" on builder_progress_updates
   for update
   using (
