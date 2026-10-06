@@ -1,5 +1,10 @@
 import type {
   ArtifactType,
+  BaselineStatus,
+  ConformanceApprovalType,
+  ConformanceDecisionType,
+  ConformanceStatus,
+  WaiverKind,
   RequirementAppliesFrom,
   RequirementCategory,
   RequirementPriority,
@@ -133,6 +138,67 @@ export const ARTIFACT_TYPE_LABELS: Record<ArtifactType, string> = {
   implementation_handoff: 'Implementation Handoff',
   research_dossier: 'Research Dossier',
   other: 'Other',
+}
+
+// Stage 3: baselines, waivers and conformance decisions.
+export const DECISION_TYPE_LABELS: Record<ConformanceDecisionType, string> = {
+  presales_claim_validation: 'Presales claim validation',
+  factory_acceptance: 'Factory acceptance',
+  site_acceptance: 'Site acceptance',
+  customer_acceptance: 'Customer acceptance',
+  go_live: 'Go-live',
+  post_change_reverification: 'Post-change re-verification',
+}
+
+export const CONFORMANCE_APPROVAL_LABELS: Record<ConformanceApprovalType, string> = {
+  technical: 'Technical',
+  security_compliance: 'Security & compliance',
+  customer_acceptance: 'Customer acceptance',
+  production_change: 'Production change',
+}
+
+// The approval type a decision usually needs; the curator can change it.
+export const DEFAULT_APPROVAL_FOR_DECISION: Record<ConformanceDecisionType, ConformanceApprovalType> = {
+  presales_claim_validation: 'technical',
+  factory_acceptance: 'technical',
+  site_acceptance: 'technical',
+  customer_acceptance: 'customer_acceptance',
+  go_live: 'production_change',
+  post_change_reverification: 'production_change',
+}
+
+export const BASELINE_STATUS_LABELS: Record<BaselineStatus, string> = { draft: 'Draft', active: 'Active', superseded: 'Superseded' }
+
+export const BASELINE_STATUS_STYLES: Record<BaselineStatus, string> = {
+  draft: 'bg-amber-100 text-amber-800',
+  active: 'bg-green-100 text-green-800',
+  superseded: 'bg-zinc-100 text-zinc-500',
+}
+
+export const CONFORMANCE_STATUS_LABELS: Record<ConformanceStatus, string> = {
+  pending: 'Pending',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  withdrawn: 'Withdrawn',
+}
+
+export const CONFORMANCE_STATUS_STYLES: Record<ConformanceStatus, string> = {
+  pending: 'bg-blue-50 text-blue-800',
+  approved: 'bg-green-100 text-green-800',
+  rejected: 'bg-red-100 text-red-800',
+  withdrawn: 'bg-zinc-100 text-zinc-500',
+}
+
+export const WAIVER_KIND_LABELS: Record<WaiverKind, string> = { waiver: 'Waiver', deviation: 'Deviation' }
+
+export const BASELINE_REQUIREMENT_STATUS_LABELS: Record<RequirementVerificationStatus | 'waived', string> = {
+  ...VERIFICATION_STATUS_LABELS,
+  waived: 'Waived',
+}
+
+export const BASELINE_REQUIREMENT_STATUS_STYLES: Record<RequirementVerificationStatus | 'waived', string> = {
+  ...VERIFICATION_STATUS_STYLES,
+  waived: 'bg-purple-100 text-purple-800',
 }
 
 export const options = <K extends string>(labels: Record<K, string>) => Object.entries(labels) as [K, string][]

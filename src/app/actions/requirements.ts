@@ -13,6 +13,7 @@ import {
   removeVerificationMethod,
   withdrawRequirement,
   deleteDraftRequirement,
+  supersedeRequirement,
   RequirementValidationError,
   type RequirementFieldsInput,
   type RequirementSourceInput,
@@ -104,4 +105,16 @@ export async function deleteDraftRequirementAction(requirementId: string) {
 // record and its evidence together.
 export async function recordVerificationAction(requirementId: string, input: VerificationRecordInput) {
   return run((ctx) => recordVerification(ctx, requirementId, input), 'Could not record the result', requirementId)
+}
+
+// Stage 3: replace a baselined requirement with a linked new draft.
+export async function supersedeRequirementAction(requirementId: string, input: { code?: string }): Promise<{ error?: string; requirementId?: string }> {
+  const ctx = await requireUser()
+  try {
+    const result = await supersedeRequirement(ctx, requirementId, input)
+    revalidate(result.projectId, requirementId)
+    return { requirementId: result.requirementId }
+  } catch (err) {
+    return { error: toError(err, 'Could not supersede the requirement') }
+  }
 }
