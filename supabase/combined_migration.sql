@@ -8773,9 +8773,9 @@ create policy "presentation_actions_update_owner_or_curator" on presentation_act
 -- never set this. review_deadline (existing column) can be set together
 -- with this at schedule time; it just sits on the row until the cron job
 -- flips status, same as it already does for a manual open.
-alter table presentations add column scheduled_open_at timestamptz;
+alter table presentations add column if not exists scheduled_open_at timestamptz;
 
-create index presentations_scheduled_open_at_idx on presentations(scheduled_open_at) where scheduled_open_at is not null;
+create index if not exists presentations_scheduled_open_at_idx on presentations(scheduled_open_at) where scheduled_open_at is not null;
 
 
 -- ==== supabase/migrations/20261002100001_openai_default_embedding.sql ====
@@ -8804,6 +8804,14 @@ begin
   if v_model is null then
     return;
   end if;
+  -- Re-run safe: only replace the original seed default (or no default),
+  -- never an embedding model an admin has chosen since.
+  if exists (
+    select 1 from ai_models m
+    where m.model_type = 'embedding' and m.is_default and m.id <> v_model and m.model_id <> 'gemini-embedding-001'
+  ) then
+    return;
+  end if;
   if exists (select 1 from kb_vectors where embedding_model is distinct from 'text-embedding-3-small')
      or exists (select 1 from wiki_vectors where embedding_model is distinct from 'text-embedding-3-small') then
     return;
@@ -8829,7 +8837,7 @@ end $$;
 -- builders; the service layer (src/lib/workbench/agency-dashboard.ts)
 -- checks that the agency is a curator and the builder a consultant, so the
 -- table itself only enforces the shape.
-create table agency_builders (
+create table if not exists agency_builders (
   builder_id uuid primary key references profiles(id) on delete cascade,
   agency_id uuid not null references profiles(id) on delete cascade,
   assigned_by uuid references profiles(id) on delete set null,
@@ -8838,8 +8846,9 @@ create table agency_builders (
   check (builder_id <> agency_id)
 );
 
-create index agency_builders_agency_id_idx on agency_builders(agency_id);
+create index if not exists agency_builders_agency_id_idx on agency_builders(agency_id);
 
+drop trigger if exists agency_builders_set_updated_at on agency_builders;
 create trigger agency_builders_set_updated_at before update on agency_builders
   for each row execute function set_updated_at();
 
@@ -8847,6 +8856,7 @@ alter table agency_builders enable row level security;
 
 -- An agency sees its own roster, a builder sees which agency they're under,
 -- the admin sees everything.
+drop policy if exists "agency_builders_select_own_or_admin" on agency_builders;
 create policy "agency_builders_select_own_or_admin" on agency_builders
   for select using (
     agency_id = auth.uid()
@@ -8854,6 +8864,7 @@ create policy "agency_builders_select_own_or_admin" on agency_builders
     or is_admin(auth.uid())
   );
 
+drop policy if exists "agency_builders_admin_write" on agency_builders;
 create policy "agency_builders_admin_write" on agency_builders
   for all using (is_admin(auth.uid())) with check (is_admin(auth.uid()));
 
@@ -8868,7 +8879,7 @@ create policy "agency_builders_admin_write" on agency_builders
 -- client as viewers (src/lib/workbench/workstream-promotions.ts). Each
 -- approved promotion (decided_at, created_project_id) is the billable
 -- "client project created" event the agency dashboard counts.
-alter table workstream_promotions add column client_emails text[] not null default '{}';
+alter table workstream_promotions add column if not exists client_emails text[] not null default '{}';
 
 -- An agency is not a member of its builders' private workspaces, so
 -- can_curate_project alone never lets it decide their promotions.
@@ -8882,7 +8893,8 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
-drop policy "workstream_promotions_select_own_or_curator" on workstream_promotions;
+drop policy if exists "workstream_promotions_select_own_or_curator" on workstream_promotions;
+drop policy if exists "workstream_promotions_select_own_curator_or_agency" on workstream_promotions;
 create policy "workstream_promotions_select_own_curator_or_agency" on workstream_promotions
   for select using (
     submitted_by = auth.uid()
@@ -8890,7 +8902,8 @@ create policy "workstream_promotions_select_own_curator_or_agency" on workstream
     or is_builder_agency(submitted_by, auth.uid())
   );
 
-drop policy "workstream_promotions_decide_curator" on workstream_promotions;
+drop policy if exists "workstream_promotions_decide_curator" on workstream_promotions;
+drop policy if exists "workstream_promotions_decide_curator_or_agency" on workstream_promotions;
 create policy "workstream_promotions_decide_curator_or_agency" on workstream_promotions
   for update
   using (
@@ -8923,16 +8936,17 @@ create policy "workstream_promotions_decide_curator_or_agency" on workstream_pro
 -- later rate change never rewrites what was already agreed. The agency or
 -- admin can correct a fee afterwards; that keeps the recorded rate.
 
+alter table workstream_promotions drop constraint if exists workstream_promotions_proposed_fee_complete;
 alter table workstream_promotions
-  add column proposed_fee_amount numeric(12, 2) check (proposed_fee_amount >= 0),
-  add column proposed_fee_currency text check (proposed_fee_currency in ('PHP', 'USD')),
-  add column proposed_fee_period text check (proposed_fee_period in ('monthly', 'annual')),
+  add column if not exists proposed_fee_amount numeric(12, 2) check (proposed_fee_amount >= 0),
+  add column if not exists proposed_fee_currency text check (proposed_fee_currency in ('PHP', 'USD')),
+  add column if not exists proposed_fee_period text check (proposed_fee_period in ('monthly', 'annual')),
   add constraint workstream_promotions_proposed_fee_complete check (
     (proposed_fee_amount is null and proposed_fee_currency is null and proposed_fee_period is null)
     or (proposed_fee_amount is not null and proposed_fee_currency is not null and proposed_fee_period is not null)
   );
 
-create table client_project_fees (
+create table if not exists client_project_fees (
   project_id uuid primary key references projects(id) on delete cascade,
   amount numeric(12, 2) not null check (amount >= 0),
   currency text not null check (currency in ('PHP', 'USD')),
@@ -8943,6 +8957,7 @@ create table client_project_fees (
   updated_at timestamptz not null default now()
 );
 
+drop trigger if exists client_project_fees_set_updated_at on client_project_fees;
 create trigger client_project_fees_set_updated_at before update on client_project_fees
   for each row execute function set_updated_at();
 
@@ -8962,6 +8977,7 @@ alter table client_project_fees enable row level security;
 
 -- The builder sees the fee on their own client Project; their agency and
 -- the admin see and set it.
+drop policy if exists "client_project_fees_select_owner_agency_or_admin" on client_project_fees;
 create policy "client_project_fees_select_owner_agency_or_admin" on client_project_fees
   for select using (
     is_admin(auth.uid())
@@ -8971,6 +8987,7 @@ create policy "client_project_fees_select_owner_agency_or_admin" on client_proje
     )
   );
 
+drop policy if exists "client_project_fees_write_agency_or_admin" on client_project_fees;
 create policy "client_project_fees_write_agency_or_admin" on client_project_fees
   for all
   using (
@@ -9119,10 +9136,13 @@ create table if not exists mcp_access_users (
 
 alter table mcp_access_users enable row level security;
 
+drop policy if exists "mcp_access_users_select_self_or_admin" on mcp_access_users;
 create policy "mcp_access_users_select_self_or_admin" on mcp_access_users
   for select to authenticated using (user_id = auth.uid() or is_admin(auth.uid()));
+drop policy if exists "mcp_access_users_admin_insert" on mcp_access_users;
 create policy "mcp_access_users_admin_insert" on mcp_access_users
   for insert to authenticated with check (is_admin(auth.uid()));
+drop policy if exists "mcp_access_users_admin_delete" on mcp_access_users;
 create policy "mcp_access_users_admin_delete" on mcp_access_users
   for delete to authenticated using (is_admin(auth.uid()));
 
@@ -9144,12 +9164,16 @@ alter table mcp_approved_clients enable row level security;
 
 -- Readable by any signed-in user: the consent page shows the label, and a
 -- redirect URI is not a secret.
+drop policy if exists "mcp_approved_clients_select_authenticated" on mcp_approved_clients;
 create policy "mcp_approved_clients_select_authenticated" on mcp_approved_clients
   for select to authenticated using (true);
+drop policy if exists "mcp_approved_clients_admin_insert" on mcp_approved_clients;
 create policy "mcp_approved_clients_admin_insert" on mcp_approved_clients
   for insert to authenticated with check (is_admin(auth.uid()));
+drop policy if exists "mcp_approved_clients_admin_update" on mcp_approved_clients;
 create policy "mcp_approved_clients_admin_update" on mcp_approved_clients
   for update to authenticated using (is_admin(auth.uid())) with check (is_admin(auth.uid()));
+drop policy if exists "mcp_approved_clients_admin_delete" on mcp_approved_clients;
 create policy "mcp_approved_clients_admin_delete" on mcp_approved_clients
   for delete to authenticated using (is_admin(auth.uid()));
 
@@ -9184,6 +9208,7 @@ create index if not exists mcp_access_log_created_idx on mcp_access_log (created
 
 alter table mcp_access_log enable row level security;
 
+drop policy if exists "mcp_access_log_select_self_or_admin" on mcp_access_log;
 create policy "mcp_access_log_select_self_or_admin" on mcp_access_log
   for select to authenticated using (user_id = auth.uid() or is_admin(auth.uid()));
 
@@ -9279,10 +9304,13 @@ revoke all on function apply_oauth_read_only_policies() from public, anon, authe
 
 select apply_oauth_read_only_policies();
 
+drop policy if exists "oauth_clients_no_insert" on storage.objects;
 create policy "oauth_clients_no_insert" on storage.objects
   as restrictive for insert to public with check ((auth.jwt() ->> 'client_id') is null);
+drop policy if exists "oauth_clients_no_update" on storage.objects;
 create policy "oauth_clients_no_update" on storage.objects
   as restrictive for update to public using ((auth.jwt() ->> 'client_id') is null) with check ((auth.jwt() ->> 'client_id') is null);
+drop policy if exists "oauth_clients_no_delete" on storage.objects;
 create policy "oauth_clients_no_delete" on storage.objects
   as restrictive for delete to public using ((auth.jwt() ->> 'client_id') is null);
 
@@ -9361,31 +9389,37 @@ language sql stable security definer set search_path = public as $$
   select is_admin(uid) or is_builder_agency(builder, uid);
 $$;
 
-drop policy "builder_ai_allowances_select_own_or_operator" on builder_ai_allowances;
+drop policy if exists "builder_ai_allowances_select_own_or_operator" on builder_ai_allowances;
+drop policy if exists "builder_ai_allowances_select_own_agency_or_admin" on builder_ai_allowances;
 create policy "builder_ai_allowances_select_own_agency_or_admin" on builder_ai_allowances
   for select using (builder_id = auth.uid() or can_manage_builder_budget(builder_id, auth.uid()));
 
 -- A builder still cannot raise their own cap.
-drop policy "builder_ai_allowances_manage_staff" on builder_ai_allowances;
+drop policy if exists "builder_ai_allowances_manage_staff" on builder_ai_allowances;
+drop policy if exists "builder_ai_allowances_manage_agency_or_admin" on builder_ai_allowances;
 create policy "builder_ai_allowances_manage_agency_or_admin" on builder_ai_allowances
   for all
   using (can_manage_builder_budget(builder_id, auth.uid()))
   with check (can_manage_builder_budget(builder_id, auth.uid()));
 
-drop policy "builder_credit_grants_select_own_or_operator" on builder_credit_grants;
+drop policy if exists "builder_credit_grants_select_own_or_operator" on builder_credit_grants;
+drop policy if exists "builder_credit_grants_select_own_agency_or_admin" on builder_credit_grants;
 create policy "builder_credit_grants_select_own_agency_or_admin" on builder_credit_grants
   for select using (builder_id = auth.uid() or can_manage_builder_budget(builder_id, auth.uid()));
 
-drop policy "builder_credit_grants_insert_staff" on builder_credit_grants;
+drop policy if exists "builder_credit_grants_insert_staff" on builder_credit_grants;
+drop policy if exists "builder_credit_grants_insert_agency_or_admin" on builder_credit_grants;
 create policy "builder_credit_grants_insert_agency_or_admin" on builder_credit_grants
   for insert to authenticated
   with check (granted_by = auth.uid() and can_manage_builder_budget(builder_id, auth.uid()));
 
-drop policy "builder_llm_credentials_select_own_or_operator" on builder_llm_credentials;
+drop policy if exists "builder_llm_credentials_select_own_or_operator" on builder_llm_credentials;
+drop policy if exists "builder_llm_credentials_select_own_agency_or_admin" on builder_llm_credentials;
 create policy "builder_llm_credentials_select_own_agency_or_admin" on builder_llm_credentials
   for select using (builder_id = auth.uid() or can_manage_builder_budget(builder_id, auth.uid()));
 
-drop policy "builder_llm_credentials_manage_own_or_staff" on builder_llm_credentials;
+drop policy if exists "builder_llm_credentials_manage_own_or_staff" on builder_llm_credentials;
+drop policy if exists "builder_llm_credentials_manage_own_agency_or_admin" on builder_llm_credentials;
 create policy "builder_llm_credentials_manage_own_agency_or_admin" on builder_llm_credentials
   for all
   using (builder_id = auth.uid() or can_manage_builder_budget(builder_id, auth.uid()))
@@ -9445,7 +9479,8 @@ alter table client_project_fees
 
 -- The builder of record sees their own fee and share; their agency (by the
 -- builder, whoever owns the Project now) and the admin see and set it.
-drop policy "client_project_fees_select_owner_agency_or_admin" on client_project_fees;
+drop policy if exists "client_project_fees_select_owner_agency_or_admin" on client_project_fees;
+drop policy if exists "client_project_fees_select_builder_agency_or_admin" on client_project_fees;
 create policy "client_project_fees_select_builder_agency_or_admin" on client_project_fees
   for select using (
     is_admin(auth.uid())
@@ -9461,7 +9496,7 @@ create policy "client_project_fees_select_builder_agency_or_admin" on client_pro
     )
   );
 
-drop policy "client_project_fees_write_agency_or_admin" on client_project_fees;
+drop policy if exists "client_project_fees_write_agency_or_admin" on client_project_fees;
 create policy "client_project_fees_write_agency_or_admin" on client_project_fees
   for all
   using (
@@ -9481,7 +9516,8 @@ create policy "client_project_fees_write_agency_or_admin" on client_project_fees
 
 -- After the hand-over the builder is no longer the owner, but still shares
 -- progress updates on the Project they maintain.
-drop policy "builder_progress_updates_insert_owner" on builder_progress_updates;
+drop policy if exists "builder_progress_updates_insert_owner" on builder_progress_updates;
+drop policy if exists "builder_progress_updates_insert_owner_or_builder" on builder_progress_updates;
 create policy "builder_progress_updates_insert_owner_or_builder" on builder_progress_updates
   for insert to authenticated
   with check (
@@ -9492,7 +9528,8 @@ create policy "builder_progress_updates_insert_owner_or_builder" on builder_prog
     )
   );
 
-drop policy "builder_progress_updates_update_owner" on builder_progress_updates;
+drop policy if exists "builder_progress_updates_update_owner" on builder_progress_updates;
+drop policy if exists "builder_progress_updates_update_owner_or_builder" on builder_progress_updates;
 create policy "builder_progress_updates_update_owner_or_builder" on builder_progress_updates
   for update
   using (

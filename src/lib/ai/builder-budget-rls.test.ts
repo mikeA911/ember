@@ -27,7 +27,7 @@ describe('agency-scoped builder budgets migration', () => {
       'builder_llm_credentials_select_own_or_operator',
       'builder_llm_credentials_manage_own_or_staff',
     ]) {
-      expect(sql).toContain(`drop policy "${policy}"`)
+      expect(sql).toContain(`drop policy if exists "${policy}"`)
     }
   })
 

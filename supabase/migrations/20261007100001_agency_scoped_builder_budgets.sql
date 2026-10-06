@@ -16,31 +16,37 @@ language sql stable security definer set search_path = public as $$
   select is_admin(uid) or is_builder_agency(builder, uid);
 $$;
 
-drop policy "builder_ai_allowances_select_own_or_operator" on builder_ai_allowances;
+drop policy if exists "builder_ai_allowances_select_own_or_operator" on builder_ai_allowances;
+drop policy if exists "builder_ai_allowances_select_own_agency_or_admin" on builder_ai_allowances;
 create policy "builder_ai_allowances_select_own_agency_or_admin" on builder_ai_allowances
   for select using (builder_id = auth.uid() or can_manage_builder_budget(builder_id, auth.uid()));
 
 -- A builder still cannot raise their own cap.
-drop policy "builder_ai_allowances_manage_staff" on builder_ai_allowances;
+drop policy if exists "builder_ai_allowances_manage_staff" on builder_ai_allowances;
+drop policy if exists "builder_ai_allowances_manage_agency_or_admin" on builder_ai_allowances;
 create policy "builder_ai_allowances_manage_agency_or_admin" on builder_ai_allowances
   for all
   using (can_manage_builder_budget(builder_id, auth.uid()))
   with check (can_manage_builder_budget(builder_id, auth.uid()));
 
-drop policy "builder_credit_grants_select_own_or_operator" on builder_credit_grants;
+drop policy if exists "builder_credit_grants_select_own_or_operator" on builder_credit_grants;
+drop policy if exists "builder_credit_grants_select_own_agency_or_admin" on builder_credit_grants;
 create policy "builder_credit_grants_select_own_agency_or_admin" on builder_credit_grants
   for select using (builder_id = auth.uid() or can_manage_builder_budget(builder_id, auth.uid()));
 
-drop policy "builder_credit_grants_insert_staff" on builder_credit_grants;
+drop policy if exists "builder_credit_grants_insert_staff" on builder_credit_grants;
+drop policy if exists "builder_credit_grants_insert_agency_or_admin" on builder_credit_grants;
 create policy "builder_credit_grants_insert_agency_or_admin" on builder_credit_grants
   for insert to authenticated
   with check (granted_by = auth.uid() and can_manage_builder_budget(builder_id, auth.uid()));
 
-drop policy "builder_llm_credentials_select_own_or_operator" on builder_llm_credentials;
+drop policy if exists "builder_llm_credentials_select_own_or_operator" on builder_llm_credentials;
+drop policy if exists "builder_llm_credentials_select_own_agency_or_admin" on builder_llm_credentials;
 create policy "builder_llm_credentials_select_own_agency_or_admin" on builder_llm_credentials
   for select using (builder_id = auth.uid() or can_manage_builder_budget(builder_id, auth.uid()));
 
-drop policy "builder_llm_credentials_manage_own_or_staff" on builder_llm_credentials;
+drop policy if exists "builder_llm_credentials_manage_own_or_staff" on builder_llm_credentials;
+drop policy if exists "builder_llm_credentials_manage_own_agency_or_admin" on builder_llm_credentials;
 create policy "builder_llm_credentials_manage_own_agency_or_admin" on builder_llm_credentials
   for all
   using (builder_id = auth.uid() or can_manage_builder_budget(builder_id, auth.uid()))

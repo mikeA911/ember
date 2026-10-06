@@ -7,7 +7,7 @@
 -- client as viewers (src/lib/workbench/workstream-promotions.ts). Each
 -- approved promotion (decided_at, created_project_id) is the billable
 -- "client project created" event the agency dashboard counts.
-alter table workstream_promotions add column client_emails text[] not null default '{}';
+alter table workstream_promotions add column if not exists client_emails text[] not null default '{}';
 
 -- An agency is not a member of its builders' private workspaces, so
 -- can_curate_project alone never lets it decide their promotions.
@@ -21,7 +21,8 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
-drop policy "workstream_promotions_select_own_or_curator" on workstream_promotions;
+drop policy if exists "workstream_promotions_select_own_or_curator" on workstream_promotions;
+drop policy if exists "workstream_promotions_select_own_curator_or_agency" on workstream_promotions;
 create policy "workstream_promotions_select_own_curator_or_agency" on workstream_promotions
   for select using (
     submitted_by = auth.uid()
@@ -29,7 +30,8 @@ create policy "workstream_promotions_select_own_curator_or_agency" on workstream
     or is_builder_agency(submitted_by, auth.uid())
   );
 
-drop policy "workstream_promotions_decide_curator" on workstream_promotions;
+drop policy if exists "workstream_promotions_decide_curator" on workstream_promotions;
+drop policy if exists "workstream_promotions_decide_curator_or_agency" on workstream_promotions;
 create policy "workstream_promotions_decide_curator_or_agency" on workstream_promotions
   for update
   using (
