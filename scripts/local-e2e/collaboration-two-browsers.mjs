@@ -1,5 +1,5 @@
 // Shared workspace sessions, Phase 1: two people in two separate browser
-// contexts (separate sign-ins) drive the real UI against the local stack
+// contexts (separate sign-ins), plus a viewer in a third, drive the real UI against the local stack
 // in scripts/local-e2e/README.md. Prints pass/FAIL per step; exits 1 on
 // any failure. Resets only the collaboration tables of the LOCAL database.
 import { createRequire } from 'node:module'
@@ -20,7 +20,7 @@ const sql = async (q) => {
   const { rows } = await db.query(q)
   return rows.length ? String(Object.values(rows[0])[0]) : ''
 }
-await db.query('truncate collaboration_events, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations')
+await db.query('truncate collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations')
 let failures = 0
 const step = async (label, fn) => {
   const t = Date.now()
@@ -68,7 +68,8 @@ const clientNav = async (page, path) => {
 
 const hana = await signIn('hana@e2e.local')
 const gil = await signIn('gil@e2e.local')
-pages.hana = () => hana.page; pages.gil = () => (gil2 && !gil2.isClosed() ? gil2 : gil.page)
+const vera = await signIn('vera@e2e.local')
+pages.vera = () => vera.page; pages.hana = () => hana.page; pages.gil = () => (gil2 && !gil2.isClosed() ? gil2 : gil.page)
 let gil2, t0
 await gil.page.goto(`${BASE}/dashboard`)
 
@@ -198,12 +199,72 @@ await step('both see a warning 5 minutes before an inactivity end; "I’m still 
   await bar(hana.page).getByText(/the session ends in/).waitFor({ state: 'detached', timeout: 10000 })
 })
 
+await step('Hana adds Vera as a viewer on the conversation page; both bars list her', async () => {
+  await bar(hana.page).getByRole('link', { name: 'Add viewers' }).click()
+  await hana.page.getByRole('heading', { name: 'Viewers' }).waitFor({ timeout: 15000 })
+  await hana.page.getByRole('button', { name: 'Add a viewer' }).click()
+  await hana.page.getByRole('button', { name: /Add Vera Viewer/ }).click()
+  await hana.page.locator('#viewers').getByText('Vera Viewer').waitFor({ timeout: 10000 })
+  await bar(hana.page).getByText('Viewers: Vera Viewer').waitFor({ timeout: 10000 })
+  await bar(gil.page).getByText('Viewers: Vera Viewer').waitFor({ timeout: 10000 })
+  await clientNav(hana.page, `/projects/${P}/workstreams/${W2}`)
+  await waitPath(gil.page, `/projects/${P}/workstreams/${W2}`)
+})
+
+let veraStatusCalls = []
+vera.page.on('request', (r) => {
+  const m = /rpc\/(collaboration_[a-z_]+)/.exec(r.url())
+  if (m) veraStatusCalls.push({ fn: m[1], at: Date.now() })
+})
+await step('Vera is told the session is live, without watching; Watch makes her tab follow Hana, with no controls', async () => {
+  await vera.page.goto(`${BASE}/dashboard`)
+  await bar(vera.page).getByText('Hana Host and Gil Guest are live on Harbour Dispatch Upgrade').waitFor({ timeout: 15000 })
+  if (veraStatusCalls.some((c) => c.fn === 'collaboration_watch_status')) throw new Error('polled the session before Watch')
+  if (SHOTS) await vera.page.screenshot({ path: `${SHOTS}/10-viewer-watch-offer.png` })
+  await bar(vera.page).getByRole('button', { name: 'Watch' }).click()
+  await waitPath(vera.page, `/projects/${P}/workstreams/${W2}`)
+  await bar(vera.page).getByText('Watching live · Harbour Dispatch Upgrade').waitFor({ timeout: 10000 })
+  await bar(hana.page).getByText('Vera Viewer (watching)').waitFor({ timeout: 10000 })
+  t0 = Date.now()
+  await clientNav(hana.page, `/projects/${P}/workstreams/${W1}`)
+  await waitPath(vera.page, `/projects/${P}/workstreams/${W1}`)
+  const latency = Date.now() - t0
+  for (const name of ['Ask for control', 'Take control', 'Leave', 'End session']) {
+    if (await bar(vera.page).getByRole('button', { name, exact: true }).count()) throw new Error(`viewer offered ${name}`)
+  }
+  if (SHOTS) await vera.page.screenshot({ path: `${SHOTS}/11-viewer-watching.png` })
+  return `viewer followed in ${latency} ms`
+})
+
+await step('Vera sees the conversation as a viewer; wandering off and Follow again work for her too', async () => {
+  await bar(vera.page).getByRole('link', { name: 'Shared conversation' }).click()
+  await vera.page.getByText('You’re a viewer of this conversation.').waitFor({ timeout: 15000 })
+  await vera.page.getByRole('heading', { name: 'Hana Host & Gil Guest' }).waitFor()
+  if (await vera.page.getByRole('button', { name: /resume/ }).count()) throw new Error('viewer offered resume')
+  await bar(vera.page).getByText('stepped away from the shared view').waitFor({ timeout: 10000 })
+  await bar(vera.page).getByRole('button', { name: 'Follow again' }).click()
+  await waitPath(vera.page, `/projects/${P}/workstreams/${W1}`)
+})
+
+await step('Vera stops watching: Hana no longer sees her watching, and her tab stops polling the session', async () => {
+  await bar(vera.page).getByRole('button', { name: 'Stop watching' }).click()
+  await bar(vera.page).getByRole('button', { name: 'Watch' }).waitFor({ timeout: 10000 })
+  await bar(hana.page).getByText('Vera Viewer (watching)').waitFor({ state: 'detached', timeout: 10000 })
+  const stoppedAt = Date.now()
+  await vera.page.waitForTimeout(6000)
+  const after = veraStatusCalls.filter((c) => c.at > stoppedAt + 500 && c.fn === 'collaboration_watch_status')
+  if (after.length) throw new Error(`${after.length} session polls after stopping`)
+  const general = veraStatusCalls.filter((c) => c.at > stoppedAt && c.fn === 'collaboration_status').length
+  return `${general} general status check(s) in 6 s, no session polls`
+})
+
 await step('a page that is not shared is never mirrored', async () => {
+  const gilWasAt = new URL(gil.page.url()).pathname
   await clientNav(hana.page, `/projects/${P}/members`)
   await waitPath(hana.page, `/projects/${P}/members`)
   await bar(hana.page).getByText('This page isn’t shared').waitFor({ timeout: 10000 })
   await gil.page.waitForTimeout(4000)
-  if (new URL(gil.page.url()).pathname !== `/projects/${P}/workstreams/${W2}`) throw new Error(`Gil moved to ${gil.page.url()}`)
+  if (new URL(gil.page.url()).pathname !== gilWasAt) throw new Error(`Gil moved to ${gil.page.url()}`)
   await clientNav(hana.page, `/projects/${P}`)
   await waitPath(gil.page, `/projects/${P}`)
 })

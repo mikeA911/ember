@@ -276,8 +276,9 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
       // Shown as away, or warned the session is about to end: report this
       // input now, whatever kind it is.
       const urgent = !!me?.away || (s?.endsInSeconds != null && s.endsInSeconds <= END_WARNING_SECONDS)
-      // Otherwise pointer movement is frequent; sampling it is enough.
-      if (event.type === 'pointermove' && !urgent && now - previous < 15_000) return
+      // Pointer movement is frequent: once there's unreported input, more
+      // movement adds nothing. Any movement since the last poll counts.
+      if (event.type === 'pointermove' && !urgent && lastInputRef.current > lastReportedRef.current) return
       lastInputRef.current = now
       if ((now - previous > RETURN_AFTER_MS || urgent) && now - lastPollStartRef.current > 2_000) pollRef.current()
     }
