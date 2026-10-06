@@ -6,6 +6,9 @@ import { getBrandingUrls } from '@/lib/branding'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { NavigationOverlay } from '@/components/shared/NavigationOverlay'
 import { listMemberProjectOptions } from '@/lib/projects/queries'
+import { collaborationEnabled } from '@/lib/collaboration/flag'
+import { CollaborationProvider } from '@/components/collaboration/CollaborationProvider'
+import { SessionBar } from '@/components/collaboration/SessionBar'
 import type { Profile } from '@/types/database'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -27,9 +30,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // same "own active memberships only" scope already used by EmberHome.
   const projects = await listMemberProjectOptions(supabase, user.id)
 
-  return (
+  const page = (
     <div className="flex flex-1 flex-col">
       <Header profile={profile as Profile} logoUrl={brandingUrls.logo} />
+      {/* Shared workspace sessions (feature-flagged): the session bar stays
+          on every route while a live session is going on. */}
+      <SessionBar />
       <main className="flex-1 mx-auto w-full max-w-5xl px-4 py-8">{children}</main>
       {/* ChatPanel reads useSearchParams() (to detect ?view=ember) -- Next
           requires a Suspense boundary around any client component that does,
@@ -44,4 +50,5 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </Suspense>
     </div>
   )
+  return collaborationEnabled() ? <CollaborationProvider userId={user.id}>{page}</CollaborationProvider> : page
 }

@@ -24,6 +24,7 @@ import { sendFeedbackMessageAction } from '@/app/actions/feedback'
 import type { ChatModelOption } from '@/lib/ai'
 import type { ModelSelection } from '@/lib/chat/loop'
 import type { DisplayMessage } from '@/lib/chat/conversations'
+import { SharedHistoryList } from '@/components/collaboration/SharedHistoryList'
 import type { MemberProjectOption } from '@/lib/projects/queries'
 import type { Conversation, FeedbackType } from '@/types/database'
 import { Markdown } from '@/components/shared/Markdown'
@@ -1088,6 +1089,9 @@ export function ChatSession({
             <details ref={historyDetailsRef}>
               <summary className="cursor-pointer list-none text-xs text-zinc-400 hover:text-zinc-600">History</summary>
               <div className="absolute inset-x-3 z-10 mt-1 max-h-48 sm:right-auto sm:w-64 overflow-y-auto rounded border border-zinc-200 bg-white p-1 shadow-lg">
+                {/* Shared workspace sessions: conversations shared with
+                    another Project member (empty while the flag is off). */}
+                <SharedHistoryList />
                 {conversations.length === 0 && <p className="px-2 py-1 text-xs text-zinc-400">No prior conversations yet.</p>}
                 {conversations.map((c) => (
                   <button

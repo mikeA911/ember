@@ -1,0 +1,212 @@
+// Shared workspace sessions, Phase 1: two people in two separate browser
+// contexts (separate sign-ins) drive the real UI against the local stack
+// in scripts/local-e2e/README.md. Prints pass/FAIL per step; exits 1 on
+// any failure. Resets only the collaboration tables of the LOCAL database.
+import { createRequire } from 'node:module'
+import pg from 'pg'
+const require = createRequire(`${process.env.PLAYWRIGHT_DIR ?? process.cwd()}/`)
+const { chromium } = require('playwright-core')
+const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3100'
+const P = 'b0000000-0000-4000-8000-000000000001'
+const W1 = 'c0000000-0000-4000-8000-000000000001', W2 = 'c0000000-0000-4000-8000-000000000002'
+const SHOTS = process.env.SHOTS
+const dbUrl = process.env.E2E_DATABASE_URL ?? ''
+const dbHost = new URL(dbUrl).hostname || new URL(dbUrl).searchParams.get('host') || ''
+if (!['localhost', '127.0.0.1', ''].includes(dbHost) && !dbHost.startsWith('/')) throw new Error('Local databases only.')
+const db = new pg.Client({ connectionString: dbUrl })
+await db.connect()
+const sql = async (q) => {
+  const { rows } = await db.query(q)
+  return rows.length ? String(Object.values(rows[0])[0]) : ''
+}
+await db.query('truncate collaboration_events, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations')
+let failures = 0
+const step = async (label, fn) => {
+  const t = Date.now()
+  try { const extra = await fn(); console.log(`pass  ${label}${extra ? ` (${extra})` : ''} [${Date.now() - t} ms]`) }
+  catch (e) {
+    failures++; console.log(`FAIL  ${label}: ${String(e.message).split('\n')[0]}`)
+    if (SHOTS) for (const [who, pg] of Object.entries(pages)) { try { await pg().screenshot({ path: `${SHOTS}/fail-${failures}-${who}.png` }); console.log(`      ${who} at ${new URL(pg().url()).pathname}`) } catch {} }
+  }
+}
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
+async function signIn(email) {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  const page = await ctx.newPage()
+  await page.goto(`${BASE}/login`)
+  await page.locator('input').nth(0).fill(email)
+  await page.locator('input').nth(1).fill('local-only')
+  await page.locator('button[type=submit], form button').first().click()
+  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30000 })
+  return { ctx, page }
+}
+const pages = {}
+const bar = (page) => page.getByLabel('Live collaboration')
+const waitPath = (page, path, timeout = 15000) => page.waitForURL((u) => u.pathname === path, { timeout })
+// A real in-app link when one is on screen (client-side navigation);
+// otherwise Next's router if exposed; otherwise a full page load.
+const navKinds = []
+const clientNav = async (page, path) => {
+  const link = page.locator(`main a[href="${path}"]:visible`).first()
+  if (await link.count()) { navKinds.push('link'); return link.click() }
+  const viaRouter = await page.evaluate((p) => { const r = window.next?.router; if (r?.push) { r.push(p); return true } return false }, path)
+  navKinds.push(viaRouter ? 'router' : 'reload')
+  if (!viaRouter) await page.goto(`${BASE}${path}`)
+}
+
+const hana = await signIn('hana@e2e.local')
+const gil = await signIn('gil@e2e.local')
+pages.hana = () => hana.page; pages.gil = () => (gil2 && !gil2.isClosed() ? gil2 : gil.page)
+let gil2
+await gil.page.goto(`${BASE}/dashboard`)
+
+await step('Collaborate button on the Project page invites Gil after a confirmation step', async () => {
+  await hana.page.goto(`${BASE}/projects/${P}`)
+  await hana.page.getByRole('button', { name: 'Collaborate' }).click()
+  await hana.page.getByRole('button', { name: /Gil Guest/ }).click()
+  await hana.page.getByText('Invite Gil Guest to a live session').waitFor()
+  await hana.page.getByRole('button', { name: 'Send invitation' }).click()
+  await hana.page.getByText('Invitation sent to Gil Guest').waitFor()
+  await bar(hana.page).getByText('Waiting for Gil Guest to accept').waitFor({ timeout: 20000 })
+})
+if (SHOTS) await hana.page.screenshot({ path: `${SHOTS}/1-host-waiting.png` })
+
+let t0
+await step('Gil sees the invitation in the bar and accepts; his browser goes to the shared Project page', async () => {
+  await bar(gil.page).getByText('Hana Host invited you').waitFor({ timeout: 20000 })
+  if (SHOTS) await gil.page.screenshot({ path: `${SHOTS}/2-guest-invited.png` })
+  await bar(gil.page).getByRole('button', { name: 'Accept' }).click()
+  await waitPath(gil.page, `/projects/${P}`)
+})
+
+await step('both bars show the live session with Hana in control and both connected', async () => {
+  for (const { page } of [hana, gil]) {
+    await bar(page).getByText('Live · Harbour Dispatch Upgrade').waitFor({ timeout: 20000 })
+    await bar(page).getByText('In control', { exact: true }).waitFor()
+  }
+  await bar(gil.page).getByRole('button', { name: 'Ask for control' }).waitFor()
+  await bar(hana.page).getByText('You’re in control').waitFor({ timeout: 10000 })
+})
+if (SHOTS) { await hana.page.screenshot({ path: `${SHOTS}/3-host-in-control.png` }); await gil.page.screenshot({ path: `${SHOTS}/4-guest-following.png` }) }
+
+await step('Hana opens a workstream (client-side navigation); Gil follows', async () => {
+  t0 = Date.now()
+  await clientNav(hana.page, `/projects/${P}/workstreams/${W1}`)
+  await waitPath(hana.page, `/projects/${P}/workstreams/${W1}`)
+  await waitPath(gil.page, `/projects/${P}/workstreams/${W1}`)
+  return `follow latency ${Date.now() - t0} ms incl. page render`
+})
+
+await step('Hana reloads the page (same tab): still in control, no second-tab conflict', async () => {
+  await hana.page.reload()
+  await bar(hana.page).getByText('You’re in control').waitFor({ timeout: 20000 })
+})
+
+await step('Gil cannot move the shared view: wandering off stops following, Follow again brings him back', async () => {
+  await gil.page.locator('header').getByRole('link', { name: 'Projects', exact: true }).click()
+  await waitPath(gil.page, '/projects')
+  await bar(gil.page).getByText('stepped away from the shared view').waitFor({ timeout: 10000 })
+  await gil.page.reload()
+  await bar(gil.page).getByText('stepped away from the shared view').waitFor({ timeout: 15000 })
+  if (new URL(gil.page.url()).pathname !== '/projects') throw new Error('reload pulled Gil back')
+  if ((await sql(`select location_workstream_id from collaboration_sessions where status='active'`)) !== W1) throw new Error('observer moved the shared location')
+  await bar(gil.page).getByRole('button', { name: /Follow Hana Host again/ }).click()
+  await waitPath(gil.page, `/projects/${P}/workstreams/${W1}`)
+})
+
+await step('Gil asks for control, Hana gives it; Gil now moves Hana', async () => {
+  await bar(gil.page).getByRole('button', { name: 'Ask for control' }).click()
+  await bar(hana.page).getByText('Gil Guest is asking for control').waitFor({ timeout: 10000 })
+  if (SHOTS) await hana.page.screenshot({ path: `${SHOTS}/5-host-request.png` })
+  await bar(hana.page).getByRole('button', { name: 'Give control' }).click()
+  await bar(gil.page).getByText('You’re in control').waitFor({ timeout: 10000 })
+  t0 = Date.now()
+  await clientNav(gil.page, `/projects/${P}/workstreams/${W2}`)
+  await waitPath(hana.page, `/projects/${P}/workstreams/${W2}`)
+  return `follow latency ${Date.now() - t0} ms`
+})
+
+await step('Hana asks for control back; Gil declines', async () => {
+  await bar(hana.page).getByRole('button', { name: 'Ask for control' }).click()
+  await bar(gil.page).getByText('Hana Host is asking for control').waitFor({ timeout: 10000 })
+  await bar(gil.page).getByRole('button', { name: 'Decline' }).click()
+  await bar(hana.page).getByRole('button', { name: 'Ask for control' }).waitFor({ timeout: 10000 })
+})
+
+await step('Hana takes control back as host', async () => {
+  await bar(hana.page).getByRole('button', { name: 'Take control back' }).click()
+  await bar(hana.page).getByText('You’re in control').waitFor({ timeout: 10000 })
+  await bar(gil.page).getByRole('button', { name: 'Ask for control' }).waitFor({ timeout: 10000 })
+})
+
+await step('a page that is not shared is never mirrored', async () => {
+  await clientNav(hana.page, `/projects/${P}/members`)
+  await waitPath(hana.page, `/projects/${P}/members`)
+  await bar(hana.page).getByText('This page isn’t shared').waitFor({ timeout: 10000 })
+  await gil.page.waitForTimeout(4000)
+  if (new URL(gil.page.url()).pathname !== `/projects/${P}/workstreams/${W2}`) throw new Error(`Gil moved to ${gil.page.url()}`)
+  await clientNav(hana.page, `/projects/${P}`)
+  await waitPath(gil.page, `/projects/${P}`)
+})
+
+await step('a second tab for Gil must take over explicitly; the old tab then stands down', async () => {
+  gil2 = await gil.ctx.newPage()
+  await gil2.goto(`${BASE}/projects/${P}`)
+  await bar(gil2).getByText('open in another of your tabs').waitFor({ timeout: 20000 })
+  await bar(gil2).getByRole('button', { name: 'Use this tab instead' }).click()
+  await bar(gil2).getByRole('button', { name: 'Ask for control' }).waitFor({ timeout: 10000 })
+  await bar(gil.page).getByText('open in another of your tabs').waitFor({ timeout: 10000 })
+  await gil.page.close()
+})
+
+await step('Gil leaves; Hana sees it; Gil rejoins', async () => {
+  await bar(gil2).getByRole('button', { name: 'Leave' }).click()
+  await bar(hana.page).getByText('Gil Guest left the session').waitFor({ timeout: 10000 })
+  await bar(gil2).getByRole('button', { name: 'Rejoin' }).click()
+  await bar(gil2).getByRole('button', { name: 'Ask for control' }).waitFor({ timeout: 10000 })
+})
+
+await step('Hana ends the session (with confirmation); both see it ended; conversation in both histories', async () => {
+  await bar(hana.page).getByRole('button', { name: 'End session' }).click()
+  await bar(hana.page).getByText('End for both of you?').waitFor()
+  await bar(hana.page).getByRole('button', { name: 'End session' }).click()
+  await bar(gil2).getByText('The host ended the live session').waitFor({ timeout: 15000 })
+  await bar(hana.page).getByText('The host ended the live session').waitFor({ timeout: 15000 })
+  await bar(gil2).getByRole('link', { name: 'Open shared conversation' }).click()
+  await gil2.getByRole('heading', { name: 'With Hana Host' }).waitFor({ timeout: 15000 })
+  await gil2.getByText('ended by the host').waitFor()
+  if (SHOTS) await gil2.screenshot({ path: `${SHOTS}/6-shared-conversation.png` })
+  const rows = await sql(`select count(*) from collaboration_conversations`)
+  if (rows !== '1') throw new Error(`expected one conversation, found ${rows}`)
+})
+
+await step('Gil invites Hana to resume from the shared conversation; Hana accepts; Gil hosts', async () => {
+  await gil2.getByRole('button', { name: 'Invite Hana Host to resume' }).click()
+  await bar(hana.page).getByText('Gil Guest invited you').waitFor({ timeout: 20000 })
+  await bar(hana.page).getByRole('button', { name: 'Accept' }).click()
+  await waitPath(hana.page, `/projects/${P}`)
+  await bar(hana.page).getByRole('button', { name: 'Ask for control' }).waitFor({ timeout: 20000 })
+  // Gil is on the conversation page, which isn't shared; his bar says so.
+  await bar(gil2).getByText('This page isn’t shared').waitFor({ timeout: 10000 })
+  await gil2.getByText('· live now').waitFor({ timeout: 10000 })
+  const host = await sql(`select host_id from collaboration_sessions where status='active'`)
+  if (host !== 'a0000000-0000-4000-8000-000000000002') throw new Error(`host is ${host}`)
+})
+
+await step('removing Gil from the Project ends the session for Hana', async () => {
+  await sql(`update project_members set status='inactive' where user_id='a0000000-0000-4000-8000-000000000002'`)
+  await bar(hana.page).getByText('no longer has access').waitFor({ timeout: 15000 })
+  await sql(`update project_members set status='active' where user_id='a0000000-0000-4000-8000-000000000002'`)
+})
+
+await step('nothing was deleted: every session, participant and invitation row is still there', async () => {
+  const counts = await sql(`select (select count(*) from collaboration_sessions)||'/'||(select count(*) from collaboration_participants)||'/'||(select count(*) from collaboration_invitations)`)
+  if (counts !== '2/4/2') throw new Error(`sessions/participants/invitations = ${counts}`)
+  return counts
+})
+
+await browser.close()
+await db.end()
+console.log('navigation kinds used:', navKinds.join(','))
+console.log(failures ? `\n${failures} step(s) failed` : '\nAll two-browser steps passed.')
+process.exit(failures ? 1 : 0)

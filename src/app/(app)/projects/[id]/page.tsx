@@ -49,6 +49,7 @@ import type { ProjectSummaryInput } from '@/lib/projects/status-summary'
 import { getProjectApprovalState } from '@/lib/workbench/project-approval'
 import { ProjectApprovalBanner } from '@/components/projects/ProjectApprovalBanner'
 import { WorkstreamsDropdown } from '@/components/projects/WorkstreamsDropdown'
+import { CollaborateButton } from '@/components/collaboration/CollaborateButton'
 
 const TYPE_LABELS: Record<string, string> = {
   learning: 'Learning',
@@ -581,6 +582,9 @@ export default async function ProjectPage({
                 }
               })}
             />
+            {/* Shared workspace sessions -- any active member; renders
+                nothing while the feature flag is off. */}
+            {user && viewerMembership && <CollaborateButton projectId={project.id} projectName={project.name} />}
             {canManage && (
               <>
                 <Link href={`/projects/${project.id}/members`} className="text-sm underline">

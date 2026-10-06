@@ -665,6 +665,52 @@ describe('runAssistantTurn -- project-bound member tools', () => {
     expect(projectTools).toContain('send_project_note')
     expect(projectTools).toContain('list_workstreams')
   })
+
+  // Shared workspace sessions: the invitation tools exist only with the
+  // feature flag on, and only in project-bound chat.
+  it('offers the collaboration invitation tools only in project-bound chat with the flag on', async () => {
+    generateChatMock.mockResolvedValue({ message: { role: 'assistant', content: 'ok' }, model: 'test-model', usage: { inputTokens: 1, outputTokens: 1 } })
+    const projectCtx = () => {
+      const ctx = fakeCtx()
+      const originalFrom = ctx.supabase.from.bind(ctx.supabase)
+      ctx.supabase.from = ((table: string) => {
+        if (table === 'projects') {
+          return {
+            select: () => ({
+              eq: () => ({ maybeSingle: async () => ({ data: { id: 'proj-1', name: 'Test Project', goal: null, information_sensitivity: null }, error: null }) }),
+            }),
+          }
+        }
+        if (table === 'project_knowledge_bases' || table === 'project_wiki_articles') {
+          return { select: () => ({ eq: async () => ({ data: [], error: null }) }) }
+        }
+        return originalFrom(table as never)
+      }) as unknown as typeof ctx.supabase.from
+      return ctx
+    }
+    const offered = () => {
+      const call = generateChatMock.mock.calls[generateChatMock.mock.calls.length - 1][0] as { tools: { name: string }[]; system: string }
+      return { tools: call.tools.map((t) => t.name), system: call.system }
+    }
+    try {
+      vi.stubEnv('NEXT_PUBLIC_EMBER_COLLABORATION', 'false')
+      createConversationMock.mockResolvedValueOnce({ id: 'conv-1', project_id: 'proj-1' })
+      await runAssistantTurn(projectCtx(), null, 'hi', undefined, 'proj-1')
+      expect(offered().tools).not.toContain('send_collaboration_invitation')
+      expect(offered().system).not.toContain('preview_collaboration_invitation')
+
+      vi.stubEnv('NEXT_PUBLIC_EMBER_COLLABORATION', 'true')
+      await runAssistantTurn(fakeCtx(), null, 'hi')
+      expect(offered().tools).not.toContain('send_collaboration_invitation')
+
+      createConversationMock.mockResolvedValueOnce({ id: 'conv-2', project_id: 'proj-1' })
+      await runAssistantTurn(projectCtx(), null, 'hi', undefined, 'proj-1')
+      expect(offered().tools).toEqual(expect.arrayContaining(['preview_collaboration_invitation', 'send_collaboration_invitation']))
+      expect(offered().system).toContain('refused in the same turn as the preview')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
 })
 
 // Two live-observed failure modes (2026-09-04), fixed together since both

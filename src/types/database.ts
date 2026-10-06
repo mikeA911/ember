@@ -3680,6 +3680,26 @@ interface DatabaseDefinition {
     Functions: {
       is_admin: { Args: { uid: string }; Returns: boolean }
       is_curator_or_admin: { Args: { uid: string }; Returns: boolean }
+      // Shared workspace sessions (20261023100001). Each returns a JSON DTO
+      // typed in src/lib/collaboration/types.ts and called through
+      // src/lib/collaboration/api.ts.
+      collaboration_status: { Args: { p_connection?: string | null; p_session?: string | null }; Returns: unknown }
+      collaboration_candidates: { Args: { p_project: string }; Returns: unknown }
+      collaboration_history: { Args: Record<string, never>; Returns: unknown }
+      collaboration_conversation: { Args: { p_conversation: string }; Returns: unknown }
+      collaboration_invite: {
+        Args: { p_project: string; p_invitee: string; p_conversation?: string | null; p_created_via?: string; p_assistant_conversation?: string | null }
+        Returns: unknown
+      }
+      collaboration_cancel_invitation: { Args: { p_invitation: string }; Returns: unknown }
+      collaboration_respond_invitation: { Args: { p_invitation: string; p_accept: boolean; p_connection?: string | null }; Returns: unknown }
+      collaboration_join: { Args: { p_session: string; p_connection: string; p_take_over?: boolean }; Returns: unknown }
+      collaboration_navigate: { Args: { p_session: string; p_connection: string; p_generation: number; p_workstream?: string | null }; Returns: unknown }
+      collaboration_request_control: { Args: { p_session: string; p_connection: string; p_withdraw?: boolean }; Returns: unknown }
+      collaboration_answer_control_request: { Args: { p_session: string; p_connection: string; p_generation: number; p_grant: boolean }; Returns: unknown }
+      collaboration_reclaim_control: { Args: { p_session: string; p_connection: string }; Returns: unknown }
+      collaboration_leave: { Args: { p_session: string }; Returns: unknown }
+      collaboration_end: { Args: { p_session: string }; Returns: unknown }
       increment_approved_chunks: { Args: { doc_id: string }; Returns: void }
       increment_rejected_chunks: { Args: { doc_id: string }; Returns: void }
       decrement_approved_chunks: { Args: { doc_id: string }; Returns: void }

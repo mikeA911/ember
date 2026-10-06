@@ -1,0 +1,78 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/database'
+import { toCollaborationError } from './errors'
+import type {
+  CollaborationCandidate,
+  CollaborationInvitation,
+  CollaborationStatus,
+  SessionSnapshot,
+  SharedConversationShell,
+  SharedConversationSummary,
+} from './types'
+
+// Typed calls to the collaboration_* functions. The caller passes the
+// signed-in user's own Supabase client (browser or server) -- never the
+// admin client: every function identifies the caller from auth.uid().
+//
+// The browser calls these directly against Supabase rather than through
+// Server Actions: Next.js runs a client's Server Actions one at a time, so
+// a control handover would otherwise wait behind a long Ember turn, and
+// polling would otherwise go through the app server.
+
+type Client = SupabaseClient<Database>
+
+async function call<T>(client: Client, fn: keyof Database['public']['Functions'], args: Record<string, unknown>): Promise<T> {
+  const { data, error } = await (client.rpc as unknown as (f: string, a: Record<string, unknown>) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>)(fn, args)
+  if (error) throw toCollaborationError(error)
+  return data as T
+}
+
+export const collaborationApi = {
+  status: (c: Client, connection: string | null, session: string | null) =>
+    call<CollaborationStatus>(c, 'collaboration_status', { p_connection: connection, p_session: session }),
+  candidates: (c: Client, projectId: string) => call<CollaborationCandidate[]>(c, 'collaboration_candidates', { p_project: projectId }),
+  history: (c: Client) => call<SharedConversationSummary[]>(c, 'collaboration_history', {}),
+  conversation: (c: Client, conversationId: string) =>
+    call<SharedConversationShell>(c, 'collaboration_conversation', { p_conversation: conversationId }),
+  invite: (
+    c: Client,
+    input: { projectId: string; inviteeId: string; conversationId?: string | null; createdVia?: 'ui' | 'assistant'; assistantConversationId?: string | null }
+  ) =>
+    call<CollaborationInvitation>(c, 'collaboration_invite', {
+      p_project: input.projectId,
+      p_invitee: input.inviteeId,
+      p_conversation: input.conversationId ?? null,
+      p_created_via: input.createdVia ?? 'ui',
+      p_assistant_conversation: input.assistantConversationId ?? null,
+    }),
+  cancelInvitation: (c: Client, invitationId: string) =>
+    call<CollaborationInvitation>(c, 'collaboration_cancel_invitation', { p_invitation: invitationId }),
+  respondInvitation: (c: Client, invitationId: string, accept: boolean, connection: string | null) =>
+    call<{ invitation: CollaborationInvitation; sessionId: string | null }>(c, 'collaboration_respond_invitation', {
+      p_invitation: invitationId,
+      p_accept: accept,
+      p_connection: connection,
+    }),
+  join: (c: Client, sessionId: string, connection: string, takeOver: boolean) =>
+    call<SessionSnapshot>(c, 'collaboration_join', { p_session: sessionId, p_connection: connection, p_take_over: takeOver }),
+  navigate: (c: Client, sessionId: string, connection: string, generation: number, workstreamId: string | null) =>
+    call<SessionSnapshot>(c, 'collaboration_navigate', {
+      p_session: sessionId,
+      p_connection: connection,
+      p_generation: generation,
+      p_workstream: workstreamId,
+    }),
+  requestControl: (c: Client, sessionId: string, connection: string, withdraw: boolean) =>
+    call<SessionSnapshot>(c, 'collaboration_request_control', { p_session: sessionId, p_connection: connection, p_withdraw: withdraw }),
+  answerControlRequest: (c: Client, sessionId: string, connection: string, generation: number, grant: boolean) =>
+    call<SessionSnapshot>(c, 'collaboration_answer_control_request', {
+      p_session: sessionId,
+      p_connection: connection,
+      p_generation: generation,
+      p_grant: grant,
+    }),
+  reclaimControl: (c: Client, sessionId: string, connection: string) =>
+    call<SessionSnapshot>(c, 'collaboration_reclaim_control', { p_session: sessionId, p_connection: connection }),
+  leave: (c: Client, sessionId: string) => call<SessionSnapshot>(c, 'collaboration_leave', { p_session: sessionId }),
+  end: (c: Client, sessionId: string) => call<SessionSnapshot>(c, 'collaboration_end', { p_session: sessionId }),
+}
