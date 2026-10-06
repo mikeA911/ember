@@ -73,6 +73,16 @@ export async function resolveNavigationTarget(
         if (!item) return null
         return { label: item.title, route: `/projects/${item.project_id}/working-knowledge/${item.id}` }
       }
+      case 'solution_requirement': {
+        // RLS (solution_requirements_select_member) is the access check.
+        const { data: requirement } = await ctx.supabase
+          .from('solution_requirements')
+          .select('id, project_id, code, title')
+          .eq('id', target.id)
+          .maybeSingle()
+        if (!requirement) return null
+        return { label: `${requirement.code} ${requirement.title}`, route: `/projects/${requirement.project_id}/requirements/${requirement.id}` }
+      }
     }
   } catch {
     // A query error (malformed id, transient failure) is treated the same

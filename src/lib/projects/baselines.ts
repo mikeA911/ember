@@ -255,11 +255,11 @@ export async function getBaseline(supabase: SupabaseClient<Database>, projectId:
 // Open requirements of the Project, for adding to a draft baseline.
 export async function listBaselineCandidates(supabase: SupabaseClient<Database>, projectId: string) {
   const [{ data: requirements }, { data: methods }] = await Promise.all([
-    supabase.from('solution_requirements').select('id, code, title, status').eq('project_id', projectId).in('status', ['draft', 'baselined']).order('code'),
+    supabase.from('solution_requirements').select('id, code, title, status, awaiting_acceptance').eq('project_id', projectId).in('status', ['draft', 'baselined']).order('code'),
     supabase.from('solution_verification_methods').select('requirement_id').eq('project_id', projectId),
   ])
   const withMethod = new Set((methods ?? []).map((m) => m.requirement_id))
-  return (requirements ?? []).map((r) => ({ ...r, hasMethod: withMethod.has(r.id) }))
+  return (requirements ?? []).map((r) => ({ ...r, awaitingAcceptance: r.awaiting_acceptance, hasMethod: withMethod.has(r.id) }))
 }
 
 // The approval types the viewer currently holds in this Project (active,

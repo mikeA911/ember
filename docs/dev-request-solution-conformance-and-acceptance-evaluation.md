@@ -2,7 +2,7 @@
 
 ## Status
 
-Stages 1 (requirements register) and 2 (verification records) built 5 October 2026, Stages 3 (baselines and conformance decisions) and 4 (re-verification triggers) 6 October 2026; Stage 5 proposed. Worked example: the `cebu-ng911` Project.
+Stages 1 (requirements register) and 2 (verification records) built 5 October 2026, Stages 3 (baselines and conformance decisions), 4 (re-verification triggers) and 5 (Ember tools) 6 October 2026. All five stages are built. Worked example: the `cebu-ng911` Project.
 
 ## Delivery stages
 
@@ -10,7 +10,7 @@ Stages 1 (requirements register) and 2 (verification records) built 5 October 20
 2. **Verification records** — append-only results with artifact evidence, against an identified solution state. *Built.*
 3. **Baselines and conformance decisions** — frozen baselines, verdict roll-up, waivers, decisions through approval policies and authorities. *Built.*
 4. **Re-verification triggers** — component changes, new source versions, review dates, threshold breaches. *Built.*
-5. **Ember tools** — `propose_requirements`, `list_requirement_status`, `propose_verification_method`.
+5. **Ember tools** — `propose_requirements`, `list_requirement_status`, `propose_verification_method`. *Built* (as `create_draft_requirements`, `list_requirement_status`, `add_verification_methods`).
 
 **As built (Stage 1, 5 October 2026):**
 
@@ -56,6 +56,14 @@ Stages 1 (requirements register) and 2 (verification records) built 5 October 20
 - **Clearing:** recording a new result for each method clears the event for that requirement; a curator can instead resolve it with a reason (e.g. "revised clause doesn't affect us"). Past records, baselines and decisions are untouched.
 - **Production changes:** `decide_solution_conformance_decision()` refuses to approve a `production_change` decision while any requirement in the baseline is due; other approval types are unaffected.
 - **UI:** `/projects/[id]/requirements/changes` (what needs re-verification, **Record a change**, the change history with each requirement's state: needs re-verification, re-verified, resolved or requirement closed). Requirement pages show *Re-verification due* with the open events, **Resolve without re-verifying** (curators) and the review schedule. The register, baseline pages and the Project page's *Requirements* section show what needs re-verification.
+
+**As built (Stage 5, 6 October 2026):**
+
+- **Tools** (`src/lib/chat/requirements-tool.ts`, Project conversations only, scoped to the conversation's Project): `list_requirement_status` (read; optionally one workstream; each requirement's status, verification status, current result per method, methods missing evidence, re-verification flags and whether it is an Ember draft awaiting acceptance — under the caller's RLS); `create_draft_requirements` and `add_verification_methods` (write; owner/curator/admin via the same service functions as the forms). The proposal step is Ember's reply: it shows the drafts and calls the tool only after the user confirms in their next message (prompt guidance, the same boundary as the ontology tools). The dev request's names map as `propose_requirements` → `create_draft_requirements` and `propose_verification_method` → `add_verification_methods`.
+- **Citing:** a draft needs at least one source with its clause as locator; a linked knowledge source must be one the Project's search scope contains, and a Wiki article must be attached to the Project (refused per draft otherwise). The prompt tells Ember to search Project knowledge first, never invent a clause or figure, and treat a vendor's description as a vendor claim.
+- **Acceptance** (`20261022100001_ember_drafted_requirements.sql`): `solution_requirements` gains `created_via` (`ui`/`assistant`), `assistant_conversation_id`, `awaiting_acceptance`, `accepted_by`, `accepted_at`; methods gain `created_via`. A trigger forces every Ember draft to start awaiting acceptance, stamps the accepting curator and time, and keeps acceptance one-way and the origin fixed. The baseline-item trigger refuses a requirement awaiting acceptance, so an Ember draft is in no baseline until a curator accepts it.
+- **Refusals:** there is no Ember tool that records results, waives, baselines or requests/approves decisions; the prompt tells Ember to say these are human decisions and link the page.
+- **UI:** *Drafted by Ember · awaiting acceptance* on the requirement page (with **Accept draft** for curators), the register and the baseline picker (where such drafts can't be selected); methods Ember drafted are labelled. Created requirements appear in the chat's *Created records*.
 
 
 ## Problem

@@ -221,4 +221,7 @@ export const LINK_STATE_STYLES = {
 
 export const REVERIFY_BADGE = 'bg-orange-100 text-orange-800'
 
+// Stage 5: drafted by Ember, awaiting a curator's acceptance.
+export const EMBER_DRAFT_BADGE = 'bg-sky-100 text-sky-800'
+
 export const options = <K extends string>(labels: Record<K, string>) => Object.entries(labels) as [K, string][]

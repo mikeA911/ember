@@ -7,7 +7,7 @@ import { resolveDocumentArtifact } from './document-resolver'
 // 'working_knowledge' member exactly (response-envelope.ts) -- resolveCreatedRecord's
 // generic path below calls resolveNavigationTarget(ctx, { kind: ref.kind, id: ref.id }),
 // which only type-checks if the two enums share the literal value.
-export type CreatedRecordKind = 'project' | 'workstream' | 'workstream_artifact' | 'project_note' | 'working_knowledge'
+export type CreatedRecordKind = 'project' | 'workstream' | 'workstream_artifact' | 'project_note' | 'working_knowledge' | 'solution_requirement'
 
 export interface CreatedRecordRef {
   kind: CreatedRecordKind
@@ -52,6 +52,12 @@ export function extractCreatedRecordRef(toolName: string, content: string): Crea
     }
     if (toolName === 'send_project_note' && typeof obj.noteId === 'string') return [{ kind: 'project_note', id: obj.noteId }]
     if (toolName === 'save_working_knowledge' && typeof obj.itemId === 'string') return [{ kind: 'working_knowledge', id: obj.itemId }]
+    if (toolName === 'create_draft_requirements' && Array.isArray(obj.created)) {
+      return obj.created
+        .map((c) => (c && typeof c === 'object' ? (c as Record<string, unknown>).requirementId : null))
+        .filter((id): id is string => typeof id === 'string')
+        .map((id) => ({ kind: 'solution_requirement', id }))
+    }
     if (toolName === 'create_project_ontology' && Array.isArray(obj.workstreamIds)) {
       return obj.workstreamIds.filter((id): id is string => typeof id === 'string').map((id) => ({ kind: 'workstream', id }))
     }

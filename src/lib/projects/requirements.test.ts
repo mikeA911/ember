@@ -11,6 +11,7 @@ const {
   addVerificationMethod,
   withdrawRequirement,
   deleteDraftRequirement,
+  acceptDraftedRequirement,
   nextRequirementCode,
   listRequirements,
   RequirementValidationError,
@@ -53,7 +54,7 @@ describe('createRequirement', () => {
       objectIds: ['obj-call'],
     })
 
-    expect(result).toEqual({ requirementId: 'req-1' })
+    expect(result).toEqual({ requirementId: 'req-1', code: 'NG911-LOC-001' })
     expect(inserts(supabase, 'solution_requirements')[0]).toMatchObject({ project_id: 'p1', code: 'NG911-LOC-001', category: 'interface', created_by: 'user-1' })
     expect(inserts(supabase, 'solution_requirement_sources')[0]).toEqual([
       expect.objectContaining({ requirement_id: 'req-1', kind: 'standard', knowledge_source_id: 'src-nena', locator: 'NENA-STA-010 §4.2' }),
@@ -144,6 +145,37 @@ describe('editing a requirement', () => {
       ],
     })
     await expect(deleteDraftRequirement(ctx, 'req-1')).rejects.toThrow('This requirement has verification results, so it can’t be deleted. Withdraw it instead.')
+  })
+})
+
+describe('Ember drafts (Stage 5)', () => {
+  it('marks a requirement Ember drafted, with the conversation it came from, and saves its methods', async () => {
+    const { supabase, ctx } = makeCtx({
+      solution_requirements: [{ data: { id: 'req-1' }, error: null }],
+      solution_requirement_sources: [{ data: null, error: null }],
+      solution_requirement_scope_links: [{ data: null, error: null }],
+      solution_verification_methods: [{ data: null, error: null }],
+    })
+    await createRequirement(
+      ctx,
+      'p1',
+      { ...fields, sources: [{ kind: 'standard', locator: '§4.2' }] },
+      { createdVia: 'assistant', conversationId: 'conv-1', methods: [{ method: 'test', passCriteria: '20/20', performedBy: 'integrator' }] }
+    )
+    expect(inserts(supabase, 'solution_requirements')[0]).toMatchObject({ created_via: 'assistant', assistant_conversation_id: 'conv-1' })
+    expect(inserts(supabase, 'solution_verification_methods')[0]).toEqual([expect.objectContaining({ requirement_id: 'req-1', pass_criteria: '20/20', created_via: 'assistant' })])
+  })
+
+  it('lets a curator accept only a draft that is awaiting acceptance', async () => {
+    const waiting = makeCtx({ solution_requirements: [{ data: { ...draft, awaiting_acceptance: true }, error: null }, { data: null, error: null }] })
+    await acceptDraftedRequirement(waiting.ctx, 'req-1')
+    expect(waiting.supabase._calls.find((c) => c.table === 'solution_requirements' && c.method === 'update')?.args).toEqual({ awaiting_acceptance: false })
+
+    const accepted = makeCtx({ solution_requirements: [{ data: { ...draft, awaiting_acceptance: false }, error: null }] })
+    await expect(acceptDraftedRequirement(accepted.ctx, 'req-1')).rejects.toThrow('This requirement is not awaiting acceptance')
+
+    const consultant = makeCtx({ solution_requirements: [{ data: { ...draft, awaiting_acceptance: true }, error: null }] }, { projectRole: 'consultant' })
+    await expect(acceptDraftedRequirement(consultant.ctx, 'req-1')).rejects.toThrow(/owner or curator/)
   })
 })
 

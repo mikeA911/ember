@@ -15,6 +15,7 @@ import {
   VERIFICATION_STATUS_LABELS,
   VERIFICATION_STATUS_STYLES,
   REVERIFY_BADGE,
+  EMBER_DRAFT_BADGE,
 } from '@/components/projects/requirement-labels'
 import type { RequirementStatus, RequirementVerificationStatus } from '@/types/database'
 
@@ -71,6 +72,7 @@ export default async function RequirementsPage({
     failed: open.filter((r) => verificationOf(r) === 'failed').length,
     notVerified: open.filter((r) => verificationOf(r) === 'not_verified').length,
     reverify: open.filter((r) => reverification.has(r.id)).length,
+    awaitingAcceptance: open.filter((r) => r.awaiting_acceptance).length,
   }
   const workstreamNames = [...new Set(all.flatMap((r) => r.workstreamNames))].sort()
 
@@ -112,6 +114,7 @@ export default async function RequirementsPage({
           {counts.draft} draft · {counts.baselined} baselined
           {counts.withoutMethod > 0 && <span className="text-amber-800"> · {counts.withoutMethod} without a verification method</span>}
           {counts.vendorClaims > 0 && <span> · {counts.vendorClaims} citing vendor claims to verify</span>}
+          {counts.awaitingAcceptance > 0 && <span className="text-sky-800"> · {counts.awaitingAcceptance} drafted by Ember awaiting acceptance</span>}
         </p>
         <p className="text-sm text-zinc-600">
           Verification: {counts.passed} passed
@@ -171,6 +174,9 @@ export default async function RequirementsPage({
                   <Link href={`/projects/${id}/requirements/${r.id}`} className="font-medium underline">
                     {r.title}
                   </Link>
+                  {r.awaiting_acceptance && (
+                    <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${EMBER_DRAFT_BADGE}`}>Ember draft · awaiting acceptance</span>
+                  )}
                   <p className="text-xs text-zinc-500">
                     Verify from {APPLIES_FROM_LABELS[r.applies_from].toLowerCase()}
                     {r.workstreamNames.length > 0 && ` · ${r.workstreamNames.join(', ')}`}
