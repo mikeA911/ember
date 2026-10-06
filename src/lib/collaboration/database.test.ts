@@ -72,7 +72,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await db.exec(`
     reset role;
-    truncate collaboration_events, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
+    truncate collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
       collaboration_conversations, conversations, project_members, project_workstreams, projects, profiles cascade;
     insert into profiles values ('${host}', 'host@example.test', 'Hana Host', true), ('${guest}', 'guest@example.test', 'Gil Guest', true),
       ('${outsider}', 'out@example.test', 'Olu Outsider', true), ('${third}', 'third@example.test', null, true);
@@ -562,5 +562,101 @@ describe('viewers', () => {
     await as(third)
     expect(await call<Json[]>('collaboration_history')).toEqual([])
     expect((await errorOf(call('collaboration_conversation', conversationId))).code).toBe('42501')
+  })
+})
+
+describe('watching', () => {
+  const viewerTab = id(60), viewerTab2 = id(61)
+  async function watchable() {
+    const { sessionId, snap } = await liveSession()
+    const [conversation] = await call<Json[]>('collaboration_history')
+    await call('collaboration_add_viewer', conversation.id, third)
+    await as(third)
+    return { sessionId, snap, conversationId: conversation.id as string }
+  }
+
+  it('a viewer is told a session is live without watching it, and watches only when they choose', async () => {
+    const { sessionId } = await watchable()
+    const status = await call('collaboration_status', viewerTab, null)
+    expect(status.session).toBeNull()
+    expect(status.watchable).toMatchObject([{ sessionId, hostName: 'Hana Host', guestName: 'Gil Guest', projectName: 'Test Project' }])
+    await as(host)
+    expect((await call('collaboration_status', hostTab, null)).session.watching).toEqual([])
+    await as(third)
+    const watching = await call('collaboration_watch', sessionId, viewerTab)
+    expect(watching).toMatchObject({ status: 'active', thisTabWatching: true, controllerId: host, location: { workstreamId: null } })
+    await as(host)
+    expect((await call('collaboration_status', hostTab, null)).session.watching).toMatchObject([{ userId: third }])
+  })
+
+  it('a watcher follows the controller but has no control at all', async () => {
+    const { sessionId, snap } = await watchable()
+    await call('collaboration_watch', sessionId, viewerTab)
+    await as(host)
+    await call('collaboration_navigate', sessionId, hostTab, snap.controlGeneration, workstream)
+    await as(third)
+    expect((await call('collaboration_watch_status', sessionId, viewerTab)).location).toEqual({ workstreamId: workstream, workstreamName: 'Intake' })
+    for (const [fn, args] of [
+      ['collaboration_request_control', [sessionId, viewerTab, false]],
+      ['collaboration_take_control', [sessionId, viewerTab]],
+      ['collaboration_navigate', [sessionId, viewerTab, snap.controlGeneration, null]],
+      ['collaboration_join', [sessionId, viewerTab, true]],
+      ['collaboration_end', [sessionId]],
+    ] as const) {
+      expect((await errorOf(call(fn, ...args))).code, fn).toBe('42501')
+    }
+  })
+
+  it('watching never touches the pair’s rules: no session of their own, no effect on the deadline', async () => {
+    const { sessionId } = await watchable()
+    await call('collaboration_watch', sessionId, viewerTab)
+    expect((await call('collaboration_status', viewerTab, null)).session).toBeNull()
+    // Watching isn't being in a live session: the watcher can still invite someone.
+    const inv = await call('collaboration_invite', project, host)
+    expect(inv.status).toBe('pending')
+    // Both of the pair inactive past the limit: the session ends however active the watcher is.
+    await asAdmin(`update collaboration_participants set last_active_at = now() - interval '31 minutes'`)
+    await as(third)
+    expect((await call('collaboration_watch_status', sessionId, viewerTab))).toMatchObject({ status: 'ended', endReason: 'inactive' })
+    expect((await call('collaboration_status', viewerTab, null)).watchable).toEqual([])
+    expect((await errorOf(call('collaboration_watch', sessionId, viewerTab))).message).toMatch(/has ended/)
+  })
+
+  it('a later tab takes over watching; stopping is quiet and recorded', async () => {
+    const { sessionId } = await watchable()
+    await call('collaboration_watch', sessionId, viewerTab)
+    await call('collaboration_watch', sessionId, viewerTab2)
+    expect((await call('collaboration_watch_status', sessionId, viewerTab)).thisTabWatching).toBe(false)
+    await call('collaboration_stop_watching', sessionId, viewerTab)
+    expect((await call('collaboration_watch_status', sessionId, viewerTab2)).thisTabWatching).toBe(true)
+    await call('collaboration_stop_watching', sessionId, viewerTab2)
+    await as(host)
+    expect((await call('collaboration_status', hostTab, null)).session.watching).toEqual([])
+  })
+
+  it('only viewers watch; removal or lost access stops it on the next poll', async () => {
+    const { sessionId, conversationId } = await watchable()
+    await as(outsider)
+    expect((await errorOf(call('collaboration_watch', sessionId, id(70)))).code).toBe('42501')
+    await as(third)
+    await call('collaboration_watch', sessionId, viewerTab)
+    await as(host)
+    await call('collaboration_remove_viewer', conversationId, third)
+    expect((await call('collaboration_status', hostTab, null)).session.watching).toEqual([])
+    await as(third)
+    expect((await errorOf(call('collaboration_watch_status', sessionId, viewerTab))).code).toBe('42501')
+  })
+
+  it('a viewer in a live session of their own can’t watch another', async () => {
+    const { sessionId } = await watchable()
+    await as(third)
+    const inv = await call('collaboration_invite', project, outsider).catch(() => null)
+    expect(inv).toBeNull()
+    await asAdmin(`insert into project_members values ('${project}', '${outsider}', 'viewer', 'active')`)
+    const own = await call('collaboration_invite', project, outsider)
+    await as(outsider)
+    await call('collaboration_respond_invitation', own.id, true, id(71))
+    await as(third)
+    expect((await errorOf(call('collaboration_watch', sessionId, viewerTab))).message).toMatch(/in a live session yourself/)
   })
 })

@@ -12634,14 +12634,30 @@ create table if not exists collaboration_viewers (
 
 create index if not exists collaboration_viewers_user_idx on collaboration_viewers(user_id, status);
 
+-- A viewer watching a live session in one tab (they chose Watch): their tab
+-- follows the controller like the guest's, with no controls. Separate from
+-- collaboration_participants so watchers never count for the pair's rules
+-- (one live session per person, deadlines, "everyone left"). A watcher's
+-- poll writes only their own row here -- it never locks the session.
+create table if not exists collaboration_watchers (
+  session_id uuid not null references collaboration_sessions(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  connection_id uuid,
+  last_seen_at timestamptz,
+  started_at timestamptz not null default now(),
+  stopped_at timestamptz,
+  primary key (session_id, user_id)
+);
+
 alter table collaboration_conversations enable row level security;
 alter table collaboration_invitations enable row level security;
 alter table collaboration_sessions enable row level security;
 alter table collaboration_participants enable row level security;
 alter table collaboration_events enable row level security;
 alter table collaboration_viewers enable row level security;
+alter table collaboration_watchers enable row level security;
 revoke all on collaboration_conversations, collaboration_invitations, collaboration_sessions,
-  collaboration_participants, collaboration_events, collaboration_viewers from anon, authenticated;
+  collaboration_participants, collaboration_events, collaboration_viewers, collaboration_watchers from anon, authenticated;
 
 -- Internal helpers -----------------------------------------------------------------
 -- Errors meant for the person use SQLSTATE class EC (EC001 general, EC002
@@ -12917,6 +12933,20 @@ language sql stable security definer set search_path = public as $$
   end;
 $$;
 
+-- Viewers watching a session right now (polled within the presence
+-- window, still viewers with access).
+create or replace function collaboration_watching_json(p_session uuid)
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('userId', w.user_id, 'name', collaboration_display_name(w.user_id)) order by w.started_at), '[]'::jsonb)
+  from collaboration_watchers w
+  join collaboration_sessions s on s.id = w.session_id
+  join collaboration_conversations c on c.id = s.conversation_id
+  where w.session_id = p_session and w.stopped_at is null and w.connection_id is not null
+    and w.last_seen_at > now() - collaboration_presence_window()
+    and collaboration_conversation_role(c, w.user_id) = 'viewer';
+$$;
+
 -- What a participant's browser sees. Never includes connection ids.
 create or replace function collaboration_snapshot(p_session uuid, p_actor uuid, p_connection uuid)
 returns jsonb
@@ -12966,6 +12996,7 @@ begin
     'otherTabActive', me.connection_id is distinct from p_connection and coalesce(collaboration_is_present(me), false),
     'iLeft', me.left_at is not null,
     'viewers', collaboration_viewers_json(s.conversation_id),
+    'watching', collaboration_watching_json(s.id),
     -- Seconds until the session ends on its own, and which rule ends it.
     'endsInSeconds', case when s.status = 'active' then greatest(0, floor(extract(epoch from d.ends_at - now())))::int end,
     'endingReason', case when s.status = 'active' then d.reason end,
@@ -13017,6 +13048,7 @@ revoke all on function collaboration_lock(uuid, uuid, uuid) from public, anon, a
 revoke all on function collaboration_log(collaboration_sessions, uuid, text) from public, anon, authenticated;
 revoke all on function collaboration_snapshot(uuid, uuid, uuid) from public, anon, authenticated;
 revoke all on function collaboration_viewers_json(uuid) from public, anon, authenticated;
+revoke all on function collaboration_watching_json(uuid) from public, anon, authenticated;
 revoke all on function collaboration_conversation_role(collaboration_conversations, uuid) from public, anon, authenticated;
 revoke all on function collaboration_invitation_dto(collaboration_invitations) from public, anon, authenticated;
 
@@ -13178,6 +13210,18 @@ begin
       select jsonb_agg(collaboration_invitation_dto(i) order by i.created_at desc)
       from collaboration_invitations i
       where i.inviter_id = v_actor and i.status = 'pending' and i.expires_at > now()
+    ), '[]'::jsonb),
+    -- Live sessions on conversations the caller views, which they could
+    -- choose to watch. Read-only: nothing here starts any polling.
+    'watchable', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'sessionId', s.id, 'conversationId', c.id, 'projectId', c.project_id,
+        'projectName', (select name from projects where id = c.project_id),
+        'hostName', collaboration_display_name(s.host_id), 'guestName', collaboration_display_name(s.guest_id)
+      ) order by s.started_at desc)
+      from collaboration_sessions s join collaboration_conversations c on c.id = s.conversation_id
+      where s.status = 'active' and collaboration_conversation_role(c, v_actor) = 'viewer'
+        and (select ends_at from collaboration_deadline(s.id)) > now()
     ), '[]'::jsonb)
   );
 end;
@@ -13329,6 +13373,8 @@ begin
   insert into collaboration_participants(session_id, user_id, role, connection_id, last_seen_at, last_active_at, joined_at)
     values (s.id, v_actor, 'guest', p_connection, case when p_connection is null then null else now() end, now(),
             case when p_connection is null then null else now() end);
+  -- Joining a session as one of the pair ends any watching elsewhere.
+  update collaboration_watchers set stopped_at = now(), connection_id = null where user_id = v_actor and stopped_at is null;
   update collaboration_invitations set status = 'accepted', responded_at = now(), conversation_id = c.id, session_id = s.id
     where id = i.id returning * into i;
   insert into collaboration_events(invitation_id, session_id, conversation_id, actor_id, event, control_generation)
@@ -13390,6 +13436,133 @@ begin
     insert into collaboration_events(conversation_id, actor_id, subject_id, event) values (c.id, v_actor, p_user, 'viewer_removed');
   end if;
   return collaboration_viewers_json(c.id);
+end;
+$$;
+
+-- Watching --------------------------------------------------------------------------
+
+-- What a watcher's tab sees: where the session is and who is in it.
+-- Ended or overdue reads as ended (watchers never settle a session).
+create or replace function collaboration_watch_snapshot(p_session uuid, p_actor uuid, p_connection uuid)
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  s collaboration_sessions;
+  h collaboration_participants;
+  g collaboration_participants;
+  w collaboration_watchers;
+  d record;
+  v_workstream_name text;
+begin
+  select * into s from collaboration_sessions where id = p_session;
+  select * into h from collaboration_participants where session_id = s.id and user_id = s.host_id;
+  select * into g from collaboration_participants where session_id = s.id and user_id = s.guest_id;
+  select * into w from collaboration_watchers where session_id = s.id and user_id = p_actor;
+  select * into d from collaboration_deadline(s.id);
+  if s.location_workstream_id is not null then
+    select name into v_workstream_name from project_workstreams where id = s.location_workstream_id;
+  end if;
+  return jsonb_build_object(
+    'id', s.id,
+    'conversationId', s.conversation_id,
+    'projectId', s.project_id,
+    'projectName', (select name from projects where id = s.project_id),
+    'status', case when s.status = 'active' and d.ends_at <= now() then 'ended' else s.status end,
+    'endReason', case when s.status = 'active' and d.ends_at <= now() then d.reason else s.end_reason end,
+    'host', jsonb_build_object('id', s.host_id, 'name', collaboration_display_name(s.host_id),
+      'present', coalesce(collaboration_is_present(h), false), 'away', collaboration_is_away(h, s.started_at), 'left', h.left_at is not null),
+    'guest', jsonb_build_object('id', s.guest_id, 'name', collaboration_display_name(s.guest_id),
+      'present', coalesce(collaboration_is_present(g), false), 'away', collaboration_is_away(g, s.started_at), 'left', g.left_at is not null),
+    'controllerId', s.controller_id,
+    'stateRevision', s.state_revision,
+    'location', jsonb_build_object('workstreamId', s.location_workstream_id, 'workstreamName', v_workstream_name),
+    -- This tab is the caller's watching tab.
+    'thisTabWatching', coalesce(p_connection is not null and w.connection_id = p_connection and w.stopped_at is null, false)
+  );
+end;
+$$;
+revoke all on function collaboration_watch_snapshot(uuid, uuid, uuid) from public, anon, authenticated;
+
+-- A viewer starts watching a live session in this tab (a later tab takes
+-- over from an earlier one). At most 10 people watch at once.
+create or replace function collaboration_watch(p_session uuid, p_connection uuid)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_actor uuid := collaboration_writer();
+  s collaboration_sessions;
+  c collaboration_conversations;
+begin
+  select * into s from collaboration_sessions where id = p_session;
+  if not found or p_connection is null then
+    raise exception 'Collaboration access denied' using errcode = '42501';
+  end if;
+  select * into c from collaboration_conversations where id = s.conversation_id;
+  if collaboration_conversation_role(c, v_actor) is distinct from 'viewer' then
+    raise exception 'Collaboration access denied' using errcode = '42501';
+  end if;
+  if s.status <> 'active' or (select ends_at from collaboration_deadline(s.id)) <= now() then
+    raise exception 'This live session has ended' using errcode = 'EC001';
+  end if;
+  if collaboration_in_live_session(v_actor) then
+    raise exception 'You are in a live session yourself -- leave it to watch this one' using errcode = 'EC001';
+  end if;
+  -- Serializes the watcher limit per session without locking the session row.
+  perform pg_advisory_xact_lock(hashtextextended(s.id::text, 2024));
+  if not exists (select 1 from collaboration_watchers where session_id = s.id and user_id = v_actor and stopped_at is null)
+     and jsonb_array_length(collaboration_watching_json(s.id)) >= 10 then
+    raise exception 'Ten people are already watching this session' using errcode = 'EC001';
+  end if;
+  -- Watching one session at a time.
+  update collaboration_watchers set stopped_at = now(), connection_id = null
+    where user_id = v_actor and session_id <> s.id and stopped_at is null;
+  insert into collaboration_watchers(session_id, user_id, connection_id, last_seen_at)
+    values (s.id, v_actor, p_connection, now())
+    on conflict (session_id, user_id) do update
+      set connection_id = excluded.connection_id, last_seen_at = now(), stopped_at = null,
+          started_at = case when collaboration_watchers.stopped_at is null then collaboration_watchers.started_at else now() end;
+  insert into collaboration_events(session_id, conversation_id, actor_id, event) values (s.id, c.id, v_actor, 'watching_started');
+  return collaboration_watch_snapshot(s.id, v_actor, p_connection);
+end;
+$$;
+
+-- A watcher's poll: records this tab's presence and returns where the
+-- session is. Rechecks that the caller is still a viewer with access.
+create or replace function collaboration_watch_status(p_session uuid, p_connection uuid)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_actor uuid := collaboration_writer();
+  s collaboration_sessions;
+  c collaboration_conversations;
+begin
+  select * into s from collaboration_sessions where id = p_session;
+  if not found then
+    raise exception 'Collaboration access denied' using errcode = '42501';
+  end if;
+  select * into c from collaboration_conversations where id = s.conversation_id;
+  if collaboration_conversation_role(c, v_actor) is distinct from 'viewer' then
+    update collaboration_watchers set stopped_at = now(), connection_id = null where session_id = s.id and user_id = v_actor and stopped_at is null;
+    raise exception 'Collaboration access denied' using errcode = '42501';
+  end if;
+  update collaboration_watchers set last_seen_at = now()
+    where session_id = s.id and user_id = v_actor and connection_id = p_connection and stopped_at is null;
+  return collaboration_watch_snapshot(s.id, v_actor, p_connection);
+end;
+$$;
+
+-- Stop watching (the button, or the tab closing). Quiet if not watching.
+create or replace function collaboration_stop_watching(p_session uuid, p_connection uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_actor uuid := collaboration_writer();
+begin
+  update collaboration_watchers set stopped_at = now(), connection_id = null
+    where session_id = p_session and user_id = v_actor and connection_id = p_connection and stopped_at is null;
+  if found then
+    insert into collaboration_events(session_id, actor_id, event) values (p_session, v_actor, 'watching_stopped');
+  end if;
 end;
 $$;
 
@@ -13666,6 +13839,9 @@ revoke all on function collaboration_reclaim_control(uuid, uuid) from public, an
 revoke all on function collaboration_leave(uuid) from public, anon;
 revoke all on function collaboration_end(uuid) from public, anon;
 revoke all on function collaboration_add_viewer(uuid, uuid) from public, anon;
+revoke all on function collaboration_watch(uuid, uuid) from public, anon;
+revoke all on function collaboration_watch_status(uuid, uuid) from public, anon;
+revoke all on function collaboration_stop_watching(uuid, uuid) from public, anon;
 revoke all on function collaboration_remove_viewer(uuid, uuid) from public, anon;
 grant execute on function collaboration_candidates(uuid) to authenticated;
 grant execute on function collaboration_history() to authenticated;
@@ -13684,6 +13860,9 @@ grant execute on function collaboration_reclaim_control(uuid, uuid) to authentic
 grant execute on function collaboration_leave(uuid) to authenticated;
 grant execute on function collaboration_end(uuid) to authenticated;
 grant execute on function collaboration_add_viewer(uuid, uuid) to authenticated;
+grant execute on function collaboration_watch(uuid, uuid) to authenticated;
+grant execute on function collaboration_watch_status(uuid, uuid) to authenticated;
+grant execute on function collaboration_stop_watching(uuid, uuid) to authenticated;
 grant execute on function collaboration_remove_viewer(uuid, uuid) to authenticated;
 
 -- External MCP read-only guarantee (20261005100001_external_mcp_access.sql),
