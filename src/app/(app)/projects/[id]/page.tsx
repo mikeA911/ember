@@ -19,6 +19,7 @@ import { listKnowledgeGaps, listKnowledgeGapOccurrences } from '@/lib/projects/k
 import { KnowledgeGapsSection } from '@/components/projects/KnowledgeGapsSection'
 import { RequirementsSummarySection } from '@/components/projects/RequirementsSummarySection'
 import { listVerificationStatuses } from '@/lib/projects/verification'
+import { listReverificationDue } from '@/lib/projects/reverification'
 import { KnowledgeBaseAttachManager, KnowledgeBaseDetachButton, PendingReviewBadge } from '@/components/projects/KnowledgeBaseAttachManager'
 import { getOrganizationExplorer } from '@/lib/projects/explorer'
 import { OrganizationExplorer } from '@/components/projects/OrganizationExplorer'
@@ -253,11 +254,13 @@ export default async function ProjectPage({
     // Solution conformance, Stage 1 -- counts for the Requirements section;
     // hidden if the register can't be read (e.g. migration not applied).
     (async () => {
-      const [{ data: reqs, error }, { data: methods }, verification] = await Promise.all([
+      const [{ data: reqs, error }, { data: methods }, verification, reverification] = await Promise.all([
         supabase.from('solution_requirements').select('id, status').eq('project_id', id),
         supabase.from('solution_verification_methods').select('requirement_id').eq('project_id', id),
         // Stage 2 -- no verification counts if the records can't be read.
         listVerificationStatuses(supabase, id).catch(() => new Map<string, RequirementVerificationStatus>()),
+        // Stage 4 -- no re-verification count if it can't be read.
+        listReverificationDue(supabase, id).catch(() => new Map()),
       ])
       if (error) {
         console.error('Requirements unavailable', error)
@@ -271,6 +274,7 @@ export default async function ProjectPage({
         withoutMethod: open.filter((r) => !withMethod.has(r.id)).length,
         passed: open.filter((r) => verification.get(r.id) === 'passed').length,
         failed: open.filter((r) => verification.get(r.id) === 'failed').length,
+        reverify: open.filter((r) => reverification.has(r.id)).length,
       }
     })(),
   ])

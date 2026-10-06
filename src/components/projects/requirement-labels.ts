@@ -1,5 +1,6 @@
 import type {
   ArtifactType,
+  ReverificationEventKind,
   BaselineStatus,
   ConformanceApprovalType,
   ConformanceDecisionType,
@@ -200,5 +201,24 @@ export const BASELINE_REQUIREMENT_STATUS_STYLES: Record<RequirementVerificationS
   ...VERIFICATION_STATUS_STYLES,
   waived: 'bg-purple-100 text-purple-800',
 }
+
+// Stage 4: re-verification.
+export const CHANGE_KIND_LABELS: Record<ReverificationEventKind, string> = {
+  component_change: 'Component change',
+  source_revision: 'New source version',
+  threshold_breach: 'Outside threshold',
+  other: 'Other change',
+}
+
+export const LINK_STATE_LABELS = { open: 'Needs re-verification', reverified: 'Re-verified', resolved: 'Resolved', closed: 'Requirement closed' } as const
+
+export const LINK_STATE_STYLES = {
+  open: 'bg-orange-100 text-orange-800',
+  reverified: 'bg-green-100 text-green-800',
+  resolved: 'bg-zinc-100 text-zinc-600',
+  closed: 'bg-zinc-100 text-zinc-500',
+} as const
+
+export const REVERIFY_BADGE = 'bg-orange-100 text-orange-800'
 
 export const options = <K extends string>(labels: Record<K, string>) => Object.entries(labels) as [K, string][]

@@ -889,6 +889,8 @@ export interface SolutionRequirement {
   applies_from: RequirementAppliesFrom
   status: RequirementStatus
   superseded_by: string | null
+  // Stage 4: re-verify at least this often once baselined; null = no schedule.
+  review_interval_months: number | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -1060,6 +1062,36 @@ export interface SolutionConformanceDecisionApproval {
   verdict: 'approve' | 'reject'
   note: string | null
   conditions: string | null
+  created_at: string
+}
+
+// Solution conformance, Stage 4 (20261021100001_solution_reverification.sql).
+export type ReverificationEventKind = 'component_change' | 'source_revision' | 'threshold_breach' | 'other'
+
+export interface SolutionReverificationEvent {
+  id: string
+  project_id: string
+  kind: ReverificationEventKind
+  summary: string
+  detail: string | null
+  change_reference: string | null
+  project_object_id: string | null
+  workstream_id: string | null
+  knowledge_source_id: string | null
+  document_version_id: string | null
+  record_id: string | null
+  recorded_by: string | null
+  created_at: string
+}
+
+export interface SolutionReverificationEventRequirement {
+  id: string
+  event_id: string
+  project_id: string
+  requirement_id: string
+  resolved_by: string | null
+  resolved_at: string | null
+  resolution_note: string | null
   created_at: string
 }
 
@@ -3474,7 +3506,7 @@ interface DatabaseDefinition {
         Row: SolutionRequirement
         Insert: Pick<SolutionRequirement, 'project_id' | 'code' | 'title' | 'statement' | 'category' | 'created_by'> &
           Partial<Pick<SolutionRequirement, 'rationale' | 'priority' | 'applies_from'>>
-        Update: Partial<Pick<SolutionRequirement, 'code' | 'title' | 'statement' | 'rationale' | 'category' | 'priority' | 'applies_from' | 'status' | 'superseded_by'>>
+        Update: Partial<Pick<SolutionRequirement, 'code' | 'title' | 'statement' | 'rationale' | 'category' | 'priority' | 'applies_from' | 'status' | 'superseded_by' | 'review_interval_months'>>
         Relationships: []
       }
       solution_requirement_sources: {
@@ -3516,6 +3548,8 @@ interface DatabaseDefinition {
       solution_waivers: { Row: SolutionWaiver; Insert: never; Update: never; Relationships: [] }
       solution_conformance_decisions: { Row: SolutionConformanceDecision; Insert: never; Update: never; Relationships: [] }
       solution_conformance_decision_approvals: { Row: SolutionConformanceDecisionApproval; Insert: never; Update: never; Relationships: [] }
+      solution_reverification_events: { Row: SolutionReverificationEvent; Insert: never; Update: never; Relationships: [] }
+      solution_reverification_event_requirements: { Row: SolutionReverificationEventRequirement; Insert: never; Update: never; Relationships: [] }
       project_knowledge_gaps: {
         Row: ProjectKnowledgeGap
         Insert: ProjectKnowledgeGapInsert
@@ -3656,6 +3690,24 @@ interface DatabaseDefinition {
         Returns: { gap_id: string; occurrence_id: string; is_new: boolean; occurrence_count: number }[]
       }
       withdraw_knowledge_gap_occurrence: { Args: { p_occurrence_id: string }; Returns: void }
+      project_reverification_due: {
+        Args: { p_project_id: string }
+        Returns: { requirement_id: string; open_event_ids: string[]; review_due: boolean }[]
+      }
+      record_solution_reverification_event: {
+        Args: {
+          p_project_id: string
+          p_kind: Extract<ReverificationEventKind, 'component_change' | 'other'>
+          p_summary: string
+          p_requirement_ids: string[]
+          p_change_reference?: string | null
+          p_detail?: string | null
+          p_project_object_id?: string | null
+          p_workstream_id?: string | null
+        }
+        Returns: string
+      }
+      resolve_solution_reverification: { Args: { p_link_id: string; p_note: string }; Returns: void }
       activate_solution_baseline: { Args: { p_baseline_id: string }; Returns: void }
       new_solution_baseline_version: { Args: { p_baseline_id: string }; Returns: string }
       request_solution_waiver: {

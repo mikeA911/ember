@@ -373,9 +373,22 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Navigation:** Requirements → **Baselines and decisions** → **New baseline** (curators) → choose requirements → **Activate**. On an active baseline: **+ Request a waiver or deviation**, **+ Request a decision**, **Create a new version**; authority holders see **Approve** / **Reject**. On a baselined requirement: **Supersede with a new version**.
 - **Outcome:** A frozen, versioned baseline with each requirement's live status (passed, failed, conditional, waived, not yet verified); waivers with rationale and approver; decisions with each approver's verdict, notes and conditions, and the roll-up they rested on.
 - **Ember guidance:** Explain baselines, waivers and decisions and link to them. Ember cannot activate baselines, approve waivers or decisions, or mark requirements as passed. A decision is approved only by people holding the assigned authority; suggest the Project owner assign it on the governance page if nobody holds it. Once decided, a decision's roll-up does not change even if later results do.
-- **Boundaries:** Active baselines can't be edited — create a new version. Decided waivers and decisions can't change. No self-approval by the requester, or by anyone who recorded the evidence, unless the policy and the approver's assignment both allow it. Re-verification after changes is not yet available.
+- **Boundaries:** Active baselines can't be edited — create a new version. Decided waivers and decisions can't change. No self-approval by the requester, or by anyone who recorded the evidence, unless the policy and the approver's assignment both allow it. Re-verification after changes: see **Re-verify requirements after a change**.
 - **Exposure:** Read-only candidate for MCP; every write stays a UI action.
 - **Verification:** Code verified 2026-10-06 (solution conformance, Stage 3); SQL behaviour checked against a local Postgres with stub tables.
+
+### Re-verify requirements after a change
+
+- **Intent:** Know which requirements no longer hold after a change, re-verify them, and keep production changes from being approved until they are.
+- **Users and authority:** Every Project member reads. Owners, curators and consultants (and platform admins) record changes. Owners and curators resolve a flag without re-verifying (with a reason) and set review schedules.
+- **Prerequisites:** Requirements with verification methods; for preselection, requirements scoped to Project objects (components) or workstreams.
+- **Start:** `/projects/[id]/requirements/changes`, or **Changes** on the requirements register.
+- **Navigation:** Requirements → **Changes** → **Record a change** (kind, what changed, versions, component or workstream, confirm the affected requirements). On a requirement: the *Re-verification due* panel → record new results under each method, or **Resolve without re-verifying**; **Set a review schedule**.
+- **Outcome:** Affected requirements show *Re-verify* until each method has a new result (not *not run*) or a curator resolves the flag. New versions of cited sources and operational measures recorded as failing are flagged automatically; review schedules flag requirements when they are overdue.
+- **Ember guidance:** Explain why a requirement needs re-verification and link to it. Ember cannot record changes, results or resolutions. A production-change decision can't be approved while anything in its baseline needs re-verification. Earlier results and decisions remain as they were — they describe the solution as it was then.
+- **Boundaries:** Only open requirements of the Project can be flagged. Resolving needs a reason. Nothing about past results, baselines or decisions changes.
+- **Exposure:** Read-only candidate for MCP; every write stays a UI action.
+- **Verification:** Code verified 2026-10-06 (solution conformance, Stage 4); SQL behaviour checked against a local Postgres with stub tables.
 
 ### See or assess Ember readiness for a Project
 
@@ -501,7 +514,7 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **What evals measure:** Evals measure Ember and Agents (whether answers retrieve the right evidence and stay grounded), not a Project's delivered solution. Ember should not describe an eval score as evidence that a client system conforms to a standard.
 - **Exposure:** Results are candidates for admin read access only; running evaluations stays a UI action.
 - **Verification:** Code verified 2026-10-05 (Ember Readiness, Stage 1). Detailed workflows remain to be catalogued.
-- **Planned, not yet available:** `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` adds a separate **Solution evaluation** area: the requirements register, verification records, baselines and conformance decisions are live (see **Record and read a Project's requirements**, **Record verification results for a requirement** and **Baseline requirements and make conformance decisions**); re-verification triggers are not yet available. Until these ship, Ember must not tell users these features exist or direct them to them. If a user says Ember got something wrong or could not answer from Project knowledge, point them to **Report a problem** under the answer (see **Report an Ember failure** below).
+- **Planned, not yet available:** `docs/dev-request-solution-conformance-and-acceptance-evaluation.md` adds a separate **Solution evaluation** area: the requirements register, verification records, baselines and conformance decisions are live (see **Record and read a Project's requirements**, **Record verification results for a requirement** and **Baseline requirements and make conformance decisions**); re-verification is live too (see **Re-verify requirements after a change**). Ember tools for drafting requirements and answering traceability questions are not yet available; until they ship, Ember must not offer to draft requirements or claim it can. If a user says Ember got something wrong or could not answer from Project knowledge, point them to **Report a problem** under the answer (see **Report an Ember failure** below).
 
 ### Graphs
 

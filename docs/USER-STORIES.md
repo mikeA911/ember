@@ -278,6 +278,10 @@ As a Viewer, I want to see the Project's baselines, where each requirement stand
 As a member holding an approval authority in the Project (for example a customer representative with customer-acceptance authority), I want to approve or reject a conformance decision or waiver that needs my authority, with a note and conditions, so that acceptance is decided by the people accountable for it.
 - Only active, in-date authority counts; platform admin status alone does not. I can't approve what I requested, or a decision over evidence I recorded, unless the Project's policy and my assignment both allow self-approval. A rejection needs a reason.
 
+**VWR-SOL-05 — See what needs re-verification**
+As a Viewer, I want to see which requirements need re-verification and why — a component change, a new version of a cited source, an operational measure outside its threshold, or a scheduled review — so that I know where acceptance no longer holds.
+- *Changes* at `/projects/[id]/requirements/changes`; a *Re-verify* badge on the register, baseline pages and requirement pages. Past results and decisions are unchanged.
+
 ### PUB — Publishing, blog and trending
 
 **VWR-PUB-01 — Read the blog and public knowledge**
@@ -395,6 +399,11 @@ As a Consultant, I want to correct a result by recording a new one that supersed
 **CON-SOL-03 — Request a waiver or deviation**
 As a Consultant, I want to request a waiver (accept a requirement as not met) or deviation (accept it met differently) for a requirement in an active baseline, with a rationale and any conditions, naming the authority that must approve it, so that known gaps are accepted explicitly rather than ignored.
 - One pending or approved waiver per requirement per baseline; I can withdraw mine while pending.
+
+**CON-SOL-04 — Record a change that needs re-verification**
+As a Consultant, I want to record a component, firmware or configuration change (with versions) and the requirements it affects, so that they are re-verified before anyone relies on the earlier results.
+- Choosing a component or workstream preselects the requirements scoped to it (including sub-components); I confirm the list. A requirement stays due until each of its methods has a new result.
+- New versions of cited sources and operational measures recorded as failing are flagged automatically.
 
 ### AGT — Graphs, agents and agent registry
 
@@ -650,6 +659,10 @@ As a Project Curator, I want to replace a baselined requirement with a new draft
 **CUR-SOL-06 — Request a conformance decision** *(owner)*
 As a Project Curator, I want to request a decision (presales claim validation, factory/site/customer acceptance, go-live, post-change re-verification) over an active baseline, naming the approval authority it needs, so that the right people approve it with the verification roll-up in front of them.
 - The approvals needed and the self-approval rule come from the Project's approval policy; holders of the authority are notified.
+
+**CUR-SOL-07 — Manage re-verification** *(owner)*
+As a Project Curator, I want to resolve a re-verification flag with a reason when no re-test is needed, and set how often a requirement must be re-verified, so that flags reflect real risk.
+- A production-change decision can't be approved while any requirement in its baseline needs re-verification.
 
 ### AGT — Graphs, agents and agent registry
 

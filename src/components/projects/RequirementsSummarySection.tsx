@@ -8,7 +8,7 @@ export function RequirementsSummarySection({
   canCurate,
 }: {
   projectId: string
-  counts: { draft: number; baselined: number; withoutMethod: number; passed: number; failed: number }
+  counts: { draft: number; baselined: number; withoutMethod: number; passed: number; failed: number; reverify: number }
   canCurate: boolean
 }) {
   const total = counts.draft + counts.baselined
@@ -25,6 +25,7 @@ export function RequirementsSummarySection({
             {' · '}
             {counts.passed} passed verification
             {counts.failed > 0 && <span className="text-red-700"> · {counts.failed} failed</span>}
+            {counts.reverify > 0 && <span className="text-orange-800"> · {counts.reverify} need re-verification</span>}
           </>
         )}
       </p>

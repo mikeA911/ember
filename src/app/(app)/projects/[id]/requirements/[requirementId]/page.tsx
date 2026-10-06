@@ -3,12 +3,15 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getRequirement, getRequirementOptions, nextRevisionCode } from '@/lib/projects/requirements'
 import { listBaselinesForRequirement } from '@/lib/projects/baselines'
+import { listReverificationDue, listReverificationEvents } from '@/lib/projects/reverification'
 import { loadRequirementsPageContext } from '@/lib/projects/requirements-page'
 import { currentResultByMethod, listEvidenceArtifactOptions, listVerificationRecords, rollUpVerification } from '@/lib/projects/verification'
 import {
   APPLIES_FROM_LABELS,
   BASELINE_STATUS_LABELS,
   CATEGORY_LABELS,
+  CHANGE_KIND_LABELS,
+  REVERIFY_BADGE,
   ENVIRONMENT_LABELS,
   METHOD_LABELS,
   PERFORMER_LABELS,
@@ -32,6 +35,7 @@ import {
 } from '@/components/projects/RequirementForms'
 import { VerificationRecordForm } from '@/components/projects/VerificationRecordForm'
 import { SupersedeRequirementButton } from '@/components/projects/BaselineForms'
+import { ResolveReverificationForm, ReviewIntervalForm } from '@/components/projects/ReverificationForms'
 import type { VerificationEnvironment, VerificationResult } from '@/types/database'
 
 export default async function RequirementPage({ params }: { params: Promise<{ id: string; requirementId: string }> }) {
@@ -52,7 +56,7 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
   const canEdit = canCurate && isDraft
   const isOpen = r.status === 'draft' || r.status === 'baselined'
   const canRecordHere = canRecord && isOpen && methods.length > 0
-  const [picker, records, artifacts, baselines] = await Promise.all([
+  const [picker, records, artifacts, baselines, reverification] = await Promise.all([
     canEdit ? getRequirementOptions(supabase, id) : Promise.resolve(null),
     // Stage 2; an empty history if the records can't be read (e.g. the
     // migration isn't applied yet).
@@ -63,6 +67,12 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
     canRecordHere ? listEvidenceArtifactOptions(supabase, id, workstreams.map((w) => w.id)) : Promise.resolve([]),
     // Stage 3; none if baselines can't be read (e.g. migration not applied).
     listBaselinesForRequirement(supabase, requirementId).catch(() => []),
+    // Stage 4; nothing due if it can't be read (e.g. migration not applied).
+    (async () => {
+      const due = await listReverificationDue(supabase, id)
+      const events = await listReverificationEvents(supabase, id, { requirementId, due })
+      return { due: due.get(requirementId) ?? null, openEvents: events.filter((e) => e.requirements.some((l) => l.state === 'open')) }
+    })().catch(() => ({ due: null, openEvents: [] })),
   ])
   const current = currentResultByMethod(records)
   const verification = rollUpVerification(
@@ -102,6 +112,7 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${VERIFICATION_STATUS_STYLES[verification]}`}>
             {VERIFICATION_STATUS_LABELS[verification]}
           </span>
+          {reverification.due && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${REVERIFY_BADGE}`}>Re-verification due</span>}
         </div>
         <h1 className="mt-1 text-xl font-semibold">{r.title}</h1>
         <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">{r.statement}</p>
@@ -154,6 +165,49 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
           </p>
         )}
       </div>
+
+      {(reverification.due || (isOpen && (canCurate || r.review_interval_months))) && (
+        <section className="flex flex-col gap-2 rounded border border-orange-200 bg-orange-50 p-3 text-sm">
+          {reverification.due && (
+            <>
+              <p className="font-medium text-orange-900">Re-verification due</p>
+              <p className="text-xs text-orange-900">
+                Record a new result for each verification method below. Past results and decisions stay as they were.
+              </p>
+              <ul className="flex flex-col gap-1">
+                {reverification.openEvents.map((e) => {
+                  const link = e.requirements.find((l) => l.requirementId === r.id)
+                  return (
+                    <li key={e.id} className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded bg-white px-2 py-0.5 font-medium">{CHANGE_KIND_LABELS[e.kind]}</span>
+                      <span>
+                        {e.summary}
+                        {e.change_reference && ` · ${e.change_reference}`} · {new Date(e.created_at).toLocaleDateString()}
+                      </span>
+                      {canCurate && link && <ResolveReverificationForm linkId={link.linkId} />}
+                    </li>
+                  )
+                })}
+                {reverification.due.reviewDue && (
+                  <li className="text-xs">
+                    <span className="rounded bg-white px-2 py-0.5 font-medium">Scheduled review</span> More than {r.review_interval_months} months since it was
+                    last verified.
+                  </li>
+                )}
+              </ul>
+            </>
+          )}
+          {isOpen && (canCurate || r.review_interval_months) && (
+            <p className="flex flex-wrap items-center gap-2 text-xs text-zinc-700">
+              {r.review_interval_months ? `Re-verify every ${r.review_interval_months} months once baselined.` : 'No review schedule.'}
+              {canCurate && <ReviewIntervalForm requirementId={r.id} initial={r.review_interval_months} />}
+            </p>
+          )}
+          <Link href={`/projects/${id}/requirements/changes`} className="self-start text-xs underline">
+            All changes
+          </Link>
+        </section>
+      )}
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Where it comes from</h2>

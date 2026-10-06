@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getBaseline, listBaselineCandidates, listMyAuthorities, type BaselineRollUp } from '@/lib/projects/baselines'
 import { loadRequirementsPageContext } from '@/lib/projects/requirements-page'
+import { listReverificationDue, type ReverificationDue } from '@/lib/projects/reverification'
 import {
   APPLIES_FROM_LABELS,
   BASELINE_REQUIREMENT_STATUS_LABELS,
@@ -13,6 +14,7 @@ import {
   CONFORMANCE_STATUS_LABELS,
   CONFORMANCE_STATUS_STYLES,
   DECISION_TYPE_LABELS,
+  REVERIFY_BADGE,
   STATUS_LABELS,
   WAIVER_KIND_LABELS,
 } from '@/components/projects/requirement-labels'
@@ -45,10 +47,12 @@ export default async function BaselinePage({ params }: { params: Promise<{ id: s
   const { baseline: b, versions, requirements, rollUp, waivers, decisions } = detail
   const isDraft = b.status === 'draft'
   const isActive = b.status === 'active'
-  const [candidates, authorities] = await Promise.all([
+  const [candidates, authorities, reverification] = await Promise.all([
     canCurate && isDraft ? listBaselineCandidates(supabase, id) : Promise.resolve([]),
     listMyAuthorities(supabase, id, user.id),
+    listReverificationDue(supabase, id).catch(() => new Map<string, ReverificationDue>()),
   ])
+  const dueCount = requirements.filter((r) => reverification.has(r.id)).length
 
   return (
     <div className="flex max-w-4xl flex-col gap-6">
@@ -100,6 +104,15 @@ export default async function BaselinePage({ params }: { params: Promise<{ id: s
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Requirements and where they stand</h2>
         <RollUpSummary rollUp={rollUp} />
+        {dueCount > 0 && (
+          <p className="text-sm text-orange-800">
+            {dueCount} requirement{dueCount === 1 ? '' : 's'} need{dueCount === 1 ? 's' : ''} re-verification. A production-change decision over this baseline
+            can&rsquo;t be approved until they are re-verified or resolved.{' '}
+            <Link href={`/projects/${id}/requirements/changes`} className="underline">
+              See changes
+            </Link>
+          </p>
+        )}
         <div className="overflow-x-auto rounded border border-zinc-200 bg-white">
           <table className="w-full min-w-[36rem] text-left text-sm">
             <thead className="bg-zinc-50 text-xs text-zinc-500">
@@ -130,6 +143,7 @@ export default async function BaselinePage({ params }: { params: Promise<{ id: s
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${BASELINE_REQUIREMENT_STATUS_STYLES[status]}`}>
                         {BASELINE_REQUIREMENT_STATUS_LABELS[status]}
                       </span>
+                      {reverification.has(r.id) && <span className={`ml-1 rounded-full px-2 py-0.5 text-xs font-medium ${REVERIFY_BADGE}`}>Re-verify</span>}
                     </td>
                   </tr>
                 )
