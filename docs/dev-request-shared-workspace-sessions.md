@@ -33,7 +33,7 @@ Shared editing on the Project and Workstream pages, for the fields in the invent
 - **Checklist.** Each tick saves at once as "set item *n* to done/not done", guarded by the item's label (a reordered or renamed list is refused), so retries never flip an item back.
 - **Retries and races.** Saves carry a request id; the same request twice saves once. A save and a handover can't interleave: one commits first and the other is refused, and a refused save leaves the draft open for the next controller.
 - **Ending.** Ending the session (by the host or on its own) keeps open drafts marked abandoned and never saves them; End warns which drafts are unsaved. Leaving with drafts leaves them for the other person.
-- **Data.** `20261024100001_collaboration_shared_editing.sql` -- additive, re-runnable, never deletes, alters no existing table. Not yet applied to the live backend.
+- **Data.** `20261024100001_collaboration_shared_editing.sql` -- additive, re-runnable, never deletes, alters no existing table. Applied to the live backend on 6 October 2026 (objects and grants verified).
 
 ### Requirements and design decisions
 
