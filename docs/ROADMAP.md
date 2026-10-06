@@ -1,7 +1,22 @@
 # KB Sandbox Roadmap
 
 **Status:** Living internal roadmap; the public About page no longer mirrors it verbatim (see note below)  
-**Last updated:** 5 October 2026
+**Last updated:** 6 October 2026
+
+## Shared workspace collaboration — development in progress
+
+Tracked on `codex/shared-workspace-phase0`; requirements and acceptance gates are in [the collaboration plan](dev-request-shared-workspace-sessions.md). This work contributes to M5 Apply (shared Project/Workstream work), M7 Govern (authorization and audit) and M8 Communicate (shared conversations and later voice), without changing the milestone names or declaring those milestones delivered.
+
+| Phase | Status on this branch | Remaining gate |
+|---|---|---|
+| 0: feasibility and isolation | Source/UI assessment and local SQL proof available; live proof incomplete | Realtime `MissingPartition`, deployed-schema compatibility, two-user concurrency/revocation and remote-network measurements |
+| 1: invitations and session foundation | Development code: feature flag, shared list via Ember History, explicit acceptance, presence, control handover, shared Project/Workstream location, retained conversation shell and audit events | Separate-browser end-to-end validation, production transport, unified history and natural-language invitation integration |
+| 2: shared editing | Next | Acknowledged drafts, role-checked saves, operation deduplication and conflicts with ordinary writers |
+| 3: shared Ember AI | Next | Attributed messages, durable ordered turns, common evidence and revocation-safe history/summary handling |
+| 4: remote pilot/release | Next, gated by prior proofs | Deployment review, monitoring, target-browser/network trials and recovery procedures |
+| 5: voice/transcription | Future; separately estimated | Media/TURN spike, provider policy, consent, transcript access and retention |
+
+Current code is disabled by default and not deployed. Do not advertise shared editing, shared AI or voice as available. The earlier 9–14 engineering-week estimate remains provisional; it has not been converted into a delivery commitment. All live testing must preserve existing data and retain additive fixtures under the user's no-deletion constraint.
 
 ## How to read this roadmap
 

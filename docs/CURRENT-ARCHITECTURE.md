@@ -1,10 +1,23 @@
 # Ember (KB Sandbox) — Current Architecture
 
-Living documentation of what is actually implemented. **Last updated: 5 October 2026.** The product is presented to users as **Ember**; the codebase, database and many docs still use the original name **KB Sandbox**, and both names refer to the same application.
+Living documentation of what is actually implemented. **Last updated: 6 October 2026.** The product is presented to users as **Ember**; the codebase, database and many docs still use the original name **KB Sandbox**, and both names refer to the same application.
 
 This file describes reality, not intent. `docs/ROADMAP.md` owns the public M1–M10 milestone names, order and status; this file explains how the delivered parts work. Where the two disagree, treat later code and migrations as authoritative and update whichever document is stale.
 
 ## Milestones
+
+### Shared workspace development branch — not deployed
+
+Development has started on `codex/shared-workspace-phase0`. This is an initial Phase 1 foundation, not a completed collaboration release. The [requirements and phase plan](dev-request-shared-workspace-sessions.md) and [evidence log](design-notes/shared-workspace-phase-0-findings.md) track the remaining gates.
+
+- `NEXT_PUBLIC_EMBER_COLLABORATION=true` exposes `/collaboration` and **Shared conversations · Collaborate** in Ember's History menu. It defaults off and needs a rebuild when changed. An absent migration produces an unavailable message rather than falling back to personal chat.
+- `shared_conversations` retains a fixed participant pair and invitation/acceptance state; `workspace_sessions` stores successive live sessions. A partial unique index permits at most one active session per conversation. `workspace_session_events` records actor-attributed lifecycle/control/location transitions without drafts, transcripts or connection tokens.
+- `collaboration_command` is the sole authenticated database boundary. Tables deny direct authenticated access. The security-definer RPC pins an empty search path, uses `auth.uid()`, checks both active profiles and actual Project memberships without the usual platform-admin bypass, and locks the conversation/session before transitions. The Next Server Action uses the caller's Supabase client, validates an allowlisted command shape and sanitizes unexpected database errors.
+- Each browser mount generates its own connection ID. A 20-second presence lease, live-session ID, monotonic control generation and revision prevent stale/second-tab transitions. Request, grant, decline and host reclaim are explicit. Ending a session retains its conversation and metadata. Both users must be connected for shared navigation; the server validates Workstream membership in the bound Project.
+- Transport is currently serialized three-second polling of authorized snapshots, with no Realtime content publication. It is a development fallback while `MissingPartition` remains unresolved; it does not meet the proposed sub-second synchronization target. The dedicated shared view displays only Project/Workstream names and shared-location state, not the ordinary role-dependent page or personal notebooks.
+- Not implemented yet: synchronized editable fields, domain saves, shared messages/AI execution, common-evidence retrieval, a merged personal/shared history DTO, natural-language invitation tooling, production Realtime transport or voice. The History link currently opens a separate shared list.
+- The additive migration is checked in but has not been applied to the shared live backend. PGlite tests execute its SQL against an isolated in-memory base schema; they do not establish compatibility with all deployed migrations or real multi-connection locking/browser behavior. Next gates: deployed-schema compatibility review, two-account browser tests, revocation/latency verification and transport readiness.
+
 
 The public roadmap has ten milestones. Internal labels (M3.5, M5A, M5F and so on) are implementation increments placed under the public milestone whose outcome they advance; they do not renumber it.
 

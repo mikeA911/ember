@@ -58,6 +58,25 @@ Do not copy the entire workflow into every release note. Update the workflow her
 
 ## Navigation map
 
+### Collaborate in a shared Ember workspace — development preview only
+
+| Field | Current behavior |
+|---|---|
+| Intent | Two existing Project members work together from their own browsers and request control of a shared Project/Workstream location |
+| Users and authority | Two active accounts with actual active membership in the same Project; platform admin status alone does not qualify |
+| Prerequisites | Deployment has the collaboration migration and `NEXT_PUBLIC_EMBER_COLLABORATION=true`; disabled by default and not yet deployed/verified for production |
+| Start | Ember → History → **Shared conversations · Collaborate**, or `/collaboration` on an enabled deployment |
+| Navigation | Choose a Project and colleague → Send invitation. The colleague opens their shared list → invitation → Accept invitation. Both select Join / reconnect. The controller selects the shared location; the observer requests control and the controller grants or declines. The host can reclaim control or end the session |
+| Outcome | Both see the same location within the dedicated shared view. The accepted conversation shell remains in both shared lists after the live session ends and can start a new live session |
+| Ember guidance | Describe this as an opt-in development preview. If the History link is absent, explain it is unavailable on that deployment; do not imply that visiting the route enables it. Ember may explain the steps, but no invitation/chat tool is implemented yet |
+| Boundaries | Location names and session controls only in this increment. Shared form editing, shared AI messages, unified personal/shared history and voice are not available. Personal chat is never copied. Both users must connect before navigation/control handover. A dropped connection pauses shared actions; reconnect explicitly. Another browser tab on the same account cannot silently take over |
+| Exposure | Human UI only. No collaboration MCP mutation tool. Do not claim that an ordinary personal chat can already be shared or invite someone automatically |
+| Verification | 6 October 2026: branch implementation and isolated SQL tests; two-browser and deployed migration verification outstanding. Three-second polling is temporary and does not establish the planned latency target |
+
+Ember's `get_navigation_guide` reads this committed catalogue directly; this entry becomes part of its guidance with the code deployment, without copying it into `wiki_articles`.
+
+### Existing navigation map
+
 | Area | Stable route | Primary intent | Visibility |
 |---|---|---|---|
 | Sign in | `/login` | Access a personal, role-aware workspace | Public entry point |

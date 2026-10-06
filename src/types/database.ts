@@ -3487,6 +3487,10 @@ interface DatabaseDefinition {
       ai_cost_daily: { Row: AICostDailyRow; Relationships: [] }
     }
     Functions: {
+      collaboration_command: {
+        Args: { p_command: string; p_id?: string; p_project?: string; p_guest?: string; p_connection?: string; p_revision?: number; p_generation?: number; p_workstream?: string; p_session?: string }
+        Returns: unknown
+      }
       is_admin: { Args: { uid: string }; Returns: boolean }
       is_curator_or_admin: { Args: { uid: string }; Returns: boolean }
       increment_approved_chunks: { Args: { doc_id: string }; Returns: void }

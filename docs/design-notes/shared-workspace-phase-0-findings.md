@@ -7,6 +7,12 @@ Parent plan: [Shared workspace sessions](../dev-request-shared-workspace-session
 
 ## 6 October connection and handoff update
 
+**Development supersedes the earlier assessment-only status:** the user subsequently authorized implementation on the existing branch and required architecture, roadmap and Ember navigation-guide updates alongside code. The first foundation now includes an unapplied additive migration, authenticated RPC, opt-in shared-session UI and isolated SQL tests. Application dependencies now include development-only PGlite for those tests. Historical statements below about no code/dependency changes describe the earlier checkpoint, not the current branch.
+
+The foundation uses a dedicated shared location view and temporary polling; it does not yet integrate editable fields or execute shared AI. New code has not changed the live backend. Local SQL evidence covers admission, direct-table denial, history isolation, control generations, browser connection binding, session replacement, expired leases and membership/profile revocation. Multi-connection races, target-browser behavior and deployed-schema compatibility remain unverified; retain the remaining proof matrix as open.
+
+Validation: 40 selected tests passed (11 SQL, 4 collaboration actions, 25 existing MCP tools), focused lint passed, TypeScript passed and the production build passed. See [the development checkpoint report](../test-reports/2026-10-06-shared-workspace-foundation.md) for commands, environment limits and the next execution sequence.
+
 - The saved database connection now uses Supabase's session pooler. The supplied `.tmp/prod-ca-2021.crt` allowed TLS certificate verification to pass; disabling verification or changing SSL enforcement was not necessary.
 - Agent connection attempts then received authentication failures. The user reset the database password and updated local configuration. The agent did not perform the reset; dependent external consumers of that password have not been audited.
 - The user ran the supplied Node/PostgreSQL test from PowerShell and reported `Connection successful: { current_database: 'postgres', current_user: 'postgres' }`. This is user-reported successful connectivity, not an agent-observed catalog inspection. No Realtime partition query succeeded in the recorded agent attempts.

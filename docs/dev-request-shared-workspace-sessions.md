@@ -1,11 +1,13 @@
 # Shared workspace sessions for remote teams
 
-Status: Phase 0 read-only assessment started; no application changes implemented. See [Phase 0 findings](design-notes/shared-workspace-phase-0-findings.md) for evidence, revised decisions and outstanding live validation.
+Status: development authorized on 6 October 2026. Initial Phase 1 foundation implemented on the branch; Phase 0/live validation gates remain open. See [Phase 0 findings](design-notes/shared-workspace-phase-0-findings.md) for evidence and outstanding validation.
 Updated: 6 October 2026. Working branch: `codex/shared-workspace-phase0`.
 
 ## Coder handoff: start here
 
-This is the implementation plan for the requested collaboration feature. It is planning documentation, not a claim that collaboration exists in Ember. Read this file first, then the [Phase 0 evidence and outstanding proofs](design-notes/shared-workspace-phase-0-findings.md). The branch intentionally contains documentation only; no application implementation or migration is included.
+This is the implementation plan for the requested collaboration feature. Read this file first, then the [evidence and outstanding proofs](design-notes/shared-workspace-phase-0-findings.md). The user has moved the branch from assessment into development. It now contains a disabled-by-default session foundation and an unapplied additive migration; it is not a released collaboration feature. The original read-only restriction on application edits is superseded by development authorization. The prohibition on live-data deletion remains in effect.
+
+Every implementation increment must update [Current Architecture](CURRENT-ARCHITECTURE.md), [Roadmap](ROADMAP.md) and [Ember's navigation catalogue](ember/KB-SANDBOX-CAPABILITY-AND-NAVIGATION-CATALOGUE.md) in the same change. `get_navigation_guide` reads that catalogue directly. Mark implemented, enabled and verified separately.
 
 ### Requirements and design decisions
 
