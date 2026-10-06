@@ -1,7 +1,7 @@
 # KB Sandbox Roadmap
 
 **Status:** Living internal roadmap; the public About page no longer mirrors it verbatim (see note below)  
-**Last updated:** 5 October 2026
+**Last updated:** 6 October 2026
 
 ## How to read this roadmap
 
@@ -12,6 +12,8 @@ This document is the durable internal source of truth for the M1–M10 milestone
 **2026-10-04:** Added the work delivered between late August and early October 2026: Builder mode and agencies, Workstream promotion and presentations, Methods, the Builder Ontology, working knowledge, Project creation approval and the Live status, Project evidence access, the Agent Gateway and the read-only external MCP server. Dates in parentheses are when each item landed in the repository. The product is now presented as **Ember**; "KB Sandbox" remains the codebase and roadmap name.
 
 **2026-10-05:** Added two proposed dev requests: Ember Readiness and knowledge gaps (M3) and solution conformance and acceptance evaluation (M7). They separate *AI evaluation* (does Ember understand a Project well enough to be trusted?) from *solution evaluation* (does the Project's delivered solution meet its standards and contract?). Both are Next items; neither is built.
+
+**2026-10-06:** Added shared workspace collaboration (below): two Project members working through the same Project live from separate browsers. Phase 1 is built behind a feature flag; editing, shared Ember chat and voice follow.
 
 Each milestone can continue to gain capabilities after its core is live. Internal work is placed under the public milestone whose product outcome it advances, even when the work spans several technical layers.
 
@@ -407,6 +409,21 @@ Users should be able to move between Ember and the full Workbench at any time. T
 Do not implement a simplified Ember-only UI on the strength of this entry alone — it names a direction, not a request.
 
 ---
+
+## Shared workspace collaboration
+
+Two members of a Project, at different locations, work in the same Ember workspace from their own browsers (`docs/dev-request-shared-workspace-sessions.md`). It advances M5 Apply (working a Project together), M7 Govern (authorization and audit of shared work) and M8 Communicate (shared conversations, later voice) without changing those milestones' names or status. Requirement IDs R1–R8 are in the plan.
+
+| Phase | Status | What it delivers | Gate still open |
+|---|---|---|---|
+| 0: prove the difficult parts | Partly done | Source and UI assessment; database design proven locally (in-memory and multi-connection races) | Realtime `MissingPartition` on the live backend; two-person, remote-network measurements |
+| 1: session foundation | **Validate** (built behind `NEXT_PUBLIC_EMBER_COLLABORATION`, 6 Oct) | Invitations from **Collaborate** or Ember (after confirmation) with accept/decline; persistent session bar on every page; observer follows the controller between the Project and Workstream pages; request/grant/decline/reclaim control with server-checked control generations; leave, end, presence; away after 10 minutes without input, taking control from an away controller, and an inactivity end with a 5-minute warning; viewers of a conversation who can choose to Watch a live session (following, no controls); shared conversation in both histories | Migration applied to the live backend (6 Oct, verified); still to do: turn the flag on for the preview and a two-person browser run there |
+| 2: Project and Workstream editing | **Validate** (built, 6 Oct) | The person in control edits the Project goal, description and starter prompt and a Workstream summary as shared drafts the others see live; explicit Save; deliverable ticks save at once; edits outside the session show as a conflict; drafts survive a handover; ending never saves a draft | Migration `20261024100001` on the live backend (needs owner go-ahead); two-person run on the preview |
+| 3: shared Ember chat | Next | Viewers read a recap of the session chat and post comments, which the pair can pass on to Ember; attributed messages, ordered turns, evidence both people can see | — |
+| 4: remote pilot and release | Next | Monitoring, target browsers and networks, recovery procedures | — |
+| 5: voice and transcription | Future | Session audio, consent, transcript, summary | Separately estimated |
+
+Do not advertise shared editing, shared Ember chat or voice as available.
 
 ## Recent cross-cutting platform work
 

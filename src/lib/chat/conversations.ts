@@ -268,6 +268,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
   search_my_working_knowledge: 'Checking your Working Knowledge…',
   search_shared_working_knowledge: 'Checking shared Working Knowledge…',
   save_working_knowledge: 'Saving to Working Knowledge…',
+  send_collaboration_invitation: 'Sending the invitation…',
 }
 
 export async function getLatestActivityLabel(supabase: SupabaseClient<Database>, conversationId: string): Promise<string | null> {

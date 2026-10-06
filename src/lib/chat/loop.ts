@@ -49,6 +49,15 @@ import { UPDATE_PROJECT_DESCRIPTION_TOOL, UPDATE_PROJECT_DESCRIPTION_TOOL_NAME, 
 import { SEARCH_WEB_TOOL, SEARCH_WEB_TOOL_NAME, WEB_QUERY_RULE, WebSearchRequestError, runSearchWeb } from './web-search-tool'
 import { LIST_WORKSTREAMS_TOOL, LIST_WORKSTREAMS_TOOL_NAME, runListWorkstreams } from './workstream-list-tool'
 import {
+  PREVIEW_COLLABORATION_INVITATION_TOOL,
+  PREVIEW_COLLABORATION_INVITATION_TOOL_NAME,
+  SEND_COLLABORATION_INVITATION_TOOL,
+  SEND_COLLABORATION_INVITATION_TOOL_NAME,
+  runPreviewCollaborationInvitation,
+  runSendCollaborationInvitation,
+} from './collaboration-tool'
+import { collaborationEnabled } from '@/lib/collaboration/flag'
+import {
   ADD_VERIFICATION_METHODS_TOOL,
   ADD_VERIFICATION_METHODS_TOOL_NAME,
   CREATE_DRAFT_REQUIREMENTS_TOOL,
@@ -187,7 +196,13 @@ When the user wants to keep research or notes for later (most commonly after web
     ? `\n\nYou also have search_web, for public web research -- useful for pre-sales or competitive-intelligence questions about a prospective client or competitor that project knowledge and the Wiki can't answer (e.g. "what does this company publicly say about their current infrastructure"). You are allowed at most ${WEB_SEARCH_LIMIT} search_web calls per turn. A web result is NOT project knowledge and NOT a citation -- never cite it via present_assistant_response's citations field, and never tell the user something is "in the knowledge base" or "confirmed" based on a web search alone. If web research turns up something worth keeping, call save_working_knowledge (type 'research_notebook') with your synthesis and the source URLs/titles as its sources -- not attach_workstream_artifact, which isn't private-by-default the way Working Knowledge is. Tell the user it's saved privately, marked working/unverified, and that a curator only sees it if they later choose to submit it.\n\n${WEB_QUERY_RULE} This project's own name, goal and objective count as project-internal: search for the public organizations and topics involved, not for the project itself.`
     : ''
 
-  return base + webSearchAddendum
+  // Shared workspace sessions -- only described when the feature flag
+  // offers the two invitation tools (same reason as search_web above).
+  const collaborationAddendum = collaborationEnabled()
+    ? `\n\nIf the user wants to work together live with another member of this project (collaborate, work on this together, share their view), call list_project_members to find the exact person, then call preview_collaboration_invitation for them. Tell the user who you would invite and what a live session is: the other person sees the Project and Workstream pages the user opens and can ask for control; each person still only sees what their own access allows; nothing from the user's private Ember chats is shared. Then wait for their explicit confirmation in their next message, and only then call send_collaboration_invitation for that same person -- it is refused in the same turn as the preview. Afterwards, say the invitation is sent and lasts an hour, that the other person accepts or declines it in Ember, and that the bar at the top of the page shows the session and its controls. They can also use the Collaborate button on the Project page. You cannot accept for anyone, join or control a session, or see what happens in it; shared Ember chat inside a live session is not available yet.`
+    : ''
+
+  return base + webSearchAddendum + collaborationAddendum
 }
 
 const FEEDBACK_CATEGORY_LABELS: Record<FeedbackType, string> = {
@@ -550,6 +565,7 @@ export async function runAssistantTurn(
           SEND_PROJECT_NOTE_TOOL,
           UPDATE_PROJECT_DESCRIPTION_TOOL,
           LIST_WORKSTREAMS_TOOL,
+          ...(collaborationEnabled() ? [PREVIEW_COLLABORATION_INVITATION_TOOL, SEND_COLLABORATION_INVITATION_TOOL] : []),
           LIST_REQUIREMENT_STATUS_TOOL,
           CREATE_DRAFT_REQUIREMENTS_TOOL,
           ADD_VERIFICATION_METHODS_TOOL,
@@ -1056,6 +1072,23 @@ export async function runAssistantTurn(
             // below -- the Artifacts panel's "Created records" group is how
             // the structured link back to the note actually surfaces.
             createdRecordRefs.push({ kind: 'project_note', id: output.noteId })
+          } catch (err) {
+            toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
+          }
+        }
+      } else if (toolCall.name === PREVIEW_COLLABORATION_INVITATION_TOOL_NAME || toolCall.name === SEND_COLLABORATION_INVITATION_TOOL_NAME) {
+        // Shared workspace sessions (collaboration-tool.ts). Same
+        // interception pattern as send_project_note, plus the flag check:
+        // a model that names a tool it wasn't offered gets a refusal.
+        if (!resolvedProjectId || !collaborationEnabled()) {
+          toolResultText = JSON.stringify({ error: `${toolCall.name} is only available in a project-bound conversation with collaboration enabled.` })
+        } else {
+          try {
+            const output =
+              toolCall.name === PREVIEW_COLLABORATION_INVITATION_TOOL_NAME
+                ? await runPreviewCollaborationInvitation(ctx, resolvedProjectId, toolCall.arguments)
+                : await runSendCollaborationInvitation(ctx, resolvedProjectId, conversation.id, toolCall.arguments)
+            toolResultText = JSON.stringify(output)
           } catch (err) {
             toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
           }

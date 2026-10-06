@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { updateProjectStarterPromptAction } from '@/app/actions/projects'
+import { SharedTextField, useSharedField } from '@/components/collaboration/SharedTextField'
 
 // A short, clickable prompt Ember offers when opened bound to this project
 // (see ChatPanel.tsx's project-bound empty state) -- the Sandz Pilot
@@ -17,6 +18,23 @@ export function ProjectStarterPromptForm({ projectId, starterPrompt, canEdit }: 
   const [value, setValue] = useState(starterPrompt ?? '')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  // In a live session showing this Project, edited together (Phase 2).
+  const shared = useSharedField('project_starter_prompt', projectId)
+  if (shared) {
+    return (
+      <SharedTextField
+        field="project_starter_prompt"
+        targetId={projectId}
+        shared={shared}
+        label="Starter prompt for Ember"
+        placeholder="e.g. Ask anything about this project, suggest an improvement, or report a problem."
+        rows={2}
+        markdown={false}
+        saveLabel="Save starter prompt"
+      />
+    )
+  }
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault()

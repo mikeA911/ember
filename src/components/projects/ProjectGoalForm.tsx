@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { updateProjectGoalAction } from '@/app/actions/projects'
 import { Markdown } from '@/components/shared/Markdown'
+import { SharedTextField, useSharedField } from '@/components/collaboration/SharedTextField'
 
 // Shared method/approach for every workstream in this project -- workstream
 // pages link back here (`#goal`) instead of repeating the text. View mode
@@ -14,6 +15,25 @@ export function ProjectGoalForm({ projectId, goal, canEdit }: { projectId: strin
   const [value, setValue] = useState(goal ?? '')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+
+  // In a live session showing this Project, edited together (Phase 2).
+  const shared = useSharedField('project_goal', projectId)
+  if (shared) {
+    return (
+      <SharedTextField
+        field="project_goal"
+        targetId={projectId}
+        shared={shared}
+        label="Goal"
+        placeholder="The shared method/approach for every workstream in this project. Markdown supported."
+        rows={8}
+        markdown
+        saveLabel="Save goal"
+        anchorId="goal"
+      />
+    )
+  }
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault()

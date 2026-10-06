@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { updateProjectObjectiveAction } from '@/app/actions/projects'
+import { SharedTextField, useSharedField } from '@/components/collaboration/SharedTextField'
 
 // The short description under the project title (`objective`). Plain text,
 // not Markdown -- it's also fed verbatim into prompts (presentations,
@@ -14,6 +15,26 @@ export function ProjectObjectiveForm({ projectId, objective, canEdit }: { projec
   const [value, setValue] = useState(objective ?? '')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+
+  // In a live session showing this Project, edited together (Phase 2).
+  const shared = useSharedField('project_objective', projectId)
+  if (shared) {
+    return (
+      <div className="mt-2">
+        <SharedTextField
+          field="project_objective"
+          targetId={projectId}
+          shared={shared}
+          label="Description"
+          placeholder="What is this project trying to achieve?"
+          rows={3}
+          markdown={false}
+          saveLabel="Save description"
+        />
+      </div>
+    )
+  }
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault()
