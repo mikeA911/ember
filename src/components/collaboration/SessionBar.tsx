@@ -4,9 +4,10 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { isAtSharedLocation } from '@/lib/collaboration/follow'
+import { minutesLabel } from '@/lib/collaboration/format'
 import { sharedPath } from '@/lib/collaboration/locations'
 import type { CollaborationPerson, SessionSnapshot } from '@/lib/collaboration/types'
-import { useCollaboration } from './CollaborationProvider'
+import { END_WARNING_SECONDS, useCollaboration } from './CollaborationProvider'
 
 // The persistent session bar under the header: who is in the live session,
 // who has control, connection state, and every control the person may use.
@@ -16,7 +17,9 @@ import { useCollaboration } from './CollaborationProvider'
 const END_REASONS: Record<NonNullable<SessionSnapshot['endReason']>, string> = {
   ended_by_host: 'The host ended the live session.',
   everyone_left: 'Everyone left, so the live session ended.',
-  expired: 'The live session ended after a period with nobody connected.',
+  inactive: 'The live session ended after 30 minutes with nobody active.',
+  participant_inactive: 'The live session ended because one of you was inactive for an hour.',
+  expired: 'The live session reached its 12-hour limit and ended.',
   access_revoked: 'The live session ended because one of you no longer has access to this Project.',
 }
 
@@ -25,17 +28,17 @@ const primary = `${button} border-amber-700 bg-amber-700 text-white hover:bg-amb
 const secondary = `${button} border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50`
 
 function Presence({ person, inControl, you }: { person: CollaborationPerson; inControl: boolean; you: boolean }) {
-  const state = person.left ? 'left' : person.present ? 'connected' : 'not connected'
+  // Left > not connected > away > connected.
+  const state = person.left ? 'left' : !person.present ? 'not connected' : person.away ? `away ${minutesLabel(person.inactiveSeconds)}` : 'connected'
+  const dot = person.left ? 'bg-zinc-300' : !person.present ? 'bg-amber-400' : person.away ? 'bg-zinc-400' : 'bg-emerald-500'
   return (
     <span className="inline-flex items-center gap-1">
-      <span
-        aria-hidden
-        className={`inline-block h-2 w-2 rounded-full ${person.left ? 'bg-zinc-300' : person.present ? 'bg-emerald-500' : 'bg-amber-400'}`}
-      />
+      <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${dot}`} />
       <span className={inControl ? 'font-semibold' : ''}>
         {person.name}
         {you ? ' (you)' : ''}
       </span>
+      {!you && state !== 'connected' && <span className="text-xs text-zinc-500">({state})</span>}
       <span className="sr-only">, {state}</span>
       {inControl && <span className="rounded bg-amber-100 px-1 text-[10px] font-medium uppercase tracking-wide text-amber-800">In control</span>}
     </span>
@@ -194,7 +197,11 @@ function LiveSession({
     <div className="flex flex-col gap-1">
       {header}
       <div className="flex flex-wrap items-center gap-2 text-xs">
+        <EndingWarning session={session} />
         {!other.present && !other.left && <span className="text-amber-800">{other.name} isn’t connected right now; they’ll catch up when they return.</span>}
+        {other.present && other.away && !other.left && (
+          <span className="text-zinc-600">{other.name} has been away for {minutesLabel(other.inactiveSeconds)}.</span>
+        )}
         {other.left && <span className="text-zinc-600">{other.name} left the session.</span>}
 
         {inControl && requestedByOther && (
@@ -235,6 +242,11 @@ function LiveSession({
         {!inControl && isHost && (
           <button type="button" className={secondary} disabled={busy} onClick={collab.reclaimControl}>
             Take control back
+          </button>
+        )}
+        {!inControl && !isHost && session.canTakeControl && (
+          <button type="button" className={primary} disabled={busy} onClick={collab.takeControl}>
+            Take control
           </button>
         )}
         {!inControl && !following && (
@@ -280,5 +292,32 @@ function LiveSession({
         </span>
       </div>
     </div>
+  )
+}
+
+// Shown to both people in the last few minutes before the session ends on
+// its own. Any input counts as activity; the button just makes it explicit.
+function EndingWarning({ session }: { session: SessionSnapshot }) {
+  const collab = useCollaboration()!
+  if (session.endsInSeconds == null || session.endsInSeconds > END_WARNING_SECONDS) return null
+  const minutes = Math.max(1, Math.ceil(session.endsInSeconds / 60))
+  const when = `in ${minutes} minute${minutes === 1 ? '' : 's'}`
+  const me = session.myRole === 'host' ? session.host : session.guest
+  const other = session.myRole === 'host' ? session.guest : session.host
+  let text: string
+  if (session.endingReason === 'expired') text = `This session reaches its 12-hour limit and ends ${when}.`
+  else if (session.endingReason === 'participant_inactive' && other.inactiveSeconds > me.inactiveSeconds)
+    text = `${other.name} has been inactive for nearly an hour — the session ends ${when} unless they come back.`
+  else if (session.endingReason === 'participant_inactive') text = `You’ve been inactive for nearly an hour — the session ends ${when}.`
+  else text = `Nobody has been active for a while — the session ends ${when}.`
+  return (
+    <span className="flex flex-wrap items-center gap-2 font-medium text-amber-900" role="alert">
+      {text}
+      {session.endingReason !== 'expired' && !(session.endingReason === 'participant_inactive' && other.inactiveSeconds > me.inactiveSeconds) && (
+        <button type="button" className={secondary} onClick={collab.stillHere}>
+          I’m still here
+        </button>
+      )}
+    </span>
   )
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { toCollaborationError } from './errors'
+import { minutesLabel } from './format'
 import { decideFollow } from './follow'
 import { parseSharedLocation, sharedPath } from './locations'
 import { nextPollDelay, POLL } from './transport'
@@ -20,8 +21,8 @@ function session(over: Partial<SessionSnapshot> = {}): SessionSnapshot {
     status: 'active',
     endReason: null,
     myRole: 'host',
-    host: { id: me, name: 'Me', present: true, left: false },
-    guest: { id: them, name: 'Them', present: true, left: false },
+    host: { id: me, name: 'Me', present: true, left: false, away: false, inactiveSeconds: 0 },
+    guest: { id: them, name: 'Them', present: true, left: false, away: false, inactiveSeconds: 0 },
     controllerId: me,
     controlGeneration: 1,
     stateRevision: 1,
@@ -30,6 +31,9 @@ function session(over: Partial<SessionSnapshot> = {}): SessionSnapshot {
     thisTabJoined: true,
     otherTabActive: false,
     iLeft: false,
+    endsInSeconds: 1800,
+    endingReason: 'inactive',
+    canTakeControl: false,
     ...over,
   }
 }
@@ -97,18 +101,32 @@ describe('errors', () => {
 })
 
 describe('polling', () => {
-  it('polls fast only in a visible session, and backs off after failures', () => {
+  it('polls fast in a visible session or while waiting on an invitation, and backs off after failures', () => {
     expect(nextPollDelay({ inSession: true, hidden: false, consecutiveFailures: 0 })).toBe(POLL.sessionVisibleMs)
     expect(nextPollDelay({ inSession: true, hidden: true, consecutiveFailures: 0 })).toBe(POLL.sessionHiddenMs)
-    expect(nextPollDelay({ inSession: false, hidden: false, consecutiveFailures: 0 })).toBe(POLL.idleVisibleMs)
+    expect(nextPollDelay({ inSession: false, waiting: true, hidden: false, consecutiveFailures: 0 })).toBe(POLL.sessionVisibleMs)
     expect(nextPollDelay({ inSession: true, hidden: false, consecutiveFailures: 2 })).toBe(POLL.sessionVisibleMs * 4)
     expect(nextPollDelay({ inSession: false, hidden: true, consecutiveFailures: 9 })).toBe(POLL.maxBackoffMs)
-    // Waiting on a sent invitation polls like a session, so acceptance shows quickly.
-    expect(nextPollDelay({ inSession: false, waiting: true, hidden: false, consecutiveFailures: 0 })).toBe(POLL.sessionVisibleMs)
   })
 
-  it('a visible session tab heartbeats well inside the 30-second presence window', () => {
-    expect(POLL.sessionVisibleMs * 3).toBeLessThan(30_000)
-    expect(POLL.sessionHiddenMs * 2).toBeLessThan(30_000)
+  it('outside a session, polls every 5 seconds while the person is using Ember and every 30 once they stop', () => {
+    expect(nextPollDelay({ inSession: false, recentlyActive: true, hidden: false, consecutiveFailures: 0 })).toBe(5_000)
+    expect(nextPollDelay({ inSession: false, recentlyActive: false, hidden: false, consecutiveFailures: 0 })).toBe(30_000)
+    expect(nextPollDelay({ inSession: false, recentlyActive: true, hidden: true, consecutiveFailures: 0 })).toBe(30_000)
+  })
+
+  it('a session tab heartbeats well inside the 90-second presence window, even throttled to once a minute', () => {
+    expect(POLL.sessionVisibleMs * 3).toBeLessThan(90_000)
+    expect(POLL.sessionHiddenMs * 3).toBeLessThan(90_000)
+    expect(60_000).toBeLessThan(90_000)
+  })
+})
+
+describe('labels', () => {
+  it('says how long someone has been inactive', () => {
+    expect(minutesLabel(30)).toBe('1 min')
+    expect(minutesLabel(12 * 60 + 59)).toBe('12 min')
+    expect(minutesLabel(60 * 60)).toBe('1 h')
+    expect(minutesLabel(65 * 60)).toBe('1 h 5 min')
   })
 })

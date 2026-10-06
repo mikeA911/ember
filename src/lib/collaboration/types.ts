@@ -9,6 +9,9 @@ export interface CollaborationPerson {
   present: boolean
   // They pressed Leave (and haven't rejoined).
   left: boolean
+  // No input or command for 10 minutes (connected or not).
+  away: boolean
+  inactiveSeconds: number
 }
 
 export interface SessionSnapshot {
@@ -17,7 +20,7 @@ export interface SessionSnapshot {
   projectId: string
   projectName: string
   status: 'active' | 'ended'
-  endReason: 'ended_by_host' | 'everyone_left' | 'expired' | 'access_revoked' | null
+  endReason: 'ended_by_host' | 'everyone_left' | 'inactive' | 'participant_inactive' | 'expired' | 'access_revoked' | null
   myRole: 'host' | 'guest'
   host: CollaborationPerson
   guest: CollaborationPerson
@@ -30,6 +33,11 @@ export interface SessionSnapshot {
   thisTabJoined: boolean
   otherTabActive: boolean
   iLeft: boolean
+  // While live: seconds until the session ends on its own, and which rule.
+  endsInSeconds: number | null
+  endingReason: 'inactive' | 'participant_inactive' | 'expired' | null
+  // The controller is away or not connected, so the caller may take control.
+  canTakeControl: boolean
 }
 
 export interface CollaborationInvitation {

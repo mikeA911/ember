@@ -20,7 +20,7 @@ The `codex/shared-workspace-phase0` prototype (one `collaboration_command` funct
 - **Transport.** Polling straight from the browser to Supabase, never through Vercel; session commands also go browser → Supabase because Next.js serializes a client's Server Actions behind any running Ember turn. Realtime is unused while `MissingPartition` is unresolved. (R7)
 - **Data.** `20261023100001_collaboration_sessions.sql` -- additive, re-runnable, never deletes; sessions and invitations end by status. Not applied to the live backend. (R8)
 
-Decided defaults (configurable in the migration's helper functions): presence window 30 seconds, invitation lifetime 1 hour, session ends after 30 minutes with nobody connected or after 12 hours, one live session per person.
+Decided defaults (each a one-line function in the migration): connected = polled within 90 seconds (a closing tab reports at once); away = no input for 10 minutes; the session ends after 30 minutes with nobody active, after either person has been inactive for 60 minutes, or after 12 hours, with a 5-minute warning; while the controller is away or not connected the other person may take control (recorded; the host can still reclaim); invitation lifetime 1 hour; one live session per person. Invitations show within about 5 seconds for someone using Ember, within 30 seconds otherwise.
 
 ### Requirements and design decisions
 

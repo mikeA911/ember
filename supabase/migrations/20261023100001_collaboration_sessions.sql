@@ -74,7 +74,7 @@ create table if not exists collaboration_sessions (
   host_id uuid not null references profiles(id) on delete cascade,
   guest_id uuid not null references profiles(id) on delete cascade,
   status text not null default 'active' check (status in ('active', 'ended')),
-  end_reason text check (end_reason in ('ended_by_host', 'everyone_left', 'expired', 'access_revoked')),
+  end_reason text check (end_reason in ('ended_by_host', 'everyone_left', 'inactive', 'participant_inactive', 'expired', 'access_revoked')),
   ended_by uuid references profiles(id) on delete set null,
   controller_id uuid not null references profiles(id) on delete cascade,
   control_generation integer not null default 1,
@@ -96,13 +96,17 @@ alter table collaboration_invitations
   add column if not exists session_id uuid references collaboration_sessions(id) on delete set null;
 
 -- One row per person per session. connection_id is the one browser tab
--- that currently speaks for this person; last_seen_at is its presence.
+-- that currently speaks for this person; last_seen_at is that tab's
+-- presence (it polls); last_active_at is the last time the person actually
+-- did something in it (input, or a session command) -- "away" and the
+-- inactivity end come from that.
 create table if not exists collaboration_participants (
   session_id uuid not null references collaboration_sessions(id) on delete cascade,
   user_id uuid not null references profiles(id) on delete cascade,
   role text not null check (role in ('host', 'guest')),
   connection_id uuid,
   last_seen_at timestamptz,
+  last_active_at timestamptz,
   joined_at timestamptz,
   left_at timestamptz,
   primary key (session_id, user_id)
@@ -138,14 +142,26 @@ revoke all on collaboration_conversations, collaboration_invitations, collaborat
 -- "open in another tab", EC003 "out of date -- refresh"); the app shows
 -- those messages and hides anything else.
 
--- How long a tab counts as present without polling, how long an invitation
--- lasts, and when an idle or very long session ends on its own.
+-- Timings, in one place:
+--   presence window: how long a tab counts as connected without polling.
+--     Browsers slow timers in background tabs to about once a minute, so
+--     this is long enough that switching tabs never reads as "not
+--     connected"; a closed tab says so straight away (collaboration_disconnect).
+--   away after: no input or command for this long shows a person as away.
+--   inactive limit: the session ends when nobody has been active this long.
+--   participant inactive limit: ...or when either person has been inactive
+--     this long (one person alone isn't collaborating).
+--   max duration: the session ends regardless after this long.
 create or replace function collaboration_presence_window() returns interval
-language sql immutable as $$ select interval '30 seconds' $$;
+language sql immutable as $$ select interval '90 seconds' $$;
 create or replace function collaboration_invitation_lifetime() returns interval
 language sql immutable as $$ select interval '1 hour' $$;
-create or replace function collaboration_idle_limit() returns interval
+create or replace function collaboration_away_after() returns interval
+language sql immutable as $$ select interval '10 minutes' $$;
+create or replace function collaboration_inactive_limit() returns interval
 language sql immutable as $$ select interval '30 minutes' $$;
+create or replace function collaboration_participant_inactive_limit() returns interval
+language sql immutable as $$ select interval '60 minutes' $$;
 create or replace function collaboration_max_duration() returns interval
 language sql immutable as $$ select interval '12 hours' $$;
 
@@ -201,6 +217,53 @@ language sql stable as $$
     and p.last_seen_at is not null and p.last_seen_at > now() - collaboration_presence_window();
 $$;
 
+-- When the person last did something: their last input or command, else
+-- when they joined, else when the session started.
+create or replace function collaboration_last_active(p collaboration_participants, p_started_at timestamptz)
+returns timestamptz
+language sql stable as $$
+  select coalesce(p.last_active_at, p.joined_at, p_started_at);
+$$;
+
+create or replace function collaboration_is_away(p collaboration_participants, p_started_at timestamptz)
+returns boolean
+language sql stable as $$
+  select collaboration_last_active(p, p_started_at) < now() - collaboration_away_after();
+$$;
+
+-- When a live session will end on its own, and why: nobody active for the
+-- inactive limit, either person inactive for the participant limit, or the
+-- maximum duration -- whichever comes first.
+create or replace function collaboration_deadline(p_session uuid, out ends_at timestamptz, out reason text)
+language plpgsql stable security definer set search_path = public as $$
+declare
+  s collaboration_sessions;
+  h collaboration_participants;
+  g collaboration_participants;
+  v_host timestamptz;
+  v_guest timestamptz;
+  v_candidate timestamptz;
+begin
+  select * into s from collaboration_sessions where id = p_session;
+  select * into h from collaboration_participants where session_id = s.id and user_id = s.host_id;
+  select * into g from collaboration_participants where session_id = s.id and user_id = s.guest_id;
+  v_host := collaboration_last_active(h, s.started_at);
+  v_guest := collaboration_last_active(g, s.started_at);
+  ends_at := s.started_at + collaboration_max_duration();
+  reason := 'expired';
+  v_candidate := least(v_host, v_guest) + collaboration_participant_inactive_limit();
+  if v_candidate < ends_at then
+    ends_at := v_candidate;
+    reason := 'participant_inactive';
+  end if;
+  v_candidate := greatest(v_host, v_guest) + collaboration_inactive_limit();
+  if v_candidate <= ends_at then
+    ends_at := v_candidate;
+    reason := 'inactive';
+  end if;
+end;
+$$;
+
 -- Ends a session (status only -- nothing is deleted).
 create or replace function collaboration_end_session(p_session uuid, p_reason text, p_actor uuid)
 returns void
@@ -220,14 +283,17 @@ begin
 end;
 $$;
 
--- Ends a live session that has lost a participant's access, gone idle, or
--- run too long. Called with the session row locked; returns true if ended.
+-- Ends a live session that has lost a participant's access or passed its
+-- deadline (inactivity or maximum duration), and drops a control request
+-- whose requester has since gone away. Called with the session row locked;
+-- returns true if the session ended.
 create or replace function collaboration_settle(p_session uuid)
 returns boolean
 language plpgsql security definer set search_path = public as $$
 declare
   s collaboration_sessions;
-  v_last_seen timestamptz;
+  d record;
+  r collaboration_participants;
 begin
   select * into s from collaboration_sessions where id = p_session;
   if not found or s.status <> 'active' then
@@ -237,11 +303,17 @@ begin
     perform collaboration_end_session(s.id, 'access_revoked', null);
     return true;
   end if;
-  select max(last_seen_at) into v_last_seen from collaboration_participants where session_id = s.id;
-  if coalesce(v_last_seen, s.started_at) < now() - collaboration_idle_limit()
-     or s.started_at < now() - collaboration_max_duration() then
-    perform collaboration_end_session(s.id, 'expired', null);
+  select * into d from collaboration_deadline(s.id);
+  if d.ends_at <= now() then
+    perform collaboration_end_session(s.id, d.reason, null);
     return true;
+  end if;
+  if s.control_requested_by is not null then
+    select * into r from collaboration_participants where session_id = s.id and user_id = s.control_requested_by;
+    if collaboration_is_away(r, s.started_at) or r.left_at is not null then
+      update collaboration_sessions set control_requested_by = null, control_requested_at = null, state_revision = state_revision + 1
+        where id = s.id;
+    end if;
   end if;
   return false;
 end;
@@ -300,6 +372,8 @@ begin
     if me.connection_id is distinct from p_connection or not coalesce(collaboration_is_present(me), false) then
       raise exception 'This tab is no longer connected to the live session -- rejoin to continue' using errcode = 'EC003';
     end if;
+    -- A command is activity.
+    update collaboration_participants set last_active_at = now(), last_seen_at = now() where session_id = s.id and user_id = p_actor;
   end if;
   return s;
 end;
@@ -321,12 +395,16 @@ declare
   h collaboration_participants;
   g collaboration_participants;
   me collaboration_participants;
+  ctl collaboration_participants;
   v_workstream_name text;
+  d record;
 begin
   select * into s from collaboration_sessions where id = p_session;
   select * into h from collaboration_participants where session_id = s.id and user_id = s.host_id;
   select * into g from collaboration_participants where session_id = s.id and user_id = s.guest_id;
   me := case when p_actor = s.host_id then h else g end;
+  ctl := case when s.controller_id = s.host_id then h else g end;
+  select * into d from collaboration_deadline(s.id);
   if s.location_workstream_id is not null then
     select name into v_workstream_name from project_workstreams where id = s.location_workstream_id;
   end if;
@@ -339,9 +417,13 @@ begin
     'endReason', s.end_reason,
     'myRole', case when p_actor = s.host_id then 'host' else 'guest' end,
     'host', jsonb_build_object('id', s.host_id, 'name', collaboration_display_name(s.host_id),
-      'present', coalesce(collaboration_is_present(h), false), 'left', h.left_at is not null),
+      'present', coalesce(collaboration_is_present(h), false), 'left', h.left_at is not null,
+      'away', collaboration_is_away(h, s.started_at),
+      'inactiveSeconds', floor(extract(epoch from now() - collaboration_last_active(h, s.started_at)))::int),
     'guest', jsonb_build_object('id', s.guest_id, 'name', collaboration_display_name(s.guest_id),
-      'present', coalesce(collaboration_is_present(g), false), 'left', g.left_at is not null),
+      'present', coalesce(collaboration_is_present(g), false), 'left', g.left_at is not null,
+      'away', collaboration_is_away(g, s.started_at),
+      'inactiveSeconds', floor(extract(epoch from now() - collaboration_last_active(g, s.started_at)))::int),
     'controllerId', s.controller_id,
     'controlGeneration', s.control_generation,
     'stateRevision', s.state_revision,
@@ -351,7 +433,14 @@ begin
     'thisTabJoined', coalesce(p_connection is not null and me.connection_id = p_connection and collaboration_is_present(me), false),
     -- The caller is present from some other tab.
     'otherTabActive', me.connection_id is distinct from p_connection and coalesce(collaboration_is_present(me), false),
-    'iLeft', me.left_at is not null
+    'iLeft', me.left_at is not null,
+    -- Seconds until the session ends on its own, and which rule ends it.
+    'endsInSeconds', case when s.status = 'active' then greatest(0, floor(extract(epoch from d.ends_at - now())))::int end,
+    'endingReason', case when s.status = 'active' then d.reason end,
+    -- Someone not in control may take it while the controller is away or
+    -- not connected (the host can always take it back).
+    'canTakeControl', s.status = 'active' and s.controller_id <> p_actor
+      and (collaboration_is_away(ctl, s.started_at) or not coalesce(collaboration_is_present(ctl), false))
   );
 end;
 $$;
@@ -376,7 +465,12 @@ $$;
 
 revoke all on function collaboration_presence_window() from public, anon, authenticated;
 revoke all on function collaboration_invitation_lifetime() from public, anon, authenticated;
-revoke all on function collaboration_idle_limit() from public, anon, authenticated;
+revoke all on function collaboration_away_after() from public, anon, authenticated;
+revoke all on function collaboration_inactive_limit() from public, anon, authenticated;
+revoke all on function collaboration_participant_inactive_limit() from public, anon, authenticated;
+revoke all on function collaboration_last_active(collaboration_participants, timestamptz) from public, anon, authenticated;
+revoke all on function collaboration_is_away(collaboration_participants, timestamptz) from public, anon, authenticated;
+revoke all on function collaboration_deadline(uuid) from public, anon, authenticated;
 revoke all on function collaboration_max_duration() from public, anon, authenticated;
 revoke all on function collaboration_has_access(uuid, uuid) from public, anon, authenticated;
 revoke all on function collaboration_display_name(uuid) from public, anon, authenticated;
@@ -431,7 +525,9 @@ begin
       'otherName', collaboration_display_name(case when c.user_a = v_actor then c.user_b else c.user_a end),
       'createdAt', c.created_at,
       'lastActivityAt', c.last_activity_at,
-      'liveSessionId', (select s.id from collaboration_sessions s where s.conversation_id = c.id and s.status = 'active')
+      -- Not "live" once past its deadline, even before anyone has settled it.
+      'liveSessionId', (select s.id from collaboration_sessions s where s.conversation_id = c.id and s.status = 'active'
+                          and (select ends_at from collaboration_deadline(s.id)) > now())
     ) order by c.last_activity_at desc)
     from collaboration_conversations c join projects pr on pr.id = c.project_id
     where v_actor in (c.user_a, c.user_b)
@@ -470,11 +566,16 @@ begin
       order by i.created_at desc limit 1
     ),
     'sessions', coalesce((
+      -- A session past its deadline reads as ended (with the reason it
+      -- will be settled with), even before anyone has settled it.
       select jsonb_agg(jsonb_build_object(
-        'id', s.id, 'hostName', collaboration_display_name(s.host_id), 'status', s.status,
-        'endReason', s.end_reason, 'startedAt', s.started_at, 'endedAt', s.ended_at
+        'id', s.id, 'hostName', collaboration_display_name(s.host_id),
+        'status', case when s.status = 'active' and d.ends_at <= now() then 'ended' else s.status end,
+        'endReason', case when s.status = 'active' and d.ends_at <= now() then d.reason else s.end_reason end,
+        'startedAt', s.started_at,
+        'endedAt', case when s.status = 'active' and d.ends_at <= now() then d.ends_at else s.ended_at end
       ) order by s.started_at desc)
-      from collaboration_sessions s where s.conversation_id = c.id
+      from collaboration_sessions s cross join lateral collaboration_deadline(s.id) d where s.conversation_id = c.id
     ), '[]'::jsonb)
   );
 end;
@@ -482,9 +583,10 @@ $$;
 
 -- Polled by the browser (directly against Supabase, not through the app
 -- server): the caller's live session, if any, and pending invitations.
--- With the caller's current tab id, also records that tab's presence --
--- the only write, and only to the caller's own participant row.
-create or replace function collaboration_status(p_connection uuid default null, p_session uuid default null)
+-- With the caller's current tab id, also records that tab's presence (and,
+-- with p_active, that the person is using it) -- the only write besides
+-- settling an overdue session, and only to the caller's own row.
+create or replace function collaboration_status(p_connection uuid default null, p_session uuid default null, p_active boolean default false)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
@@ -504,7 +606,9 @@ begin
     if not collaboration_has_access((select project_id from collaboration_sessions where id = v_session), v_actor) then
       v_session := null;
     elsif p_connection is not null then
-      update collaboration_participants set last_seen_at = now()
+      -- p_active: the person used this tab since its last poll.
+      update collaboration_participants
+        set last_seen_at = now(), last_active_at = case when p_active then now() else last_active_at end
         where session_id = v_session and user_id = v_actor and connection_id = p_connection and left_at is null;
     end if;
   else
@@ -675,8 +779,8 @@ begin
     values (c.id, i.project_id, i.inviter_id, v_actor, i.inviter_id)
     returning * into s;
   insert into collaboration_participants(session_id, user_id, role) values (s.id, i.inviter_id, 'host');
-  insert into collaboration_participants(session_id, user_id, role, connection_id, last_seen_at, joined_at)
-    values (s.id, v_actor, 'guest', p_connection, case when p_connection is null then null else now() end,
+  insert into collaboration_participants(session_id, user_id, role, connection_id, last_seen_at, last_active_at, joined_at)
+    values (s.id, v_actor, 'guest', p_connection, case when p_connection is null then null else now() end, now(),
             case when p_connection is null then null else now() end);
   update collaboration_invitations set status = 'accepted', responded_at = now(), conversation_id = c.id, session_id = s.id
     where id = i.id returning * into i;
@@ -722,7 +826,7 @@ begin
     perform collaboration_log(s, v_actor, case when me.joined_at is null then 'joined' else 'rejoined' end);
   end if;
   update collaboration_participants
-    set connection_id = p_connection, last_seen_at = now(), joined_at = coalesce(joined_at, now()), left_at = null
+    set connection_id = p_connection, last_seen_at = now(), last_active_at = now(), joined_at = coalesce(joined_at, now()), left_at = null
     where session_id = s.id and user_id = v_actor;
   return collaboration_snapshot(s.id, v_actor, p_connection);
 end;
@@ -804,8 +908,8 @@ begin
   end if;
   if p_grant then
     select * into r from collaboration_participants where session_id = s.id and user_id = s.control_requested_by;
-    if not coalesce(collaboration_is_present(r), false) then
-      raise exception '% is not connected right now', collaboration_display_name(r.user_id) using errcode = 'EC001';
+    if not coalesce(collaboration_is_present(r), false) or collaboration_is_away(r, s.started_at) then
+      raise exception '% is not connected or is away right now', collaboration_display_name(r.user_id) using errcode = 'EC001';
     end if;
     update collaboration_sessions
       set controller_id = control_requested_by, control_requested_by = null, control_requested_at = null,
@@ -841,6 +945,51 @@ begin
     perform collaboration_log(s, v_actor, 'control_reclaimed');
   end if;
   return collaboration_snapshot(s.id, v_actor, p_connection);
+end;
+$$;
+
+-- Someone not in control takes it while the controller is away or not
+-- connected, so one person stepping away can't strand the other. Explicit
+-- and recorded; the host can still take control back at any time.
+create or replace function collaboration_take_control(p_session uuid, p_connection uuid)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_actor uuid := collaboration_writer();
+  s collaboration_sessions;
+  ctl collaboration_participants;
+begin
+  s := collaboration_lock(p_session, p_connection, v_actor);
+  if s.controller_id = v_actor then
+    raise exception 'You already have control' using errcode = 'EC001';
+  end if;
+  select * into ctl from collaboration_participants where session_id = s.id and user_id = s.controller_id;
+  if not collaboration_is_away(ctl, s.started_at) and coalesce(collaboration_is_present(ctl), false) then
+    raise exception '% is active -- ask for control instead', collaboration_display_name(s.controller_id) using errcode = 'EC003';
+  end if;
+  update collaboration_sessions
+    set controller_id = v_actor, control_requested_by = null, control_requested_at = null,
+        control_generation = control_generation + 1, state_revision = state_revision + 1
+    where id = s.id returning * into s;
+  perform collaboration_log(s, v_actor, 'control_taken_while_away');
+  return collaboration_snapshot(s.id, v_actor, p_connection);
+end;
+$$;
+
+-- A tab closing (or the page unloading) says so, so the other person sees
+-- "not connected" straight away rather than after the presence window.
+-- Only clears presence -- control, and whether the person is in the
+-- session, are unchanged; reloading rejoins as the same tab.
+create or replace function collaboration_disconnect(p_session uuid, p_connection uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_actor uuid := collaboration_writer();
+begin
+  update collaboration_participants p set last_seen_at = null
+    from collaboration_sessions s
+    where p.session_id = p_session and p.user_id = v_actor and p.connection_id = p_connection
+      and s.id = p.session_id and s.status = 'active';
 end;
 $$;
 
@@ -900,7 +1049,9 @@ $$;
 revoke all on function collaboration_candidates(uuid) from public, anon;
 revoke all on function collaboration_history() from public, anon;
 revoke all on function collaboration_conversation(uuid) from public, anon;
-revoke all on function collaboration_status(uuid, uuid) from public, anon;
+revoke all on function collaboration_status(uuid, uuid, boolean) from public, anon;
+revoke all on function collaboration_take_control(uuid, uuid) from public, anon;
+revoke all on function collaboration_disconnect(uuid, uuid) from public, anon;
 revoke all on function collaboration_invite(uuid, uuid, uuid, text, uuid) from public, anon;
 revoke all on function collaboration_cancel_invitation(uuid) from public, anon;
 revoke all on function collaboration_respond_invitation(uuid, boolean, uuid) from public, anon;
@@ -914,7 +1065,9 @@ revoke all on function collaboration_end(uuid) from public, anon;
 grant execute on function collaboration_candidates(uuid) to authenticated;
 grant execute on function collaboration_history() to authenticated;
 grant execute on function collaboration_conversation(uuid) to authenticated;
-grant execute on function collaboration_status(uuid, uuid) to authenticated;
+grant execute on function collaboration_status(uuid, uuid, boolean) to authenticated;
+grant execute on function collaboration_take_control(uuid, uuid) to authenticated;
+grant execute on function collaboration_disconnect(uuid, uuid) to authenticated;
 grant execute on function collaboration_invite(uuid, uuid, uuid, text, uuid) to authenticated;
 grant execute on function collaboration_cancel_invitation(uuid) to authenticated;
 grant execute on function collaboration_respond_invitation(uuid, boolean, uuid) to authenticated;

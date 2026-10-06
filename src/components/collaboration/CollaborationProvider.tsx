@@ -3,12 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/browser'
-import { collaborationApi } from '@/lib/collaboration/api'
+import { collaborationApi, sendDisconnectBeacon } from '@/lib/collaboration/api'
 import { getTabConnectionId } from '@/lib/collaboration/connection'
 import { CollaborationError } from '@/lib/collaboration/errors'
 import { decideFollow, followTarget } from '@/lib/collaboration/follow'
 import { sharedPath } from '@/lib/collaboration/locations'
-import { nextPollDelay } from '@/lib/collaboration/transport'
+import { nextPollDelay, POLL } from '@/lib/collaboration/transport'
 import type { CollaborationInvitation, CollaborationStatus, SessionSnapshot } from '@/lib/collaboration/types'
 
 // Shared workspace sessions, Phase 1 (docs/dev-request-shared-workspace-
@@ -16,7 +16,15 @@ import type { CollaborationInvitation, CollaborationStatus, SessionSnapshot } fr
 // is on, so it persists across every route: it polls the session state,
 // joins this tab, makes an observer's tab follow the controller between the
 // Project and Workstream pages, and reports the controller's own moves.
+// It also reports whether the person is using the tab (any input), which
+// drives "away", the inactivity end and the faster invitation poll.
 // The database decides everything; this only renders and asks.
+
+// Input this long after the previous input counts as coming back: poll at
+// once so the other person (and any waiting invitation) catches up.
+const RETURN_AFTER_MS = 60_000
+// Warn this long before the session ends on its own.
+export const END_WARNING_SECONDS = 5 * 60
 
 interface CollaborationContextValue {
   userId: string
@@ -33,6 +41,8 @@ interface CollaborationContextValue {
   requestControl: (withdraw?: boolean) => Promise<void>
   answerControlRequest: (grant: boolean) => Promise<void>
   reclaimControl: () => Promise<void>
+  takeControl: () => Promise<void>
+  stillHere: () => void
   takeOverTab: () => Promise<void>
   rejoin: () => Promise<void>
   leave: () => Promise<void>
@@ -88,6 +98,15 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
   const joiningRef = useRef<string | null>(null)
   const reportingRef = useRef<string | null>(null)
   const sessionRef = useRef<SessionSnapshot | null>(null)
+  // Last input in this tab, and the last input already reported.
+  const lastInputRef = useRef(0)
+  const lastReportedRef = useRef(0)
+  const lastPollStartRef = useRef(0)
+  // For the closing-tab beacon, which can't wait for the Supabase client.
+  const accessTokenRef = useRef<string | null>(null)
+  useEffect(() => {
+    lastInputRef.current = Date.now()
+  }, [])
   useEffect(() => {
     sessionRef.current = status.session
   }, [status.session])
@@ -121,19 +140,25 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     // already switch to the fast in-session interval.
     let inSession = !!sessionRef.current
     let waiting = false
+    const startedAt = Date.now()
+    lastPollStartRef.current = startedAt
+    const active = lastInputRef.current > lastReportedRef.current
     try {
-      const result = await collaborationApi.status(supabase, connection, lastSessionRef.current)
+      const result = await collaborationApi.status(supabase, connection, lastSessionRef.current, active)
+      if (active) lastReportedRef.current = startedAt
       failuresRef.current = 0
       setStatus((prev) => ({ ...prev, incoming: result.incoming, outgoing: result.outgoing }))
       applySession(result.session)
       inSession = result.session?.status === 'active'
       waiting = result.outgoing.length > 0
+      if (inSession) accessTokenRef.current = (await supabase.auth.getSession()).data.session?.access_token ?? null
     } catch {
       failuresRef.current += 1
     }
     const delay = nextPollDelay({
       inSession,
       waiting,
+      recentlyActive: Date.now() - lastInputRef.current < POLL.recentlyActiveMs,
       hidden: typeof document !== 'undefined' && document.visibilityState === 'hidden',
       consecutiveFailures: failuresRef.current,
     })
@@ -149,12 +174,83 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     const onVisible = () => {
       if (document.visibilityState === 'visible') poll()
     }
+    const onShow = (event: PageTransitionEvent) => {
+      if (event.persisted) poll()
+    }
+    // Closing the tab (or leaving Ember) tells the database at once, so the
+    // other person sees "not connected" without waiting out the window.
+    // A reload sends it too and then rejoins as the same tab.
+    const onHide = () => {
+      const s = sessionRef.current
+      if (!s?.thisTabJoined || !accessTokenRef.current) return
+      sendDisconnectBeacon({
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        accessToken: accessTokenRef.current,
+        sessionId: s.id,
+        connection,
+      })
+    }
     document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', poll)
+    window.addEventListener('pageshow', onShow)
+    window.addEventListener('pagehide', onHide)
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', poll)
+      window.removeEventListener('pageshow', onShow)
+      window.removeEventListener('pagehide', onHide)
       if (timerRef.current) clearTimeout(timerRef.current)
     }
   }, [connection, poll])
+
+  // Activity: any input in this tab. Coming back after a quiet minute, or
+  // while shown as away or warned about the end, polls straight away.
+  useEffect(() => {
+    const onInput = (event: Event) => {
+      const now = Date.now()
+      const previous = lastInputRef.current
+      const s = sessionRef.current
+      const me = s ? (s.myRole === 'host' ? s.host : s.guest) : null
+      // Shown as away, or warned the session is about to end: report this
+      // input now, whatever kind it is.
+      const urgent = !!me?.away || (s?.endsInSeconds != null && s.endsInSeconds <= END_WARNING_SECONDS)
+      // Otherwise pointer movement is frequent; sampling it is enough.
+      if (event.type === 'pointermove' && !urgent && now - previous < 15_000) return
+      lastInputRef.current = now
+      if ((now - previous > RETURN_AFTER_MS || urgent) && now - lastPollStartRef.current > 2_000) pollRef.current()
+    }
+    const events = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'scroll'] as const
+    for (const e of events) window.addEventListener(e, onInput, { passive: true, capture: true })
+    return () => {
+      for (const e of events) window.removeEventListener(e, onInput, { capture: true })
+    }
+  }, [])
+
+  // A hidden tab can't show the bar, so an invitation shows in its title.
+  const invitationCount = status.incoming.length
+  useEffect(() => {
+    let original: string | null = null
+    let ours: string | null = null
+    const update = () => {
+      const want = document.visibilityState === 'hidden' && invitationCount > 0
+      if (want && ours === null) {
+        original = document.title
+        ours = `(${invitationCount}) Invitation · ${original}`
+        document.title = ours
+      } else if (!want && ours !== null) {
+        if (document.title === ours && original !== null) document.title = original
+        original = null
+        ours = null
+      }
+    }
+    update()
+    document.addEventListener('visibilitychange', update)
+    return () => {
+      document.removeEventListener('visibilitychange', update)
+      if (ours !== null && document.title === ours && original !== null) document.title = original
+    }
+  }, [invitationCount])
 
   const run = useCallback(
     async <T,>(action: () => Promise<T>): Promise<T | null> => {
@@ -270,6 +366,11 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     answerControlRequest: (grant) =>
       withSession((s, tab) => collaborationApi.answerControlRequest(supabase, s.id, tab, s.controlGeneration, grant)),
     reclaimControl: () => withSession((s, tab) => collaborationApi.reclaimControl(supabase, s.id, tab)),
+    takeControl: () => withSession((s, tab) => collaborationApi.takeControl(supabase, s.id, tab)),
+    stillHere: () => {
+      lastInputRef.current = Date.now()
+      pollRef.current()
+    },
     takeOverTab: () => withSession((s, tab) => collaborationApi.join(supabase, s.id, tab, true)),
     rejoin: () => withSession((s, tab) => collaborationApi.join(supabase, s.id, tab, false)),
     leave: () => withSession((s) => collaborationApi.leave(supabase, s.id)),

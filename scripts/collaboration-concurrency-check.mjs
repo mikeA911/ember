@@ -196,6 +196,35 @@ try {
     }
     check(ok, `parallel tab take-overs leave exactly one tab able to act (${ROUNDS} rounds)`)
   }
+
+  // 6. The host comes back from being away and reclaims at the moment the
+  //    guest takes control: one controller, one generation step per
+  //    recorded change.
+  {
+    let ok = true
+    const outcomes = new Set()
+    for (let i = 0; i < ROUNDS; i++) {
+      const [h, g] = await seedUsers(2, project.id)
+      const [ch, cg] = await Promise.all([connectAs(h), connectAs(g)])
+      const s = await startSession(project, h, g, ch, cg)
+      await admin.query("update collaboration_participants set last_active_at = now() - interval '11 minutes' where session_id = $1 and user_id = $2", [s.sessionId, h])
+      const gen = s.snap.controlGeneration
+      await settle([rpc(cg, 'collaboration_take_control', s.sessionId, s.guestTab), rpc(ch, 'collaboration_reclaim_control', s.sessionId, s.hostTab)])
+      const { rows } = await admin.query('select controller_id, control_generation from collaboration_sessions where id = $1', [s.sessionId])
+      const { rows: ev } = await admin.query(
+        "select count(*)::int n from collaboration_events where session_id = $1 and event in ('control_taken_while_away', 'control_reclaimed')",
+        [s.sessionId]
+      )
+      // If the reclaim lands first it counts as the host being active
+      // again, so the take-over is refused and nothing changes.
+      const consistent = rows[0].control_generation === gen + ev[0].n && (ev[0].n > 0 || rows[0].controller_id === h)
+      if (!consistent) console.log('   ', { gen, now: rows[0].control_generation, events: ev[0].n, controller: rows[0].controller_id === h ? 'host' : 'guest' })
+      ok &&= consistent && [h, g].includes(rows[0].controller_id)
+      outcomes.add(`${ev[0].n} change(s), ${rows[0].controller_id === h ? 'host' : 'guest'} in control`)
+      await Promise.all([ch.end(), cg.end()])
+    }
+    check(ok, `taking control from an away host racing the host's reclaim stays consistent (${ROUNDS} rounds; seen: ${[...outcomes].join('; ')})`)
+  }
 } finally {
   await admin.end()
 }

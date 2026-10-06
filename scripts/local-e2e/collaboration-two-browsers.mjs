@@ -9,6 +9,7 @@ const { chromium } = require('playwright-core')
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3100'
 const P = 'b0000000-0000-4000-8000-000000000001'
 const W1 = 'c0000000-0000-4000-8000-000000000001', W2 = 'c0000000-0000-4000-8000-000000000002'
+const HANA = 'a0000000-0000-4000-8000-000000000001', GIL = 'a0000000-0000-4000-8000-000000000002'
 const SHOTS = process.env.SHOTS
 const dbUrl = process.env.E2E_DATABASE_URL ?? ''
 const dbHost = new URL(dbUrl).hostname || new URL(dbUrl).searchParams.get('host') || ''
@@ -42,6 +43,17 @@ async function signIn(email) {
 }
 const pages = {}
 const bar = (page) => page.getByLabel('Live collaboration')
+// Simulates someone not touching their tab for a while: the browser can't
+// wait 10 minutes, so their recorded last activity is moved back.
+const inactiveFor = (user, minutes) =>
+  sql(`update collaboration_participants p set last_active_at = now() - interval '${minutes} minutes'
+       from collaboration_sessions s where s.id = p.session_id and s.status = 'active' and p.user_id = '${user}'`)
+// Pretends a tab is in the background (headless pages are always visible).
+const setHidden = (page, hidden) =>
+  page.evaluate((h) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }, hidden)
 const waitPath = (page, path, timeout = 15000) => page.waitForURL((u) => u.pathname === path, { timeout })
 // A real in-app link when one is on screen (client-side navigation);
 // otherwise Next's router if exposed; otherwise a full page load.
@@ -57,7 +69,7 @@ const clientNav = async (page, path) => {
 const hana = await signIn('hana@e2e.local')
 const gil = await signIn('gil@e2e.local')
 pages.hana = () => hana.page; pages.gil = () => (gil2 && !gil2.isClosed() ? gil2 : gil.page)
-let gil2
+let gil2, t0
 await gil.page.goto(`${BASE}/dashboard`)
 
 await step('Collaborate button on the Project page invites Gil after a confirmation step', async () => {
@@ -66,15 +78,27 @@ await step('Collaborate button on the Project page invites Gil after a confirmat
   await hana.page.getByRole('button', { name: /Gil Guest/ }).click()
   await hana.page.getByText('Invite Gil Guest to a live session').waitFor()
   await hana.page.getByRole('button', { name: 'Send invitation' }).click()
+  t0 = Date.now()
   await hana.page.getByText('Invitation sent to Gil Guest').waitFor()
   await bar(hana.page).getByText('Waiting for Gil Guest to accept').waitFor({ timeout: 20000 })
 })
 if (SHOTS) await hana.page.screenshot({ path: `${SHOTS}/1-host-waiting.png` })
 
-let t0
-await step('Gil sees the invitation in the bar and accepts; his browser goes to the shared Project page', async () => {
+await step('Gil (using Ember) sees the invitation within seconds, and in the tab title while the tab is in the background', async () => {
   await bar(gil.page).getByText('Hana Host invited you').waitFor({ timeout: 20000 })
+  const seenAfter = Date.now() - t0
+  if (seenAfter > 8000) throw new Error(`took ${seenAfter} ms`)
   if (SHOTS) await gil.page.screenshot({ path: `${SHOTS}/2-guest-invited.png` })
+  const before = await gil.page.title()
+  await setHidden(gil.page, true)
+  const hiddenTitle = await gil.page.title()
+  if (!hiddenTitle.startsWith('(1) Invitation')) throw new Error(`hidden title "${hiddenTitle}"`)
+  await setHidden(gil.page, false)
+  if ((await gil.page.title()) !== before) throw new Error('title not restored')
+  return `invitation shown ${seenAfter} ms after sending`
+})
+
+await step('Gil accepts; his browser goes to the shared Project page', async () => {
   await bar(gil.page).getByRole('button', { name: 'Accept' }).click()
   await waitPath(gil.page, `/projects/${P}`)
 })
@@ -139,6 +163,41 @@ await step('Hana takes control back as host', async () => {
   await bar(gil.page).getByRole('button', { name: 'Ask for control' }).waitFor({ timeout: 10000 })
 })
 
+await step('Gil shows as away after 10 minutes without input, and back as soon as he touches his tab', async () => {
+  await inactiveFor(GIL, 11)
+  await bar(hana.page).getByText(/\(away 1[01] min\)/).waitFor({ timeout: 10000 })
+  await bar(hana.page).getByText('Gil Guest has been away for').waitFor()
+  if (SHOTS) await hana.page.screenshot({ path: `${SHOTS}/7-guest-away.png` })
+  t0 = Date.now()
+  await gil.page.mouse.move(200, 300)
+  await gil.page.mouse.move(400, 500)
+  await bar(hana.page).getByText(/\(away/).waitFor({ state: 'detached', timeout: 10000 })
+  return `back for Hana ${Date.now() - t0} ms after Gil moved`
+})
+
+await step('while Hana (in control) is away, Gil can take control; Hana takes it back when she returns', async () => {
+  await bar(gil.page).getByRole('button', { name: 'Take control', exact: true }).waitFor({ state: 'detached', timeout: 1000 }).catch(() => {})
+  if (await bar(gil.page).getByRole('button', { name: 'Take control', exact: true }).count()) throw new Error('offered while Hana is active')
+  await inactiveFor(HANA, 11)
+  await bar(gil.page).getByRole('button', { name: 'Take control', exact: true }).click({ timeout: 10000 })
+  await bar(gil.page).getByText('You’re in control').waitFor({ timeout: 10000 })
+  if (SHOTS) await hana.page.screenshot({ path: `${SHOTS}/8-host-returns.png` })
+  await bar(hana.page).getByRole('button', { name: 'Take control back' }).click()
+  await bar(hana.page).getByText('You’re in control').waitFor({ timeout: 10000 })
+  const events = await sql(`select string_agg(event, ',' order by id) from collaboration_events where event in ('control_taken_while_away', 'control_reclaimed')`)
+  if (!events.includes('control_taken_while_away')) throw new Error(`events: ${events}`)
+})
+
+await step('both see a warning 5 minutes before an inactivity end; "I’m still here" clears it', async () => {
+  await inactiveFor(HANA, 26)
+  await inactiveFor(GIL, 26)
+  await bar(hana.page).getByText(/Nobody has been active for a while — the session ends in [1-5] minutes?/).waitFor({ timeout: 10000 })
+  await bar(gil.page).getByText(/the session ends in [1-5] minutes?/).waitFor({ timeout: 10000 })
+  if (SHOTS) await hana.page.screenshot({ path: `${SHOTS}/9-ending-warning.png` })
+  await bar(hana.page).getByRole('button', { name: 'I’m still here' }).click()
+  await bar(hana.page).getByText(/the session ends in/).waitFor({ state: 'detached', timeout: 10000 })
+})
+
 await step('a page that is not shared is never mirrored', async () => {
   await clientNav(hana.page, `/projects/${P}/members`)
   await waitPath(hana.page, `/projects/${P}/members`)
@@ -164,6 +223,18 @@ await step('Gil leaves; Hana sees it; Gil rejoins', async () => {
   await bar(hana.page).getByText('Gil Guest left the session').waitFor({ timeout: 10000 })
   await bar(gil2).getByRole('button', { name: 'Rejoin' }).click()
   await bar(gil2).getByRole('button', { name: 'Ask for control' }).waitFor({ timeout: 10000 })
+})
+
+await step('when Gil closes his tab, Hana sees "not connected" at once; a new tab joins without a take-over prompt', async () => {
+  t0 = Date.now()
+  await gil2.close({ runBeforeUnload: true })
+  await bar(hana.page).getByText('Gil Guest isn’t connected right now').waitFor({ timeout: 10000 })
+  const shown = Date.now() - t0
+  gil2 = await gil.ctx.newPage()
+  await gil2.goto(`${BASE}/dashboard`)
+  await waitPath(gil2, `/projects/${P}`, 20000)
+  await bar(gil2).getByRole('button', { name: 'Ask for control' }).waitFor({ timeout: 10000 })
+  return `shown ${shown} ms after closing (presence window is 90 s)`
 })
 
 await step('Hana ends the session (with confirmation); both see it ended; conversation in both histories', async () => {
@@ -193,6 +264,18 @@ await step('Gil invites Hana to resume from the shared conversation; Hana accept
   if (host !== 'a0000000-0000-4000-8000-000000000002') throw new Error(`host is ${host}`)
 })
 
+await step('a session where one person has been inactive for an hour ends on its own; both are told why', async () => {
+  await inactiveFor(HANA, 61)
+  await bar(gil2).getByText('one of you was inactive for an hour').waitFor({ timeout: 15000 })
+  await bar(hana.page).getByText('one of you was inactive for an hour').waitFor({ timeout: 40000 })
+  await gil2.reload()
+  await gil2.getByText('· ended after one of you was inactive').waitFor({ timeout: 10000 })
+  // Resume for the next step.
+  await gil2.getByRole('button', { name: 'Invite Hana Host to resume' }).click()
+  await bar(hana.page).getByRole('button', { name: 'Accept' }).click({ timeout: 20000 })
+  await bar(hana.page).getByRole('button', { name: 'Ask for control' }).waitFor({ timeout: 20000 })
+})
+
 await step('removing Gil from the Project ends the session for Hana', async () => {
   await sql(`update project_members set status='inactive' where user_id='a0000000-0000-4000-8000-000000000002'`)
   await bar(hana.page).getByText('no longer has access').waitFor({ timeout: 15000 })
@@ -201,7 +284,7 @@ await step('removing Gil from the Project ends the session for Hana', async () =
 
 await step('nothing was deleted: every session, participant and invitation row is still there', async () => {
   const counts = await sql(`select (select count(*) from collaboration_sessions)||'/'||(select count(*) from collaboration_participants)||'/'||(select count(*) from collaboration_invitations)`)
-  if (counts !== '2/4/2') throw new Error(`sessions/participants/invitations = ${counts}`)
+  if (counts !== '3/6/3') throw new Error(`sessions/participants/invitations = ${counts}`)
   return counts
 })
 

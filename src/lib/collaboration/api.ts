@@ -28,8 +28,9 @@ async function call<T>(client: Client, fn: keyof Database['public']['Functions']
 }
 
 export const collaborationApi = {
-  status: (c: Client, connection: string | null, session: string | null) =>
-    call<CollaborationStatus>(c, 'collaboration_status', { p_connection: connection, p_session: session }),
+  // active: the person used this tab since its last poll.
+  status: (c: Client, connection: string | null, session: string | null, active = false) =>
+    call<CollaborationStatus>(c, 'collaboration_status', { p_connection: connection, p_session: session, p_active: active }),
   candidates: (c: Client, projectId: string) => call<CollaborationCandidate[]>(c, 'collaboration_candidates', { p_project: projectId }),
   history: (c: Client) => call<SharedConversationSummary[]>(c, 'collaboration_history', {}),
   conversation: (c: Client, conversationId: string) =>
@@ -73,6 +74,25 @@ export const collaborationApi = {
     }),
   reclaimControl: (c: Client, sessionId: string, connection: string) =>
     call<SessionSnapshot>(c, 'collaboration_reclaim_control', { p_session: sessionId, p_connection: connection }),
+  takeControl: (c: Client, sessionId: string, connection: string) =>
+    call<SessionSnapshot>(c, 'collaboration_take_control', { p_session: sessionId, p_connection: connection }),
   leave: (c: Client, sessionId: string) => call<SessionSnapshot>(c, 'collaboration_leave', { p_session: sessionId }),
   end: (c: Client, sessionId: string) => call<SessionSnapshot>(c, 'collaboration_end', { p_session: sessionId }),
+}
+
+// Tells the database this tab is closing, so the other person sees "not
+// connected" straight away. Sent from a pagehide handler, where an
+// ordinary request may be cut off: a keepalive fetch survives the unload.
+// Best effort -- if it never arrives, presence lapses after 90 seconds.
+export function sendDisconnectBeacon(input: { supabaseUrl: string; anonKey: string; accessToken: string; sessionId: string; connection: string }) {
+  try {
+    void fetch(`${input.supabaseUrl}/rest/v1/rpc/collaboration_disconnect`, {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'content-type': 'application/json', apikey: input.anonKey, authorization: `Bearer ${input.accessToken}` },
+      body: JSON.stringify({ p_session: input.sessionId, p_connection: input.connection }),
+    }).catch(() => {})
+  } catch {
+    // Unloading: nothing to do.
+  }
 }

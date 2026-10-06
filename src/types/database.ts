@@ -3683,7 +3683,9 @@ interface DatabaseDefinition {
       // Shared workspace sessions (20261023100001). Each returns a JSON DTO
       // typed in src/lib/collaboration/types.ts and called through
       // src/lib/collaboration/api.ts.
-      collaboration_status: { Args: { p_connection?: string | null; p_session?: string | null }; Returns: unknown }
+      collaboration_status: { Args: { p_connection?: string | null; p_session?: string | null; p_active?: boolean }; Returns: unknown }
+      collaboration_take_control: { Args: { p_session: string; p_connection: string }; Returns: unknown }
+      collaboration_disconnect: { Args: { p_session: string; p_connection: string }; Returns: unknown }
       collaboration_candidates: { Args: { p_project: string }; Returns: unknown }
       collaboration_history: { Args: Record<string, never>; Returns: unknown }
       collaboration_conversation: { Args: { p_conversation: string }; Returns: unknown }

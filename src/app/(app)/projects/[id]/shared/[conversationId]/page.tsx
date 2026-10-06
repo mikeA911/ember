@@ -15,7 +15,9 @@ import { SharedConversationActions } from '@/components/collaboration/SharedConv
 const END_REASONS: Record<string, string> = {
   ended_by_host: 'ended by the host',
   everyone_left: 'everyone left',
-  expired: 'ended after nobody was connected',
+  inactive: 'ended after 30 minutes with nobody active',
+  participant_inactive: 'ended after one of you was inactive for an hour',
+  expired: 'ended at the 12-hour limit',
   access_revoked: 'ended when access changed',
 }
 

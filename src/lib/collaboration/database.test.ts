@@ -280,8 +280,8 @@ describe('control', () => {
     const { sessionId, snap } = await liveSession()
     await as(guest)
     await call('collaboration_request_control', sessionId, guestTab, false)
-    // The host's tab stops polling.
-    await asAdmin(`update collaboration_participants set last_seen_at = now() - interval '1 minute' where user_id = '${host}'`)
+    // The host's tab stops polling (past the 90-second presence window).
+    await asAdmin(`update collaboration_participants set last_seen_at = now() - interval '2 minutes' where user_id = '${host}'`)
     const seen = (await call('collaboration_status', guestTab, null)).session
     expect(seen).toMatchObject({ controllerId: host, host: { present: false }, guest: { present: true } })
     await as(host)
@@ -290,7 +290,7 @@ describe('control', () => {
     const back = await call('collaboration_join', sessionId, hostTab, false)
     expect(back).toMatchObject({ controllerId: host, controlGeneration: snap.controlGeneration })
     // Granting to someone who is not connected is refused.
-    await asAdmin(`update collaboration_participants set last_seen_at = now() - interval '1 minute' where user_id = '${guest}'`)
+    await asAdmin(`update collaboration_participants set last_seen_at = now() - interval '2 minutes' where user_id = '${guest}'`)
     expect((await errorOf(call('collaboration_answer_control_request', sessionId, hostTab, snap.controlGeneration, true))).message).toMatch(/not connected/)
   })
 })
@@ -371,12 +371,12 @@ describe('revocation and expiry', () => {
     expect((await errorOf(call('collaboration_history'))).code).toBe('42501')
   })
 
-  it('ends an idle session on its own so it never blocks a new invitation', async () => {
+  it('ends a session nobody has used for 30 minutes, so it never blocks a new invitation', async () => {
     const { sessionId } = await liveSession()
-    await asAdmin(`update collaboration_participants set last_seen_at = now() - interval '31 minutes'`)
+    await asAdmin(`update collaboration_participants set last_active_at = now() - interval '31 minutes'`)
     const inv = await call('collaboration_invite', project, third)
     expect(inv.status).toBe('pending')
-    expect((await call('collaboration_status', hostTab, sessionId)).session).toMatchObject({ status: 'ended', endReason: 'expired' })
+    expect((await call('collaboration_status', hostTab, sessionId)).session).toMatchObject({ status: 'ended', endReason: 'inactive' })
   })
 
   it('keeps every row: ending and expiring only change status', async () => {
@@ -390,5 +390,101 @@ describe('revocation and expiry', () => {
     await db.exec('set role authenticated')
     expect(rows[0]).toMatchObject({ sessions: 1, participants: 2, invitations: 1 })
     expect(rows[0].events).toBeGreaterThanOrEqual(4)
+  })
+})
+
+describe('inactivity', () => {
+  const inactive = (user: string, minutes: number) =>
+    asAdmin(`update collaboration_participants set last_active_at = now() - interval '${minutes} minutes' where user_id = '${user}'`)
+
+  it('shows a person as away after 10 minutes without input, and back when they use their tab', async () => {
+    const { sessionId } = await liveSession()
+    await inactive(guest, 11)
+    const seen = (await call('collaboration_status', hostTab, null)).session
+    expect(seen.guest).toMatchObject({ away: true, present: true })
+    expect(seen.guest.inactiveSeconds).toBeGreaterThanOrEqual(660)
+    expect(seen.host.away).toBe(false)
+    await as(guest)
+    // A poll without input keeps them away; with input brings them back.
+    expect((await call('collaboration_status', guestTab, sessionId, false)).session.guest.away).toBe(true)
+    expect((await call('collaboration_status', guestTab, sessionId, true)).session.guest.away).toBe(false)
+  })
+
+  it('counts a session command as activity', async () => {
+    const { sessionId } = await liveSession()
+    await inactive(guest, 11)
+    await as(guest)
+    expect((await call('collaboration_request_control', sessionId, guestTab, false)).guest.away).toBe(false)
+  })
+
+  it('lets the other person take control only while the controller is away or not connected', async () => {
+    const { sessionId, snap } = await liveSession()
+    await as(guest)
+    expect((await call('collaboration_status', guestTab, null)).session.canTakeControl).toBe(false)
+    expect((await errorOf(call('collaboration_take_control', sessionId, guestTab))).message).toMatch(/is active -- ask for control/)
+    await inactive(host, 11)
+    expect((await call('collaboration_status', guestTab, null)).session.canTakeControl).toBe(true)
+    const taken = await call('collaboration_take_control', sessionId, guestTab)
+    expect(taken).toMatchObject({ controllerId: guest, controlGeneration: snap.controlGeneration + 1 })
+    // The host's tab, issued before, can't move the view; the host can take control back.
+    await as(host)
+    expect((await errorOf(call('collaboration_navigate', sessionId, hostTab, snap.controlGeneration, workstream))).message).toMatch(/Ask for control/)
+    expect((await call('collaboration_reclaim_control', sessionId, hostTab)).controllerId).toBe(host)
+  })
+
+  it('a closed tab shows as not connected at once, without changing control, and comes back on its next poll', async () => {
+    const { sessionId } = await liveSession()
+    await call('collaboration_disconnect', sessionId, hostTab2)
+    await as(guest)
+    expect((await call('collaboration_status', guestTab, null)).session.host.present).toBe(true)
+    await as(host)
+    await call('collaboration_disconnect', sessionId, hostTab)
+    await as(guest)
+    const seen = (await call('collaboration_status', guestTab, null)).session
+    expect(seen).toMatchObject({ controllerId: host, host: { present: false }, canTakeControl: true })
+    await as(host)
+    expect((await call('collaboration_status', hostTab, null)).session).toMatchObject({ thisTabJoined: true, host: { present: true } })
+  })
+
+  it('warns before the end: nobody active for 30 minutes, or one person inactive for 60', async () => {
+    const { sessionId } = await liveSession()
+    const fresh = (await call('collaboration_status', hostTab, null)).session
+    expect(fresh.endingReason).toBe('inactive')
+    expect(fresh.endsInSeconds).toBeGreaterThan(29 * 60)
+    await inactive(host, 26)
+    await inactive(guest, 26)
+    await as(guest)
+    const both = (await call('collaboration_status', guestTab, sessionId, false)).session
+    expect(both).toMatchObject({ endingReason: 'inactive' })
+    expect(both.endsInSeconds).toBeLessThanOrEqual(240)
+    await asAdmin(`update collaboration_participants set last_active_at = now() where user_id = '${host}'`)
+    await inactive(guest, 58)
+    const one = (await call('collaboration_status', guestTab, sessionId, false)).session
+    expect(one.endingReason).toBe('participant_inactive')
+    expect(one.endsInSeconds).toBeLessThanOrEqual(120)
+    await inactive(guest, 61)
+    await as(host)
+    expect((await call('collaboration_status', hostTab, sessionId)).session).toMatchObject({ status: 'ended', endReason: 'participant_inactive' })
+  })
+
+  it('never calls an overdue session live in history, even before it is settled', async () => {
+    await liveSession()
+    expect((await call<Json[]>('collaboration_history'))[0].liveSessionId).not.toBeNull()
+    await inactive(host, 31)
+    await inactive(guest, 31)
+    const [item] = await call<Json[]>('collaboration_history')
+    expect(item.liveSessionId).toBeNull()
+    const shell = await call('collaboration_conversation', item.id)
+    expect(shell.sessions[0]).toMatchObject({ status: 'ended', endReason: 'inactive' })
+  })
+
+  it('drops a control request once the requester has gone away', async () => {
+    const { sessionId, snap } = await liveSession()
+    await as(guest)
+    await call('collaboration_request_control', sessionId, guestTab, false)
+    await inactive(guest, 11)
+    await as(host)
+    expect((await call('collaboration_status', hostTab, null)).session.controlRequestedBy).toBeNull()
+    expect((await errorOf(call('collaboration_answer_control_request', sessionId, hostTab, snap.controlGeneration, true))).message).toMatch(/no request/)
   })
 })
