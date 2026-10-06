@@ -9,6 +9,7 @@ import type {
   CollaborationInvitation,
   CollaborationStatus,
   SessionSnapshot,
+  SharedChat,
   SharedConversationShell,
   SharedConversationSummary,
 } from './types'
@@ -137,6 +138,30 @@ export const collaborationApi = {
     call<SessionSnapshot>(c, 'collaboration_take_control', { p_session: sessionId, p_connection: connection }),
   leave: (c: Client, sessionId: string) => call<SessionSnapshot>(c, 'collaboration_leave', { p_session: sessionId }),
   end: (c: Client, sessionId: string) => call<SessionSnapshot>(c, 'collaboration_end', { p_session: sessionId }),
+  // Phase 3: the shared chat.
+  chat: (c: Client, conversationId: string) => call<SharedChat>(c, 'collaboration_chat', { p_conversation: conversationId }),
+  askEmber: (c: Client, sessionId: string, connection: string, content: string, request: string) =>
+    call<{ messageId: string; turnId: string }>(c, 'collaboration_ask_ember', { p_session: sessionId, p_connection: connection, p_content: content, p_request: request }),
+  postComment: (c: Client, conversationId: string, content: string, request: string) =>
+    call<{ messageId: string }>(c, 'collaboration_post_comment', { p_conversation: conversationId, p_content: content, p_request: request }),
+  // Pass a viewer's comment on to Ember, or ask again after a failed answer.
+  queueTurn: (c: Client, sessionId: string, connection: string, messageId: string) =>
+    call<{ messageId: string; turnId: string; status: string }>(c, 'collaboration_queue_turn', { p_session: sessionId, p_connection: connection, p_message: messageId }),
+}
+
+// Asks the app server to run waiting shared-chat turns (see
+// src/app/api/collaboration/turns/route.ts). Safe to call any number of
+// times: one turn runs at a time per conversation.
+export async function startSharedTurnRunner(conversationId: string): Promise<void> {
+  try {
+    await fetch('/api/collaboration/turns', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ conversationId }),
+    })
+  } catch {
+    // The next poll notices the waiting turn and tries again.
+  }
 }
 
 // Tells the database this tab is closing -- a participant's tab

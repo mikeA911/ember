@@ -6,13 +6,16 @@ import { collaborationEnabled } from '@/lib/collaboration/flag'
 import type { SharedConversationShell } from '@/lib/collaboration/types'
 import { SharedConversationActions } from '@/components/collaboration/SharedConversationActions'
 import { ConversationViewers } from '@/components/collaboration/ConversationViewers'
+import { SharedChat } from '@/components/collaboration/SharedChat'
 
 // A shared conversation, as the pair and its viewers see it in their
 // history (shared workspace sessions, Phase 1 shell). Read through
 // collaboration_conversation, which admits only the pair (while both are
 // active members of the Project) and the viewers they added (while they
-// are too). Viewers can watch a live session but never control one. Shared Ember messages
-// arrive in Phase 3; nothing from either person's private chats is here.
+// are too). Viewers can watch a live session but never control one. The
+// shared Ember chat (Phase 3) is the conversation's record: the pair's
+// questions and Ember's answers, and viewers' comments; nothing from
+// anyone's private chats is here.
 
 const END_REASONS: Record<string, string> = {
   ended_by_host: 'ended by the host',
@@ -60,8 +63,10 @@ export default async function SharedConversationPage({ params }: { params: Promi
         {isViewer
           ? `Only ${pairNames} and the viewers they added can see this conversation, while they're members of this Project. You can watch their live sessions; you can't control them.`
           : `Only you, ${shell.otherName} and any viewers you add can see this conversation, while they're members of this Project.`}{' '}
-        Shared Ember chat for live sessions is coming in a later release; nothing from anyone’s private Ember chats is copied here.
+        Nothing from anyone’s private Ember chats is copied here, and Ember answers only from sources everyone in the conversation can open.
       </p>
+
+      <SharedChat conversationId={shell.id} />
 
       {!isViewer && shell.otherUserId && shell.otherName && (
         <SharedConversationActions

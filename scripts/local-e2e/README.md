@@ -50,5 +50,16 @@ PLAYWRIGHT_DIR=/dir/whose/node_modules/has/playwright-core CHROMIUM_PATH=/path/t
 For Phase 2 (shared editing), run `collaboration-shared-editing.mjs` the
 same way.
 
+For Phase 3 (shared Ember chat), also start the stand-in model and give
+the app server its address (the script points the local database's
+default chat provider at it):
+
+```bash
+node scripts/local-e2e/fake-model.mjs &          # http://localhost:54340/v1
+export GROQ_API_KEY=local-fake OPENAI_API_KEY=local-fake OPENAI_BASE_URL=http://localhost:54340/v1
+npx next start -p 3100 &                          # with the step 4 variables too
+node scripts/local-e2e/collaboration-shared-chat.mjs
+```
+
 Sign-in is `hana@e2e.local` / `gil@e2e.local` / `vera@e2e.local` with any password. The
 script resets only the collaboration tables before it runs.

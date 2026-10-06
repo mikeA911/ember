@@ -6,8 +6,9 @@ import { useState } from 'react'
 import { isAtSharedLocation } from '@/lib/collaboration/follow'
 import { minutesLabel } from '@/lib/collaboration/format'
 import { sharedPath } from '@/lib/collaboration/locations'
-import type { CollaborationPerson, OpenDraft, SessionSnapshot, WatchSnapshot } from '@/lib/collaboration/types'
+import type { CollaborationPerson, OpenDraft, SessionSnapshot, SharedChatState, WatchSnapshot } from '@/lib/collaboration/types'
 import { END_WARNING_SECONDS, useCollaboration } from './CollaborationProvider'
+import { SharedChat } from './SharedChat'
 
 // The persistent session bar under the header: who is in the live session,
 // who has control, connection state, and every control the person may use.
@@ -158,8 +159,18 @@ export function SessionBar() {
   else if (watch) notices.unshift(<Watching key="watching" watch={watch} pathname={pathname} />)
 
   if (notices.length === 0 && !error) return null
+  // Phase 3: the shared chat, beside whatever page the session shows.
+  const chatConversation = session?.thisTabJoined && session.status === 'active' ? session.conversationId : watch?.thisTabWatching ? watch.conversationId : null
   return (
     <div className="sticky top-0 z-30 border-b border-amber-200 bg-amber-50 text-sm text-zinc-800" aria-label="Live collaboration">
+      {collab.chatOpen && chatConversation && (
+        <div className="fixed bottom-20 right-4 z-40 flex max-h-[75vh] w-[min(28rem,calc(100vw-2rem))] flex-col gap-2 overflow-hidden rounded-lg border border-zinc-200 bg-white p-3 shadow-xl">
+          <button type="button" className="self-end text-xs text-zinc-500 underline" onClick={() => collab.setChatOpen(false)}>
+            Close
+          </button>
+          <SharedChat conversationId={chatConversation} compact />
+        </div>
+      )}
       <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-2">
         {notices}
         {error && (
@@ -208,6 +219,7 @@ function LiveSession({
       <span className="text-xs text-zinc-500">Showing: {sharedLabel}</span>
       <Viewers session={session} />
       {session.openDrafts.length > 0 && <span className="text-xs font-medium text-amber-800">Unsaved: {draftsLabel(session.openDrafts)}</span>}
+      {session.thisTabJoined && <ChatToggle chat={session.chat} />}
     </div>
   )
 
@@ -439,6 +451,7 @@ function Watching({ watch, pathname }: { watch: WatchSnapshot; pathname: string 
         <Presence person={watch.host} inControl={watch.controllerId === watch.host.id} you={false} />
         <Presence person={watch.guest} inControl={watch.controllerId === watch.guest.id} you={false} />
         <span className="text-xs text-zinc-500">Showing: {sharedLabel}</span>
+        {watch.thisTabWatching && <ChatToggle chat={watch.chat} />}
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {here ? (
@@ -463,5 +476,17 @@ function Watching({ watch, pathname }: { watch: WatchSnapshot; pathname: string 
         </span>
       </div>
     </div>
+  )
+}
+
+// Opens the shared Ember chat; shows when Ember is answering or questions wait.
+function ChatToggle({ chat }: { chat: SharedChatState | undefined }) {
+  const collab = useCollaboration()!
+  const status = chat?.answering ? ' · answering…' : chat && chat.waiting > 0 ? ` · ${chat.waiting} waiting` : ''
+  return (
+    <button type="button" className={secondary} aria-expanded={collab.chatOpen} onClick={() => collab.setChatOpen(!collab.chatOpen)}>
+      {collab.chatOpen ? 'Hide Ember chat' : 'Ember chat'}
+      {status}
+    </button>
   )
 }

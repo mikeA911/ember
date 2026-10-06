@@ -6,7 +6,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 // stand-in for the tables it references. Never reads .env.local or
 // contacts Supabase. PGlite has one connection, so lock races are covered
 // separately by scripts/collaboration-concurrency-check.mjs.
-const MIGRATIONS = ['supabase/migrations/20261023100001_collaboration_sessions.sql', 'supabase/migrations/20261024100001_collaboration_shared_editing.sql']
+const MIGRATIONS = [
+  'supabase/migrations/20261023100001_collaboration_sessions.sql',
+  'supabase/migrations/20261024100001_collaboration_shared_editing.sql',
+  'supabase/migrations/20261025100001_collaboration_shared_chat.sql',
+]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const host = id(1), guest = id(2), outsider = id(3), third = id(4)
 const project = id(10), otherProject = id(11)
@@ -52,9 +56,13 @@ async function liveSession() {
 beforeAll(async () => {
   db = new PGlite()
   await db.exec(`
-    create role anon; create role authenticated;
+    create role anon; create role authenticated; create role service_role;
     create schema auth;
-    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.actor', true), '')::uuid $$;
+    -- Reads the claims the way Supabase's does (the shared chat's evidence
+    -- check switches them to each reader), falling back to the test's actor.
+    create function auth.uid() returns uuid language sql stable as $$
+      select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''), nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub',
+        nullif(current_setting('test.actor', true), ''))::uuid $$;
     create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('test.jwt', true), ''), '{}')::jsonb $$;
     create table profiles(id uuid primary key, email text not null, full_name text, is_active boolean not null default true, role text not null default 'member');
     create table projects(id uuid primary key, name text not null, goal text, objective text, starter_prompt text);
@@ -67,6 +75,15 @@ beforeAll(async () => {
     create function can_curate_project(pid uuid, uid uuid) returns boolean language sql stable as $$
       select is_admin(uid) or exists (select 1 from project_members where project_id = pid and user_id = uid and status = 'active' and role in ('owner', 'curator')) $$;
     create table conversations(id uuid primary key, user_id uuid references profiles(id));
+    -- Evidence, with a stand-in read rule: listed readers only. (The real
+    -- rules are exercised by scripts/collaboration-shared-chat-check.mjs.)
+    create table knowledge_sources(id uuid primary key, title text, readers uuid[] not null default '{}');
+    create table wiki_articles(id uuid primary key default gen_random_uuid(), slug text unique not null, readers uuid[] not null default '{}');
+    alter table knowledge_sources enable row level security;
+    alter table wiki_articles enable row level security;
+    create policy readers on knowledge_sources for select using (auth.uid() = any (readers));
+    create policy readers on wiki_articles for select using (auth.uid() = any (readers));
+    grant select on knowledge_sources, wiki_articles to authenticated;
     grant usage on schema auth to authenticated;
   `)
   for (const file of MIGRATIONS) {
@@ -80,7 +97,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await db.exec(`
     reset role;
-    truncate collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
+    truncate collaboration_turns, collaboration_messages, knowledge_sources, wiki_articles, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
       collaboration_conversations, conversations, project_members, project_workstreams, projects, profiles cascade;
     insert into profiles values ('${host}', 'host@example.test', 'Hana Host', true), ('${guest}', 'guest@example.test', 'Gil Guest', true),
       ('${outsider}', 'out@example.test', 'Olu Outsider', true), ('${third}', 'third@example.test', null, true);
@@ -829,5 +846,183 @@ describe('shared editing (Phase 2)', () => {
     expect((await errorOf(call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, 'x'.repeat(20001), false))).message).toMatch(/too long/)
     await as(host, { client_id: 'chatbot' })
     expect((await errorOf(call('collaboration_set_draft', sessionId, hostTab, snap.controlGeneration, 'project_goal', project, 'x', false))).code).toBe('42501')
+  })
+})
+
+describe('shared chat (Phase 3)', () => {
+  const ks = (n: number) => ({ type: 'knowledge_source', id: id(n) })
+  const request = () => crypto.randomUUID()
+  // The app server's service-role calls.
+  async function service<T = Json>(fn: string, ...args: unknown[]): Promise<T> {
+    await db.exec('reset role; set role service_role')
+    try {
+      return await call<T>(fn, ...args)
+    } finally {
+      await db.exec('reset role; set role authenticated')
+    }
+  }
+  async function withViewer() {
+    const live = await liveSession()
+    const [conversation] = await call<Json[]>('collaboration_history')
+    await call('collaboration_add_viewer', conversation.id, third)
+    return { ...live, conversationId: conversation.id as string }
+  }
+  const ask = (sessionId: string, tab: string, text: string, req = request()) => call('collaboration_ask_ember', sessionId, tab, text, req)
+
+  it('one of the pair asks Ember: an attributed message and a waiting turn; a retried send posts once', async () => {
+    const { sessionId, conversationId } = await withViewer()
+    const req = request()
+    const first = await ask(sessionId, hostTab, '  What is the call flow?  ', req)
+    expect(await ask(sessionId, hostTab, 'What is the call flow?', req)).toEqual(first)
+    await as(guest)
+    await ask(sessionId, guestTab, 'And staffing?')
+    const status = await call('collaboration_status', guestTab, null)
+    expect(status.session.chat).toMatchObject({ waiting: 2, answering: false, needsRunner: true })
+    const chat = await call('collaboration_chat', conversationId)
+    expect(chat.myRole).toBe('participant')
+    expect(chat.messages).toMatchObject([
+      { seq: 1, kind: 'message', authorName: 'Hana Host', content: 'What is the call flow?', turn: { status: 'queued', requestedByName: 'Hana Host' } },
+      { seq: 2, kind: 'message', authorName: 'Gil Guest', content: 'And staffing?' },
+    ])
+  })
+
+  it('needs a live session with both of the pair in it, from the session tab', async () => {
+    const { sessionId } = await withViewer()
+    expect((await errorOf(ask(sessionId, hostTab2, 'From another tab'))).code).toBe('EC003')
+    await as(third)
+    expect((await errorOf(ask(sessionId, hostTab, 'A viewer asking'))).code).toBe('42501')
+    await as(guest)
+    await call('collaboration_leave', sessionId)
+    await as(host)
+    expect((await errorOf(ask(sessionId, hostTab, 'Alone now'))).message).toMatch(/both in the live session/)
+  })
+
+  it('limits message length and how many questions wait', async () => {
+    const { sessionId } = await liveSession()
+    expect((await errorOf(ask(sessionId, hostTab, '   '))).code).toBe('EC001')
+    expect((await errorOf(ask(sessionId, hostTab, 'x'.repeat(4001)))).message).toMatch(/1 to 4000/)
+    for (const q of ['one', 'two', 'three']) await ask(sessionId, hostTab, q)
+    expect((await errorOf(ask(sessionId, hostTab, 'four'))).message).toMatch(/3 questions waiting/)
+  })
+
+  it('viewers comment; Ember answers a comment only when one of the pair passes it on', async () => {
+    const { sessionId, conversationId } = await withViewer()
+    expect((await errorOf(call('collaboration_post_comment', conversationId, 'Pair comment', request()))).code).toBe('42501')
+    await as(third)
+    const { messageId } = await call('collaboration_post_comment', conversationId, 'Ask about radio coverage', request())
+    const chat = await call('collaboration_chat', conversationId)
+    expect(chat.myRole).toBe('viewer')
+    expect(chat.messages).toMatchObject([{ kind: 'comment', authorName: 'third@example.test', turn: null }])
+    expect(chat.state.waiting).toBe(0)
+    await as(outsider)
+    expect((await errorOf(call('collaboration_post_comment', conversationId, 'x', request()))).code).toBe('42501')
+    await as(guest)
+    const passed = await call('collaboration_queue_turn', sessionId, guestTab, messageId)
+    expect(passed.status).toBe('queued')
+    await as(host)
+    expect((await call('collaboration_queue_turn', sessionId, hostTab, messageId)).turnId).toBe(passed.turnId)
+    const claim = await service('collaboration_claim_turn', conversationId, host)
+    expect(claim).toMatchObject({ state: 'claimed', requestedByName: 'Gil Guest', prompt: { kind: 'comment', content: 'Ask about radio coverage', authorName: 'third@example.test' } })
+  })
+
+  it('runs one turn at a time, records the reply once, and refuses a stale lease', async () => {
+    const { sessionId, snap } = await liveSession()
+    const conversationId = snap.conversationId
+    const a = await ask(sessionId, hostTab, 'First')
+    await ask(sessionId, hostTab, 'Second')
+    const claim = await service('collaboration_claim_turn', conversationId, host)
+    expect(claim.turnId).toBe(a.turnId)
+    expect(await service('collaboration_claim_turn', conversationId, guest)).toEqual({ state: 'busy' })
+    expect((await call('collaboration_status', hostTab, null)).session.chat).toMatchObject({ waiting: 1, answering: true, needsRunner: false })
+    expect((await errorOf(service('collaboration_complete_turn', claim.turnId, id(99), 'Wrong lease', '[]', 'p', 'm'))).code).toBe('EC003')
+    expect((await errorOf(service('collaboration_complete_turn', claim.turnId, claim.leaseId, 'x', '[{"type":"file","id":"y"}]', 'p', 'm'))).message).toMatch(/Malformed/)
+    const done = await service('collaboration_complete_turn', claim.turnId, claim.leaseId, 'First answer', '[]', 'p', 'm')
+    expect(await service('collaboration_complete_turn', claim.turnId, claim.leaseId, 'Again', '[]', 'p', 'm')).toEqual(done)
+    const next = await service('collaboration_claim_turn', conversationId, host)
+    expect(next.prompt.content).toBe('Second')
+    expect(next.history).toEqual([
+      { kind: 'message', authorName: 'Hana Host', content: 'First', evidence: [] },
+      { kind: 'reply', authorName: null, content: 'First answer', evidence: [] },
+    ])
+    await service('collaboration_fail_turn', next.turnId, next.leaseId, 'The model was unavailable')
+    const chat = await call('collaboration_chat', conversationId)
+    expect(chat.messages.map((m: Json) => [m.kind, m.turn?.status ?? null])).toEqual([
+      ['message', 'done'],
+      ['message', 'failed'],
+      ['reply', null],
+    ])
+    // Server order is arrival order; a reply names the question it answers.
+    expect(chat.messages[2].promptId).toBe(chat.messages[0].id)
+    expect(chat.messages[1].turn.error).toBe('The model was unavailable')
+    // Asking again re-queues the same question.
+    expect((await call('collaboration_queue_turn', sessionId, hostTab, chat.messages[1].id)).status).toBe('queued')
+  })
+
+  it('a run that stops is retried once, then fails', async () => {
+    const { sessionId, snap } = await liveSession()
+    const conversationId = snap.conversationId
+    await ask(sessionId, hostTab, 'Slow question')
+    const expire = () => asAdmin(`update collaboration_turns set lease_expires_at = now() - interval '1 second' where status = 'running'`)
+    const first = await service('collaboration_claim_turn', conversationId, host)
+    await expire()
+    expect((await call('collaboration_status', hostTab, null)).session.chat.needsRunner).toBe(true)
+    const second = await service('collaboration_claim_turn', conversationId, host)
+    expect(second.turnId).toBe(first.turnId)
+    // The first run, finishing late, no longer holds the turn.
+    expect((await errorOf(service('collaboration_complete_turn', first.turnId, first.leaseId, 'Late', '[]', 'p', 'm'))).code).toBe('EC003')
+    await expire()
+    expect(await service('collaboration_claim_turn', conversationId, host)).toEqual({ state: 'idle' })
+    const chat = await call('collaboration_chat', conversationId)
+    expect(chat.messages[0].turn).toMatchObject({ status: 'failed', error: expect.stringMatching(/didn.t finish/) })
+  })
+
+  it('questions still waiting when the session ends are cancelled, not answered', async () => {
+    const { sessionId, snap } = await liveSession()
+    const conversationId = snap.conversationId
+    await ask(sessionId, hostTab, 'Unanswered')
+    await call('collaboration_end', sessionId)
+    expect((await call('collaboration_chat', conversationId)).messages[0].turn.status).toBe('cancelled')
+    expect(await service('collaboration_claim_turn', conversationId, host)).toEqual({ state: 'idle' })
+  })
+
+  it('evidence: Ember may use only what every reader can open, and a reply shows only to readers who can open all of it', async () => {
+    const { sessionId, conversationId } = await withViewer()
+    await asAdmin(`insert into knowledge_sources values ('${id(70)}', 'All', '{${host},${guest},${third}}'), ('${id(71)}', 'Pair only', '{${host},${guest}}'), ('${id(72)}', 'Host only', '{${host}}');
+      insert into wiki_articles(slug, readers) values ('everyone', '{${host},${guest},${third}}')`)
+    const evidence = JSON.stringify([ks(70), ks(71), ks(72), { type: 'wiki_article', id: 'everyone' }, { type: 'other', id: 'x' }])
+    const common = await call<Json[]>('collaboration_common_evidence', conversationId, evidence)
+    expect(common.map((e) => e.id).sort()).toEqual([id(70), 'everyone'])
+    // The caller is back to being themselves afterwards.
+    await call('collaboration_remove_viewer', conversationId, third)
+    expect((await call<Json[]>('collaboration_common_evidence', conversationId, evidence)).map((e) => e.id).sort()).toEqual([id(70), id(71), 'everyone'])
+    await call('collaboration_add_viewer', conversationId, third)
+
+    await ask(sessionId, hostTab, 'Pricing?')
+    const claim = await service('collaboration_claim_turn', conversationId, host)
+    await service('collaboration_complete_turn', claim.turnId, claim.leaseId, 'Pair-only answer', JSON.stringify([ks(71)]), 'p', 'm')
+    const reply = async () => (await call('collaboration_chat', conversationId)).messages[1]
+    expect(await reply()).toMatchObject({ kind: 'reply', content: 'Pair-only answer', evidence: [ks(71)] })
+    await as(third)
+    expect(await reply()).toMatchObject({ kind: 'reply', hidden: true })
+    expect((await reply()).content).toBeUndefined()
+    // Only the pair runs the check.
+    expect((await errorOf(call('collaboration_common_evidence', conversationId, evidence))).code).toBe('42501')
+  })
+
+  it("non-readers see nothing; browsers can't run turns; MCP tokens can't post", async () => {
+    const { sessionId, conversationId } = await withViewer()
+    await ask(sessionId, hostTab, 'Hello')
+    await as(outsider)
+    expect((await errorOf(call('collaboration_chat', conversationId))).code).toBe('42501')
+    const { rows } = await db.query('select * from collaboration_messages')
+    expect(rows).toEqual([])
+    await as(host)
+    expect((await errorOf(call('collaboration_claim_turn', conversationId, host))).code).toBe('42501')
+    expect((await errorOf(db.query(`insert into collaboration_messages(conversation_id, seq, kind, content, turn_id) values ('${conversationId}', 9, 'reply', 'x', '${id(1)}')`))).code).toBe('42501')
+    await as(host, { client_id: 'chatbot' })
+    expect((await errorOf(ask(sessionId, hostTab, 'From MCP'))).code).toBe('42501')
+    expect((await errorOf(call('collaboration_common_evidence', conversationId, '[]'))).code).toBe('42501')
+    await as(third, { client_id: 'chatbot' })
+    expect((await errorOf(call('collaboration_post_comment', conversationId, 'From MCP', request()))).code).toBe('42501')
   })
 })
