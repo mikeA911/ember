@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { isAtSharedLocation } from '@/lib/collaboration/follow'
 import { minutesLabel } from '@/lib/collaboration/format'
 import { sharedPath } from '@/lib/collaboration/locations'
-import type { CollaborationPerson, SessionSnapshot, WatchSnapshot } from '@/lib/collaboration/types'
+import type { CollaborationPerson, OpenDraft, SessionSnapshot, WatchSnapshot } from '@/lib/collaboration/types'
 import { END_WARNING_SECONDS, useCollaboration } from './CollaborationProvider'
 
 // The persistent session bar under the header: who is in the live session,
@@ -21,6 +21,18 @@ const END_REASONS: Record<NonNullable<SessionSnapshot['endReason']>, string> = {
   participant_inactive: 'The live session ended because one of you was inactive for an hour.',
   expired: 'The live session reached its 12-hour limit and ended.',
   access_revoked: 'The live session ended because one of you no longer has access to this Project.',
+}
+
+const FIELD_LABELS: Record<OpenDraft['field'], string> = {
+  project_goal: 'Goal',
+  project_objective: 'Description',
+  project_starter_prompt: 'Starter prompt',
+  workstream_summary: 'Summary',
+}
+
+// "Goal, Summary (Intake)".
+function draftsLabel(drafts: OpenDraft[]): string {
+  return drafts.map((d) => (d.workstreamName ? `${FIELD_LABELS[d.field]} (${d.workstreamName})` : FIELD_LABELS[d.field])).join(', ')
 }
 
 const button = 'rounded border px-2 py-0.5 text-xs font-medium disabled:opacity-50'
@@ -195,6 +207,7 @@ function LiveSession({
       <Presence person={session.guest} inControl={session.controllerId === session.guest.id} you={!isHost} />
       <span className="text-xs text-zinc-500">Showing: {sharedLabel}</span>
       <Viewers session={session} />
+      {session.openDrafts.length > 0 && <span className="text-xs font-medium text-amber-800">Unsaved: {draftsLabel(session.openDrafts)}</span>}
     </div>
   )
 
@@ -304,13 +317,28 @@ function LiveSession({
           <Link href={`/projects/${session.projectId}/shared/${session.conversationId}`} className="underline text-zinc-600">
             Shared conversation
           </Link>
-          <button type="button" className={secondary} disabled={busy} onClick={collab.leave}>
-            Leave
-          </button>
+          {inControl && session.openDrafts.length > 0 && !other.left ? (
+            <button
+              type="button"
+              className={secondary}
+              disabled={busy}
+              title={`Your unsaved drafts stay in the session, and control passes to ${other.name}.`}
+              onClick={collab.leave}
+            >
+              Leave (drafts stay with {other.name})
+            </button>
+          ) : (
+            <button type="button" className={secondary} disabled={busy} onClick={collab.leave}>
+              Leave
+            </button>
+          )}
           {isHost &&
             (confirmEnd ? (
               <>
-                <span>End for both of you?</span>
+                <span>
+                  End for both of you?
+                  {session.openDrafts.length > 0 && <strong> Unsaved {draftsLabel(session.openDrafts)} will not be saved.</strong>}
+                </span>
                 <button
                   type="button"
                   className={primary}

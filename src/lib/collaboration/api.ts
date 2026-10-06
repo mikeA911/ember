@@ -4,6 +4,7 @@ import { toCollaborationError } from './errors'
 import type {
   CollaborationCandidate,
   CollaborationViewer,
+  SharedTextFieldName,
   WatchSnapshot,
   CollaborationInvitation,
   CollaborationStatus,
@@ -86,6 +87,52 @@ export const collaborationApi = {
     call<WatchSnapshot>(c, 'collaboration_watch_status', { p_session: sessionId, p_connection: connection }),
   stopWatching: (c: Client, sessionId: string, connection: string) =>
     call<null>(c, 'collaboration_stop_watching', { p_session: sessionId, p_connection: connection }),
+  setDraft: (c: Client, s: { sessionId: string; connection: string; generation: number }, field: SharedTextFieldName, targetId: string, value: string, rebase = false) =>
+    call<SessionSnapshot>(c, 'collaboration_set_draft', {
+      p_session: s.sessionId,
+      p_connection: s.connection,
+      p_generation: s.generation,
+      p_field: field,
+      p_target: targetId,
+      p_value: value,
+      p_rebase: rebase,
+    }),
+  discardDraft: (c: Client, s: { sessionId: string; connection: string; generation: number }, field: SharedTextFieldName, targetId: string) =>
+    call<SessionSnapshot>(c, 'collaboration_discard_draft', {
+      p_session: s.sessionId,
+      p_connection: s.connection,
+      p_generation: s.generation,
+      p_field: field,
+      p_target: targetId,
+    }),
+  saveField: (c: Client, s: { sessionId: string; connection: string; generation: number }, field: SharedTextFieldName, targetId: string, requestId: string) =>
+    call<SessionSnapshot>(c, 'collaboration_save_field', {
+      p_session: s.sessionId,
+      p_connection: s.connection,
+      p_generation: s.generation,
+      p_field: field,
+      p_target: targetId,
+      p_request: requestId,
+    }),
+  setDeliverable: (
+    c: Client,
+    s: { sessionId: string; connection: string; generation: number },
+    workstreamId: string,
+    index: number,
+    label: string,
+    completed: boolean,
+    requestId: string
+  ) =>
+    call<SessionSnapshot>(c, 'collaboration_set_deliverable', {
+      p_session: s.sessionId,
+      p_connection: s.connection,
+      p_generation: s.generation,
+      p_workstream: workstreamId,
+      p_index: index,
+      p_label: label,
+      p_completed: completed,
+      p_request: requestId,
+    }),
   takeControl: (c: Client, sessionId: string, connection: string) =>
     call<SessionSnapshot>(c, 'collaboration_take_control', { p_session: sessionId, p_connection: connection }),
   leave: (c: Client, sessionId: string) => call<SessionSnapshot>(c, 'collaboration_leave', { p_session: sessionId }),

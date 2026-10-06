@@ -3691,6 +3691,20 @@ interface DatabaseDefinition {
       collaboration_watch: { Args: { p_session: string; p_connection: string }; Returns: unknown }
       collaboration_watch_status: { Args: { p_session: string; p_connection: string }; Returns: unknown }
       collaboration_stop_watching: { Args: { p_session: string; p_connection: string }; Returns: unknown }
+      // Phase 2 (20261024100001).
+      collaboration_set_draft: {
+        Args: { p_session: string; p_connection: string; p_generation: number; p_field: string; p_target: string; p_value: string; p_rebase?: boolean }
+        Returns: unknown
+      }
+      collaboration_discard_draft: { Args: { p_session: string; p_connection: string; p_generation: number; p_field: string; p_target: string }; Returns: unknown }
+      collaboration_save_field: {
+        Args: { p_session: string; p_connection: string; p_generation: number; p_field: string; p_target: string; p_request: string }
+        Returns: unknown
+      }
+      collaboration_set_deliverable: {
+        Args: { p_session: string; p_connection: string; p_generation: number; p_workstream: string; p_index: number; p_label: string; p_completed: boolean; p_request: string }
+        Returns: unknown
+      }
       collaboration_candidates: { Args: { p_project: string }; Returns: unknown }
       collaboration_history: { Args: Record<string, never>; Returns: unknown }
       collaboration_conversation: { Args: { p_conversation: string }; Returns: unknown }

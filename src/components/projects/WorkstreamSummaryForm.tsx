@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { updateWorkstreamSummaryAction } from '@/app/actions/workstreams'
 import { Markdown } from '@/components/shared/Markdown'
+import { SharedTextField, useSharedField } from '@/components/collaboration/SharedTextField'
 
 // Outcome summary, distinct from Goal (what we set out to do) -- shown at
 // the top of the workstream page once populated. View mode renders as
@@ -22,6 +23,24 @@ export function WorkstreamSummaryForm({
   const [value, setValue] = useState(summary ?? '')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+
+  // In a live session showing this workstream, edited together (Phase 2).
+  const shared = useSharedField('workstream_summary', workstreamId)
+  if (shared) {
+    return (
+      <SharedTextField
+        field="workstream_summary"
+        targetId={workstreamId}
+        shared={shared}
+        label="Summary"
+        placeholder="What did this workstream find? Markdown supported."
+        rows={8}
+        markdown
+        saveLabel="Save summary"
+      />
+    )
+  }
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault()

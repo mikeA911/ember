@@ -21,6 +21,30 @@ export interface CollaborationViewer {
   addedAt: string
 }
 
+// Phase 2: fields edited together on the shared page.
+export type SharedTextFieldName = 'project_goal' | 'project_objective' | 'project_starter_prompt' | 'workstream_summary'
+
+export interface SharedDraft {
+  value: string
+  revision: number
+  editorId: string | null
+  editorName: string | null
+  updatedAt: string
+  // The field was changed outside the session since this draft opened.
+  baseChanged: boolean
+}
+
+export type SharedFieldState =
+  | { field: SharedTextFieldName; targetId: string; saved: string | null; canEdit: boolean; draft: SharedDraft | null }
+  | { field: 'workstream_deliverables'; targetId: string; deliverables: { label: string; completed: boolean }[]; canEdit: boolean }
+
+export interface OpenDraft {
+  field: SharedTextFieldName
+  targetId: string
+  workstreamName: string | null
+  editorName: string | null
+}
+
 export interface SessionSnapshot {
   id: string
   conversationId: string
@@ -48,6 +72,9 @@ export interface SessionSnapshot {
   // Viewers added to the conversation, and those watching right now.
   viewers: CollaborationViewer[]
   watching: { userId: string; name: string }[]
+  // The shared fields on the page being shown, and every unsaved draft.
+  fields: SharedFieldState[]
+  openDrafts: OpenDraft[]
 }
 
 // A live session on a conversation the caller views, which they may watch.
@@ -74,6 +101,7 @@ export interface WatchSnapshot {
   stateRevision: number
   location: { workstreamId: string | null; workstreamName: string | null }
   thisTabWatching: boolean
+  fields: SharedFieldState[]
 }
 
 export interface CollaborationInvitation {

@@ -9,7 +9,7 @@ import { CollaborationError } from '@/lib/collaboration/errors'
 import { decideFollow, followTarget } from '@/lib/collaboration/follow'
 import { sharedPath } from '@/lib/collaboration/locations'
 import { nextPollDelay, POLL } from '@/lib/collaboration/transport'
-import type { CollaborationInvitation, CollaborationStatus, SessionSnapshot, WatchableSession, WatchSnapshot } from '@/lib/collaboration/types'
+import type { CollaborationInvitation, CollaborationStatus, SessionSnapshot, SharedTextFieldName, WatchableSession, WatchSnapshot } from '@/lib/collaboration/types'
 
 // Shared workspace sessions, Phase 1 (docs/dev-request-shared-workspace-
 // sessions.md). Mounted by the signed-in layout only when the feature flag
@@ -58,6 +58,15 @@ interface CollaborationContextValue {
   stopWatching: () => Promise<void>
   dismissEndedWatch: () => void
   followAgain: () => void
+  // Phase 2: shared editing by the person in control. These throw a
+  // CollaborationError for the field to show (not the bar).
+  setDraft: (field: SharedTextFieldName, targetId: string, value: string, rebase?: boolean) => Promise<void>
+  discardDraft: (field: SharedTextFieldName, targetId: string) => Promise<void>
+  saveField: (field: SharedTextFieldName, targetId: string) => Promise<void>
+  setDeliverable: (workstreamId: string, index: number, label: string, completed: boolean) => Promise<void>
+  // A field with typing not yet sent registers how to send it, so it goes
+  // out before control is handed over or the person leaves.
+  registerPendingDraft: (key: string, flush: () => Promise<void>) => () => void
   dismissEnded: () => void
   dismissError: () => void
 }
@@ -401,6 +410,27 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
 
+  const pendingDraftsRef = useRef(new Map<string, () => Promise<void>>())
+  const flushPendingDrafts = useCallback(async () => {
+    await Promise.allSettled([...pendingDraftsRef.current.values()].map((flush) => flush()))
+  }, [])
+
+  // An edit by the person in control, on the generation this tab last saw.
+  // Applies the returned snapshot; errors go to the caller.
+  const edit = useCallback(
+    async (action: (s: { sessionId: string; connection: string; generation: number }) => Promise<SessionSnapshot>) => {
+      const s = sessionRef.current
+      if (!s || !connection || !s.thisTabJoined) throw new CollaborationError('This tab isn’t in the live session.', 'stale')
+      try {
+        applySession(await action({ sessionId: s.id, connection, generation: s.controlGeneration }))
+      } catch (err) {
+        if (err instanceof CollaborationError && err.kind === 'stale') pollRef.current()
+        throw err
+      }
+    },
+    [connection, applySession]
+  )
+
   const withSession = useCallback(
     (action: (s: SessionSnapshot, tab: string) => Promise<SessionSnapshot>) =>
       run(async () => {
@@ -440,8 +470,11 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
         return result
       }).then(() => undefined),
     requestControl: (withdraw = false) => withSession((s, tab) => collaborationApi.requestControl(supabase, s.id, tab, withdraw)),
-    answerControlRequest: (grant) =>
-      withSession((s, tab) => collaborationApi.answerControlRequest(supabase, s.id, tab, s.controlGeneration, grant)),
+    answerControlRequest: async (grant) => {
+      // Typing not yet sent goes out before control moves.
+      if (grant) await flushPendingDrafts()
+      return withSession((s, tab) => collaborationApi.answerControlRequest(supabase, s.id, tab, s.controlGeneration, grant))
+    },
     reclaimControl: () => withSession((s, tab) => collaborationApi.reclaimControl(supabase, s.id, tab)),
     takeControl: () => withSession((s, tab) => collaborationApi.takeControl(supabase, s.id, tab)),
     stillHere: () => {
@@ -450,7 +483,10 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     },
     takeOverTab: () => withSession((s, tab) => collaborationApi.join(supabase, s.id, tab, true)),
     rejoin: () => withSession((s, tab) => collaborationApi.join(supabase, s.id, tab, false)),
-    leave: () => withSession((s) => collaborationApi.leave(supabase, s.id)),
+    leave: async () => {
+      await flushPendingDrafts()
+      return withSession((s) => collaborationApi.leave(supabase, s.id))
+    },
     end: () => withSession((s) => collaborationApi.end(supabase, s.id)),
     watchSession: (sessionId) =>
       run(async () => {
@@ -468,6 +504,17 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
         return null
       }).then(() => undefined),
     dismissEndedWatch: () => setEndedWatch(null),
+    setDraft: (field, targetId, value, rebase = false) => edit((s) => collaborationApi.setDraft(supabase, s, field, targetId, value, rebase)),
+    discardDraft: (field, targetId) => edit((s) => collaborationApi.discardDraft(supabase, s, field, targetId)),
+    saveField: (field, targetId) => edit((s) => collaborationApi.saveField(supabase, s, field, targetId, crypto.randomUUID())),
+    setDeliverable: (workstreamId, index, label, completed) =>
+      edit((s) => collaborationApi.setDeliverable(supabase, s, workstreamId, index, label, completed, crypto.randomUUID())),
+    registerPendingDraft: (key, flush) => {
+      pendingDraftsRef.current.set(key, flush)
+      return () => {
+        if (pendingDraftsRef.current.get(key) === flush) pendingDraftsRef.current.delete(key)
+      }
+    },
     followAgain: () => {
       const id = sessionRef.current?.thisTabJoined ? sessionRef.current.id : watchRef.current?.id
       if (id) writeAway(id, false)

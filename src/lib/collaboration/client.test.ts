@@ -36,6 +36,8 @@ function session(over: Partial<SessionSnapshot> = {}): SessionSnapshot {
     canTakeControl: false,
     viewers: [],
     watching: [],
+    fields: [],
+    openDrafts: [],
     ...over,
   }
 }
