@@ -56,7 +56,7 @@ Finishes the shared Ember chat (R3, R4). The migration (`20261027100001_collabor
 
 ### Phase 4 operations, as built (7 October 2026)
 
-The first part of the remote pilot and release phase: being able to see and fix problems, and checking behaviour on poor networks. The migration (`20261028100001_collaboration_operations.sql`) is **not yet applied** to the live backend.
+The first part of the remote pilot and release phase: being able to see and fix problems, and checking behaviour on poor networks. The migration (`20261028100001_collaboration_operations.sql`) was applied to the live backend on 7 October 2026 (objects and grants verified).
 
 - **Monitoring.** **Admin → Live collaboration** (platform admins, when the flag is on): live sessions with presence, control, deadline, watchers, Ember state and unsaved drafts; problems needing attention (stalled or failed Ember answers, notes stuck sending, sessions past their deadline); counts for 24 hours, 7 or 30 days (invitations, sessions by end reason, control changes, saves, abandoned drafts, answers and retries, answer time, comments, summaries, notes sent). Names and statuses only, never content.
 - **Recovery.** End a live session ("An administrator ended the live session"; drafts kept as abandoned), settle overdue sessions, cancel a stalled Ember answer (the pair can ask again), reset a note stuck sending to failed. Each is a status change recorded in `collaboration_events` with the admin as actor; refused for anyone else and for external MCP tokens. [Runbook](guides/shared-workspace-sessions-runbook.md).
