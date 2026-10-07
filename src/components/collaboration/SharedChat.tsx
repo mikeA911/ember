@@ -85,6 +85,14 @@ export function SharedChat({ conversationId, compact = false }: { conversationId
     }
   }, [loadChat, conversationId, version])
 
+  // Time the answers this tab asked for (the pilot's Connection check).
+  const { noteChatReplies } = collab
+  useEffect(() => {
+    if (!chat) return
+    const answered = chat.messages.filter((m) => m.kind === 'reply' && m.promptId).map((m) => m.promptId!)
+    if (answered.length) noteChatReplies(answered)
+  }, [chat, noteChatReplies])
+
   const count = chat?.messages.length ?? 0
   useEffect(() => {
     if (count) bottom.current?.scrollIntoView({ block: 'nearest' })

@@ -9,6 +9,7 @@ import { CollaborationError } from '@/lib/collaboration/errors'
 import { decideFollow, followTarget } from '@/lib/collaboration/follow'
 import { sharedPath } from '@/lib/collaboration/locations'
 import { nextPollDelay, POLL } from '@/lib/collaboration/transport'
+import { emptySamples, pushSample, summarize, type DiagnosticSamples, type DiagnosticSummary } from '@/lib/collaboration/diagnostics'
 import type {
   CollaborationInvitation,
   CollaborationStatus,
@@ -52,6 +53,12 @@ interface CollaborationContextValue {
   // Phase 4: polls have failed twice running while in a session or
   // watching -- what's shown may be out of date until they succeed.
   reconnecting: boolean
+  // Phase 4 pilot: this browser's own connection measurements (see
+  // src/lib/collaboration/diagnostics.ts).
+  diagnostics: () => DiagnosticSummary
+  resetDiagnostics: () => void
+  // The shared chat reports replies it shows, to time answers asked here.
+  noteChatReplies: (promptIds: string[]) => void
   busy: boolean
   error: string | null
   invite: (projectId: string, inviteeId: string, conversationId?: string | null) => Promise<CollaborationInvitation | null>
@@ -140,6 +147,19 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
   // right after accepting must not fall back to the idle backoff).
   const expectSessionUntilRef = useRef(0)
   const failuresRef = useRef(0)
+  // Connection check (pilot): samples on this browser's clock.
+  const samplesRef = useRef<DiagnosticSamples | null>(null)
+  const samples = () => (samplesRef.current ??= emptySamples(Date.now()))
+  const lastOkPollStartRef = useRef(0)
+  const pendingAsksRef = useRef(new Map<string, number>())
+  const noteChatReplies = useCallback((promptIds: string[]) => {
+    for (const id of promptIds) {
+      const askedAt = pendingAsksRef.current.get(id)
+      if (askedAt === undefined) continue
+      pendingAsksRef.current.delete(id)
+      pushSample((samplesRef.current ??= emptySamples(askedAt)).emberAnswerMs, Date.now() - askedAt)
+    }
+  }, [])
   const [reconnecting, setReconnecting] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollRef = useRef<() => void>(() => {})
@@ -202,6 +222,20 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     setWatch((prev) => (prev && prev.id === next.id && next.stateRevision < prev.stateRevision ? prev : next))
   }, [])
 
+  // A poll came back: its round trip, and -- if it brought a change made
+  // elsewhere -- an upper bound on how long that change took to arrive
+  // (it happened after the previous successful poll left this browser).
+  const recordPoll = useCallback((startedAt: number, prevRevision: number | null, revision: number | null) => {
+    const sample = (samplesRef.current ??= emptySamples(startedAt))
+    const now = Date.now()
+    pushSample(sample.pollRoundTripsMs, now - startedAt)
+    sample.pollSuccesses += 1
+    if (prevRevision !== null && revision !== null && revision > prevRevision && lastOkPollStartRef.current) {
+      pushSample(sample.changeSeenWithinMs, now - lastOkPollStartRef.current)
+    }
+    lastOkPollStartRef.current = startedAt
+  }, [])
+
   const poll = useCallback(async () => {
     if (timerRef.current) clearTimeout(timerRef.current)
     // From this response, not sessionRef: the ref only catches up after
@@ -218,12 +252,14 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     if (watched && connection) {
       try {
         const next = await collaborationApi.watchStatus(supabase, watched.id, connection)
+        recordPoll(startedAt, watchRef.current?.id === next.id ? watchRef.current.stateRevision : null, next.stateRevision)
         applyWatch(next)
         watching = next.status === 'active' && next.thisTabWatching
         failuresRef.current = 0
       } catch (err) {
         if (err instanceof CollaborationError && err.kind === 'denied') applyWatch(null)
         else {
+          samples().pollFailures += 1
           failuresRef.current += 1
           watching = true
         }
@@ -233,6 +269,8 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     if (statusDue) {
       try {
         const result = await collaborationApi.status(supabase, connection, lastSessionRef.current, active)
+        const prev = sessionRef.current
+        recordPoll(startedAt, prev && result.session && prev.id === result.session.id ? prev.stateRevision : null, result.session?.stateRevision ?? null)
         lastStatusAtRef.current = startedAt
         if (active) lastReportedRef.current = startedAt
         if (!watching) failuresRef.current = 0
@@ -242,6 +280,7 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
         inSession = result.session?.status === 'active' || Date.now() < expectSessionUntilRef.current
         waiting = result.outgoing.length > 0
       } catch {
+        samples().pollFailures += 1
         if (!watching) failuresRef.current += 1
       }
     }
@@ -255,7 +294,7 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
       consecutiveFailures: failuresRef.current,
     })
     timerRef.current = setTimeout(() => pollRef.current(), delay)
-  }, [supabase, connection, applySession, applyWatch])
+  }, [supabase, connection, applySession, applyWatch, recordPoll])
   useEffect(() => {
     pollRef.current = poll
   }, [poll])
@@ -472,8 +511,10 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     async (action: (s: { sessionId: string; connection: string; generation: number }) => Promise<SessionSnapshot>) => {
       const s = sessionRef.current
       if (!s || !connection || !s.thisTabJoined) throw new CollaborationError('This tab isn’t in the live session.', 'stale')
+      const startedAt = Date.now()
       try {
         applySession(await action({ sessionId: s.id, connection, generation: s.controlGeneration }))
+        pushSample((samplesRef.current ??= emptySamples(startedAt)).commandRoundTripsMs, Date.now() - startedAt)
       } catch (err) {
         if (err instanceof CollaborationError && err.kind === 'stale') pollRef.current()
         throw err
@@ -487,7 +528,9 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
       run(async () => {
         const s = sessionRef.current
         if (!s || !connection) return null
+        const startedAt = Date.now()
         const next = await action(s, connection)
+        pushSample((samplesRef.current ??= emptySamples(startedAt)).commandRoundTripsMs, Date.now() - startedAt)
         applySession(next)
         return next
       }).then(() => undefined),
@@ -577,13 +620,20 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
       if (id) writeAway(id, false)
       setFollowing(true)
     },
+    diagnostics: () => summarize(samples(), Date.now()),
+    resetDiagnostics: () => {
+      samplesRef.current = emptySamples(Date.now())
+      lastOkPollStartRef.current = 0
+    },
+    noteChatReplies,
     chatOpen,
     setChatOpen,
     loadChat,
     askEmber: async (content, request) => {
       const s = sessionRef.current
       if (!s || !connection || !s.thisTabJoined) throw new CollaborationError('This tab isn’t in the live session.', 'stale')
-      await collaborationApi.askEmber(supabase, s.id, connection, content, request)
+      const asked = await collaborationApi.askEmber(supabase, s.id, connection, content, request)
+      if (!pendingAsksRef.current.has(asked.messageId)) pendingAsksRef.current.set(asked.messageId, Date.now())
       void startSharedTurnRunner(s.conversationId)
       pollRef.current()
     },

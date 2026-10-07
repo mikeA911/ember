@@ -54,6 +54,15 @@ Finishes the shared Ember chat (R3, R4). The migration (`20261027100001_collabor
 - **Wider audiences.** A note and a Project field reach more people than the conversation, so publishing a summary, sending a proposed note or using proposed field text first checks that every active Project member can open the evidence behind it (`collaboration_evidence_project_visible`, the real access rules evaluated as each member). A Project that isn't private takes proposed field text only if it used no evidence at all. Platform administrators can read notes in Projects they oversee; they aren't checked individually.
 - **Not done.** No conversation-wide re-summarizing after access changes (a summary that stops being common is skipped, and the next summary covers only later messages); Ember still has no tool that changes anything itself.
 
+### Phase 4 pilot kit (7 October 2026)
+
+What the remote pilot needs:
+- **[Pilot checklist](guides/shared-workspace-pilot.md):** ten steps for two people at different locations plus a viewer, on the Vercel preview with the real AI model. It covers Firefox, Safari and a phone.
+- **[Results template](test-reports/templates/shared-workspace-pilot-results.md)** to record the pilot.
+- **Connection check** in the session bar, for each person and browser: round trips to the server, failed checks, round trips for their own actions, how long the other person's changes took to arrive, and Ember answer times. Everything is measured on that browser's own clock, so no clock agreement between the two computers is needed. **Copy results** gives text for the template: timings and the browser only, never content.
+
+No database change.
+
 ### Phase 4 operations, as built (7 October 2026)
 
 The first part of the remote pilot and release phase: being able to see and fix problems, and checking behaviour on poor networks. The migration (`20261028100001_collaboration_operations.sql`) was applied to the live backend on 7 October 2026 (objects and grants verified).

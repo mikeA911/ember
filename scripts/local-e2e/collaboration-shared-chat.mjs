@@ -136,6 +136,12 @@ await step('Hana opens Ember chat from the bar and asks; both see the question a
   await chat(hana.page).getByText('Test answer to "What is the call flow?"').waitFor({ timeout: slower(10000) })
   await eventually("select count(*)::int from collaboration_messages where kind = 'reply'", [], 1, 'replies')
   if (SHOTS) await gil.page.screenshot({ path: `${SHOTS}/p3-1-shared-answer.png` })
+  // The pilot's Connection check timed the answer Hana asked for.
+  await bar(hana.page).getByRole('button', { name: 'Connection check' }).click()
+  const check = hana.page.getByRole('dialog', { name: 'Connection check' })
+  const results = (await check.getAttribute('data-results', { timeout: slower(10000) })) ?? ''
+  if (!/Ember answers asked here: median [\d.]+ (ms|s) \(1 answers\)/.test(results)) throw new Error(results)
+  await check.getByRole('button', { name: 'Close' }).click()
   return `Gil saw the answer ${gilSaw} ms after Hana asked`
 })
 

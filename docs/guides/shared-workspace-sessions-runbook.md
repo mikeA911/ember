@@ -38,6 +38,10 @@ The same data is available to an admin from the SQL Editor: `select collaboratio
 - **Presence:** connected (polled in the last 90 seconds), away (no input for 10 minutes), not connected (no poll for 90 seconds, or the tab closed).
 - **Polling** (browser straight to Supabase): every 2 seconds in a session (10 seconds in a hidden tab); 5 seconds while using Ember outside a session, otherwise 30 seconds. A single failed poll is retried at the normal rate; from the second failure in a row it backs off, up to 10 seconds in a visible session and up to 30 seconds otherwise. It polls at once when the browser comes back online and right after someone answers an invitation.
 
+## Pilot
+
+The [pilot checklist](shared-workspace-pilot.md) walks two people and a viewer through every feature on the preview. Each person's **Connection check** (in the bar) gives their browser's timings to paste into the [results template](../test-reports/templates/shared-workspace-pilot-results.md).
+
 ## Turning it on or off
 
 - The feature flag is `NEXT_PUBLIC_EMBER_COLLABORATION` in Vercel, per environment. It's fixed at build time, so redeploy after changing it.
