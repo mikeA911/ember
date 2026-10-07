@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { MembersManager } from '@/components/projects/MembersManager'
+import { AssignProjectBuilderForm } from '@/components/projects/AssignProjectBuilderForm'
 import { listSelectableUsers } from '@/lib/projects/selectable-users'
 import type { UserRole } from '@/types/database'
 
@@ -18,7 +19,7 @@ export default async function ProjectMembersPage({ params }: { params: Promise<{
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: project } = await supabase.from('projects').select('id, name, owner_id, approval_status').eq('id', id).single()
+  const { data: project } = await supabase.from('projects').select('id, name, owner_id, approval_status, builder_id, client_source').eq('id', id).single()
   if (!project) notFound()
 
   // RLS (is_project_member) already gated the project select above; members
@@ -59,21 +60,36 @@ export default async function ProjectMembersPage({ params }: { params: Promise<{
   // owner/curator, who can add any of these people anyway.
   const selectableUsers = await listSelectableUsers()
 
+  // A client Ember found gets its builder from the platform admin.
+  let builderOptions: { id: string; label: string }[] | null = null
+  if (viewerIsAdmin && project.client_source === 'ember') {
+    const { data: builders } = await admin
+      .from('profiles')
+      .select('id, email, full_name')
+      .eq('role', 'consultant')
+      .eq('is_active', true)
+      .order('email')
+    builderOptions = (builders ?? []).map((b) => ({ id: b.id, label: b.full_name ? `${b.full_name} (${b.email})` : (b.email ?? b.id) }))
+  }
+
   return (
-    <MembersManager
-      projectId={id}
-      projectName={project.name}
-      members={(members ?? []).map((m) => ({
-        ...m,
-        email: profileById.get(m.user_id)?.email ?? m.user_id,
-        // 'anonymous' isn't an assignable platform role in the members UI.
-        platformRole: platformRoleOf(profileById.get(m.user_id)?.role),
-      }))}
-      currentUserId={user.id}
-      viewerIsAdmin={viewerIsAdmin}
-      canTransferOwnership={canTransferOwnership}
-      selectableUsers={selectableUsers}
-      awaitingApproval={project.approval_status !== 'approved'}
-    />
+    <div className="flex flex-col gap-6">
+      {builderOptions && <AssignProjectBuilderForm projectId={id} builderId={project.builder_id} builders={builderOptions} />}
+      <MembersManager
+        projectId={id}
+        projectName={project.name}
+        members={(members ?? []).map((m) => ({
+          ...m,
+          email: profileById.get(m.user_id)?.email ?? m.user_id,
+          // 'anonymous' isn't an assignable platform role in the members UI.
+          platformRole: platformRoleOf(profileById.get(m.user_id)?.role),
+        }))}
+        currentUserId={user.id}
+        viewerIsAdmin={viewerIsAdmin}
+        canTransferOwnership={canTransferOwnership}
+        selectableUsers={selectableUsers}
+        awaitingApproval={project.approval_status !== 'approved'}
+      />
+    </div>
   )
 }

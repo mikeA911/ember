@@ -19,7 +19,7 @@ import type { BuilderSpendSummary } from '@/lib/ai/metering'
 import { PROJECT_STATUS_LABELS, PROJECT_STATUS_STYLES } from '@/lib/projects/status-labels'
 import { ClientFeeEditor } from './ClientFeeEditor'
 import { PlatformRateForm } from './PlatformRateForm'
-import { BuilderShareForm } from './BuilderShareForm'
+import { BuilderRatesForm } from './BuilderRatesForm'
 import { CATEGORY_LABELS } from '@/lib/projects/portfolio-categories'
 import { formatMoney, monthlyTotals } from './money'
 import {
@@ -223,12 +223,12 @@ function BuilderCard({
   builder,
   viewerIsAdmin,
   agencyOptions,
-  defaultSharePct,
+  defaultRates,
 }: {
   builder: AgencyBuilderRow
   viewerIsAdmin: boolean
   agencyOptions: { id: string; label: string }[]
-  defaultSharePct: number
+  defaultRates: { platformRatePct: number; builderSharePct: number }
 }) {
   return (
     <li className="rounded border border-zinc-200 bg-white p-3 text-sm">
@@ -249,7 +249,7 @@ function BuilderCard({
         {builder.proposals.length} proposal{builder.proposals.length === 1 ? '' : 's'} · {builder.clientProjects.length} client project
         {builder.clientProjects.length === 1 ? '' : 's'} · last activity {formatDate(builder.lastActivityAt)}
       </p>
-      {viewerIsAdmin && <BuilderShareForm builderId={builder.builderId} sharePct={builder.sharePct} defaultPct={defaultSharePct} />}
+      {viewerIsAdmin && <BuilderRatesForm builderId={builder.builderId} rates={builder.rates} defaults={defaultRates} />}
 
       {builder.spend && (
         <>
@@ -461,7 +461,7 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
             ) : (
               <ul className="flex flex-col gap-2">
                 {builders.map((b) => (
-                  <BuilderCard key={b.builderId} builder={b} viewerIsAdmin={viewerIsAdmin} agencyOptions={agencyOptions} defaultSharePct={builderSharePct} />
+                  <BuilderCard key={b.builderId} builder={b} viewerIsAdmin={viewerIsAdmin} agencyOptions={agencyOptions} defaultRates={{ platformRatePct, builderSharePct }} />
                 ))}
               </ul>
             )}

@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
 import { enrollInOrganizationHome } from './projects'
-import { getBillingRates, getBuilderSharePct, validateFee, type FeeInput } from './client-billing'
+import { getFeeSplit, validateFee, type FeeInput } from './client-billing'
 
 // Workstream promotion (business-process handoff): a completed Workstream
 // is submitted for review by any active member of its Project; that
@@ -348,7 +348,7 @@ export async function approveWorkstreamPromotion(
 
   const { data: sourceProject, error: sourceProjectError } = await admin
     .from('projects')
-    .select('owner_id, builder_id, portfolio_category')
+    .select('owner_id, builder_id, portfolio_category, client_source')
     .eq('id', workstream.project_id)
     .single()
   if (sourceProjectError || !sourceProject) throw sourceProjectError ?? new ProjectValidationError('Original project is missing')
@@ -360,6 +360,10 @@ export async function approveWorkstreamPromotion(
   const isBuilderProposal =
     selfApproved ||
     (sourceProject.portfolio_category === 'builder_lab' && (sourceProject.builder_id ?? sourceProject.owner_id) === promotion.submitted_by)
+  // Who found the client: the platform admin's own work is Ember-found; a
+  // builder's proposal is builder-found; more work on an existing client
+  // Project keeps that client's source.
+  const clientSource = selfApproved ? 'ember' : (sourceProject.client_source ?? 'builder')
 
   const { data: approvedArtifacts, error: artifactsError } = await admin
     .from('workstream_artifacts')
@@ -387,6 +391,7 @@ export async function approveWorkstreamPromotion(
             owner_id: promotion.submitted_by,
             builder_id: promotion.submitted_by,
             portfolio_category: sourceProject.portfolio_category,
+            client_source: clientSource,
           }
         : { name: workstream.name, project_type: 'consulting', owner_id: ctx.user.id }
     )
@@ -444,17 +449,17 @@ export async function approveWorkstreamPromotion(
     if (copyError) throw copyError
   }
 
-  // 4. The agreed maintenance fee, at today's platform rate and builder's
-  // share -- the billing record for this client (client-billing.ts).
+  // 4. The agreed maintenance fee, split by who found the client at this
+  // builder's rates -- the billing record for this client (client-billing.ts).
   if (promotion.proposed_fee_amount !== null && promotion.proposed_fee_currency && promotion.proposed_fee_period) {
-    const rates = await getBillingRates(admin)
+    const split = await getFeeSplit(admin, promotion.submitted_by, clientSource)
     const { error: feeError } = await admin.from('client_project_fees').insert({
       project_id: newProject.id,
       amount: Number(promotion.proposed_fee_amount),
       currency: promotion.proposed_fee_currency,
       billing_period: promotion.proposed_fee_period,
-      platform_rate_pct: rates.platformRatePct,
-      builder_share_pct: await getBuilderSharePct(admin, promotion.submitted_by, rates.builderSharePct),
+      platform_rate_pct: split.platformRatePct,
+      builder_share_pct: split.builderSharePct,
       set_by: ctx.user.id,
     })
     if (feeError) throw feeError

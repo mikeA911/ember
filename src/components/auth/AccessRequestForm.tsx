@@ -36,7 +36,10 @@ export function AccessRequestForm({ to }: { to: string | null }) {
         <h2 className="font-medium">Request builder access</h2>
         <p className="mt-1 text-sm text-zinc-600">
           Tell us why you want to build with Ember. This opens your email app with the request; we&apos;ll reply to let you know if
-          you&apos;re accepted.
+          you&apos;re accepted.{' '}
+          <Link href="/builders" className="underline">
+            Read the Builder&apos;s Journey
+          </Link>
         </p>
       </div>
       <div>

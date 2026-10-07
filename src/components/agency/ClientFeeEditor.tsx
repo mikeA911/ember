@@ -6,10 +6,11 @@ import { setClientProjectFeeAction } from '@/app/actions/agency'
 import type { AgencyClientFee } from '@/lib/workbench/agency-dashboard'
 import { formatMoney } from './money'
 
-// Shows a client Project's maintenance fee, the platform's share and the
-// builder's share (an employee's bonus), with an inline editor for the
-// agency/admin (the only viewers of /agency). The platform rate is fixed
-// when the fee is recorded; the builder's share is negotiated per Project.
+// Shows a client Project's maintenance fee, Ember's share and the builder's
+// share (they add up to 100%), with an inline editor for the agency/admin
+// (the only viewers of /agency). The split is set by who found the client
+// when the fee is recorded; setting the builder's share here gives Ember
+// the rest.
 export function ClientFeeEditor({ projectId, fee }: { projectId: string; fee: AgencyClientFee | null }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -53,7 +54,7 @@ export function ClientFeeEditor({ projectId, fee }: { projectId: string; fee: Ag
               {formatMoney(fee.amount, fee.currency)} / {fee.period === 'annual' ? 'year' : 'month'}
             </span>
             <span className="text-zinc-500">
-              Platform share {formatMoney(fee.platformMonthly, fee.currency)}/mo ({fee.platformRatePct}%)
+              Ember share {formatMoney(fee.platformMonthly, fee.currency)}/mo ({fee.platformRatePct}%)
             </span>
             <span className="text-zinc-500">
               Builder share {formatMoney(fee.builderMonthly, fee.currency)}/mo ({fee.builderSharePct}%)
