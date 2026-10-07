@@ -686,7 +686,17 @@ export default async function ProjectPage({
       <ProjectStarterPromptForm projectId={project.id} starterPrompt={project.starter_prompt} canEdit={canCurateWorkstreams} />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Knowledge</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Knowledge</h2>
+          {/* The project's own knowledge bases and wiki articles as a zip
+              (src/lib/projects/knowledge-export.ts) -- a route download, not
+              a page, hence a plain link. */}
+          {(canCurateWorkstreams || (!!user && project.builder_id === user.id)) && (
+            <a href={`/projects/${project.id}/knowledge-export`} download className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-50">
+              Export knowledge
+            </a>
+          )}
+        </div>
         <p className="text-sm text-zinc-600">
           Platform Knowledge: <Link href="/wiki" className="underline">AI Engineering Wiki</Link>
         </p>
