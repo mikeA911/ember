@@ -54,21 +54,28 @@ export function SharedChat({ conversationId, compact = false }: { conversationId
     }
   }, [loadChat, conversationId])
 
-  // Load, and reload whenever the polled chat state changes.
+  // Load, and reload whenever the polled chat state changes. A failed load
+  // is retried (after 2, 4, 8 s...) -- the next change might be a while.
   useEffect(() => {
     let cancelled = false
-    loadChat(conversationId).then(
-      (next) => {
-        if (cancelled) return
-        setChat(next)
-        setLoadError(null)
-      },
-      (err) => {
-        if (!cancelled) setLoadError(errorText(err))
-      }
-    )
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const attempt = (n: number) =>
+      loadChat(conversationId).then(
+        (next) => {
+          if (cancelled) return
+          setChat(next)
+          setLoadError(null)
+        },
+        (err) => {
+          if (cancelled) return
+          setLoadError(errorText(err))
+          if (n < 6) timer = setTimeout(() => void attempt(n + 1), 2000 * 2 ** Math.min(n, 3))
+        }
+      )
+    void attempt(0)
     return () => {
       cancelled = true
+      if (timer) clearTimeout(timer)
     }
   }, [loadChat, conversationId, version])
 

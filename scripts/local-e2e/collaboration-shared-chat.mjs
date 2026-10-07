@@ -103,7 +103,7 @@ async function collabSave(page) {
 }
 async function ask(page, text) {
   await chat(page).getByLabel('Message to Ember').fill(text)
-  await chat(page).getByRole('button', { name: 'Ask Ember' }).click()
+  await chat(page).getByRole('button', { name: 'Ask Ember', exact: true }).click()
 }
 
 const hana = (people.hana = await signIn('hana@e2e.local'))
@@ -206,7 +206,7 @@ await step('Vera, a viewer, reads the chat on the conversation page and comments
   await chat(hana.page).getByText('Ask about radio coverage at night', { exact: true }).waitFor({ timeout: slower(10000) })
   await chat(hana.page).getByText('Comment from Vera Viewer').waitFor()
   if ((await sql("select count(*)::int from collaboration_turns t join collaboration_messages m on m.id = t.prompt_id where m.kind = 'comment'")) !== 0) throw new Error('Ember answered a comment by itself')
-  if (await chat(vera.page).getByRole('button', { name: 'Ask Ember' }).count()) throw new Error('viewer can ask Ember')
+  if (await chat(vera.page).getByRole('button', { name: 'Ask Ember', exact: true }).count()) throw new Error('viewer can ask Ember')
 })
 
 await step('Gil passes the comment on; Ember answers it, attributed to Vera and Gil', async () => {
