@@ -49,7 +49,7 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   const { id, workstreamId } = await params
   const supabase = await createClient()
 
-  const { data: project } = await supabase.from('projects').select('id, name, builder_id').eq('id', id).single()
+  const { data: project } = await supabase.from('projects').select('id, name, owner_id, builder_id, portfolio_category').eq('id', id).single()
   const { data: workstreamRow } = await supabase.from('project_workstreams').select('*').eq('id', workstreamId).eq('project_id', id).single()
   const workstream = workstreamRow as ProjectWorkstream | null
   if (!project || !workstream) notFound()
@@ -71,12 +71,14 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   let canDraftWiki = false // platform curator/admin -- createAIAssistedDraftAction's own bar
   let presentation = null as Awaited<ReturnType<typeof getPresentation>>
   let viewerName: string | null = null // Proposal summary's "prepared by"
+  let viewerIsAdmin = false // the platform owner's own promotions need no further approval
   if (user) {
     const [{ data: viewerProfile }, { data: viewerMembership }] = await Promise.all([
       supabase.from('profiles').select('role, email, full_name').eq('id', user.id).single(),
       supabase.from('project_members').select('role').eq('project_id', id).eq('user_id', user.id).maybeSingle(),
     ])
     const isAdmin = viewerProfile?.role === 'admin'
+    viewerIsAdmin = isAdmin
     canDraftWiki = isAdmin || viewerProfile?.role === 'curator'
     viewerName = viewerProfile?.full_name && viewerProfile.email ? `${viewerProfile.full_name} (${viewerProfile.email})` : (viewerProfile?.email ?? null)
     isActiveMember = isAdmin || !!viewerMembership
@@ -94,10 +96,18 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
   // Offer promotion only when it would actually be accepted by
   // submitWorkstreamForPromotion -- an active member, completed, at least
   // one approved artifact, and nothing already in flight for it. Works the
-  // same on a builder's own workspace or a team Project (any member, not
-  // just its owner/curator).
+  // same on a team Project (any member, not just its owner/curator); on a
+  // builder's Project (builder_lab) only its builder of record, who alone is
+  // paid for it, or the platform admin (20261028100001).
+  const isBuilderWork = project.portfolio_category === 'builder_lab'
+  const isBuilderOfRecord = !!user && (project.builder_id ?? project.owner_id) === user.id
   let canOfferPromotion = false
-  if (isActiveMember && workstream.status === 'completed' && artifacts.some((a) => a.status === 'approved')) {
+  if (
+    isActiveMember &&
+    (!isBuilderWork || isBuilderOfRecord || viewerIsAdmin) &&
+    workstream.status === 'completed' &&
+    artifacts.some((a) => a.status === 'approved')
+  ) {
     const { data: existingPromotion } = await supabase
       .from('workstream_promotions')
       .select('id')
@@ -433,7 +443,12 @@ export default async function WorkstreamDetailPage({ params }: { params: Promise
       )}
 
       {canOfferPromotion && (
-        <WorkstreamPromotionForm projectId={id} workstreamId={workstream.id} isBuilderProposal={canOfferBuilderUpdate} />
+        <WorkstreamPromotionForm
+          projectId={id}
+          workstreamId={workstream.id}
+          isBuilderProposal={isBuilderWork && isBuilderOfRecord}
+          selfApproves={viewerIsAdmin}
+        />
       )}
 
       {canEdit && <PromoteToMethodForm projectId={id} workstreamId={workstream.id} defaultGuardrail={workstream.guardrail} />}

@@ -2,30 +2,37 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { submitWorkstreamForPromotionAction } from '@/app/actions/workstream-promotions'
 
 // Submit a completed workstream for this Project's own curator to review --
 // on approval, a new Project is created for the promoted work (this
 // Project's other, unsubmitted content is never exposed). Visible to any
 // active member of this Project, and only when there's nothing already in
-// flight for it -- see the page's own gating. On a builder's workspace this
+// flight for it -- see the page's own gating. On a builder's Project this
 // is how an accepted client proposal becomes the client's own Project: the
-// builder names the client people to add as viewers, and their agency
-// approves.
+// builder confirms the client agreed, names the client people to add as
+// viewers, and their agency approves. The platform admin's own request is
+// approved straight away (selfApproves).
 export function WorkstreamPromotionForm({
   projectId,
   workstreamId,
   isBuilderProposal = false,
+  selfApproves = false,
 }: {
   projectId: string
   workstreamId: string
   isBuilderProposal?: boolean
+  selfApproves?: boolean
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null)
   const [clientEmails, setClientEmails] = useState('')
+  const [clientAgreed, setClientAgreed] = useState(false)
+  const needsClientAgreement = isBuilderProposal || selfApproves
   // The maintenance fee agreed with the client -- blank means none yet;
   // the agency can record it later from the agency dashboard.
   const [feeAmount, setFeeAmount] = useState('')
@@ -33,6 +40,16 @@ export function WorkstreamPromotionForm({
   const [feePeriod, setFeePeriod] = useState<'monthly' | 'annual'>('monthly')
 
   if (submitted) {
+    if (createdProjectId) {
+      return (
+        <p className="text-sm text-emerald-700">
+          Client project created.{' '}
+          <Link href={`/projects/${createdProjectId}`} className="underline">
+            Open it
+          </Link>
+        </p>
+      )
+    }
     return (
       <p className="text-sm text-emerald-700">
         {isBuilderProposal
@@ -48,8 +65,9 @@ export function WorkstreamPromotionForm({
       try {
         const emails = clientEmails.split(/[\s,;]+/).filter(Boolean)
         const amount = feeAmount.replace(/,/g, '').trim()
-        const fee = isBuilderProposal && amount ? { amount: Number(amount), currency: feeCurrency, period: feePeriod } : null
-        await submitWorkstreamForPromotionAction(projectId, workstreamId, emails, fee)
+        const fee = needsClientAgreement && amount ? { amount: Number(amount), currency: feeCurrency, period: feePeriod } : null
+        const result = await submitWorkstreamForPromotionAction(projectId, workstreamId, emails, fee, clientAgreed)
+        setCreatedProjectId(result.createdProjectId ?? null)
         setSubmitted(true)
         router.refresh()
       } catch (err) {
@@ -61,9 +79,14 @@ export function WorkstreamPromotionForm({
   return (
     <div className="flex flex-col gap-2 rounded border border-zinc-200 bg-white p-4">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-        {isBuilderProposal ? 'Proposal accepted? Request a client project' : 'Submit for promotion'}
+        {needsClientAgreement ? 'Proposal accepted? Request a client project' : 'Submit for promotion'}
       </h2>
-      {isBuilderProposal ? (
+      {selfApproves ? (
+        <p className="text-xs text-zinc-500">
+          Create a project for this client. As platform owner you approve your own, so it&apos;s created straight away
+          with your approved artifacts, and the client people below can view it.
+        </p>
+      ) : isBuilderProposal ? (
         <p className="text-xs text-zinc-500">
           Ask your agency to create a project for this client. You&apos;ll own it, it starts with your approved
           artifacts, and the client people below can view it. Your other workstreams and notes stay private.
@@ -84,7 +107,7 @@ export function WorkstreamPromotionForm({
           className="rounded border border-zinc-300 px-3 py-2 text-sm"
         />
       </label>
-      {isBuilderProposal && (
+      {needsClientAgreement && (
         <fieldset className="flex flex-col gap-1">
           <legend className="text-xs font-medium text-zinc-600">Maintenance fee charged to the client (optional)</legend>
           <div className="flex flex-wrap items-center gap-2">
@@ -117,13 +140,19 @@ export function WorkstreamPromotionForm({
           </div>
         </fieldset>
       )}
+      {needsClientAgreement && (
+        <label className="flex items-start gap-2 text-sm text-zinc-700">
+          <input type="checkbox" checked={clientAgreed} onChange={(e) => setClientAgreed(e.target.checked)} className="mt-0.5" />
+          <span>My client has agreed to this project.</span>
+        </label>
+      )}
       <button
         type="button"
-        disabled={isPending}
+        disabled={isPending || (needsClientAgreement && !clientAgreed)}
         onClick={handleSubmit}
         className="self-start rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
       >
-        {isPending ? 'Submitting…' : isBuilderProposal ? 'Request client project' : 'Submit for promotion'}
+        {isPending ? 'Submitting…' : selfApproves ? 'Create client project' : isBuilderProposal ? 'Request client project' : 'Submit for promotion'}
       </button>
       {error && <p className="text-sm text-red-600">{error}</p>}
     </div>

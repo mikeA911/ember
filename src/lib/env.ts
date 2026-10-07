@@ -27,6 +27,10 @@ export const env = {
   // is simply omitted from Ember's tool list when this is unset -- see
   // src/lib/chat/loop.ts's tools-array assembly.
   tavilyApiKey: () => optional('TAVILY_API_KEY'),
+  // Where builders email their request for an account (/register).
+  // Self-registration is off: the platform owner reads the reason and
+  // replies. The request page says to ask an administrator when unset.
+  accessRequestEmail: () => optional('EMBER_ACCESS_REQUEST_EMAIL'),
   // Whether "foundational" AI calls -- chunk enrichment and embeddings
   // (src/lib/ai/sensitivity.ts's AICallPurpose) -- go through the
   // information-sensitivity gate. Off by default: Sandz policy lets the

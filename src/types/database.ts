@@ -1825,6 +1825,10 @@ export interface WorkstreamPromotion {
   proposed_fee_amount: number | null
   proposed_fee_currency: FeeCurrency | null
   proposed_fee_period: FeeBillingPeriod | null
+  // When the builder confirmed their client agreed to the project -- a
+  // builder's workstream becomes a project only then. Null on requests made
+  // before 20261028100001_builder_edition_agency_rules.sql.
+  client_agreed_at: string | null
   created_at: string
 }
 
@@ -1874,6 +1878,17 @@ export interface AgencyBuilder {
   builder_id: string
   agency_id: string
   assigned_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+// A builder's own share of client maintenance fees, set by the platform
+// admin; builders without one get settings.builder_billing.builderSharePct.
+// 20261028100001_builder_edition_agency_rules.sql.
+export interface BuilderBillingShare {
+  builder_id: string
+  share_pct: number
+  set_by: string | null
   created_at: string
   updated_at: string
 }
@@ -2936,6 +2951,7 @@ export type WorkstreamPromotionInsert = Omit<
   | 'proposed_fee_amount'
   | 'proposed_fee_currency'
   | 'proposed_fee_period'
+  | 'client_agreed_at'
 > &
   Partial<
     Pick<
@@ -2949,6 +2965,7 @@ export type WorkstreamPromotionInsert = Omit<
       | 'proposed_fee_amount'
       | 'proposed_fee_currency'
       | 'proposed_fee_period'
+      | 'client_agreed_at'
     >
   >
 export type WorkstreamPromotionUpdate = Partial<Omit<WorkstreamPromotion, 'id' | 'workstream_id' | 'submitted_by' | 'created_at'>>
@@ -2965,6 +2982,8 @@ export type ClientProjectFeeUpdate = Partial<Omit<ClientProjectFee, 'project_id'
 
 export type AgencyBuilderInsert = Omit<AgencyBuilder, 'created_at' | 'updated_at'>
 export type AgencyBuilderUpdate = Partial<Omit<AgencyBuilder, 'builder_id' | 'created_at'>>
+export type BuilderBillingShareInsert = Omit<BuilderBillingShare, 'created_at' | 'updated_at'>
+export type BuilderBillingShareUpdate = Partial<Omit<BuilderBillingShare, 'builder_id' | 'created_at'>>
 
 export type BuilderAiAllowanceInsert = Omit<BuilderAiAllowance, 'created_at' | 'updated_at'> &
   Partial<Pick<BuilderAiAllowance, 'monthly_allowance_usd' | 'warning_threshold_pct' | 'stop_at_allowance' | 'current_period_start'>>
@@ -3487,6 +3506,12 @@ interface DatabaseDefinition {
         Row: AgencyBuilder
         Insert: AgencyBuilderInsert
         Update: AgencyBuilderUpdate
+        Relationships: []
+      }
+      builder_billing_shares: {
+        Row: BuilderBillingShare
+        Insert: BuilderBillingShareInsert
+        Update: BuilderBillingShareUpdate
         Relationships: []
       }
       builder_ai_allowances: {

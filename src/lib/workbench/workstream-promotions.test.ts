@@ -414,6 +414,161 @@ describe('approveWorkstreamPromotion', () => {
   })
 })
 
+describe('Builder edition rules (20261028100001)', () => {
+  const builderWorkspace = (project: Record<string, unknown>, overrides: Record<string, { data: unknown; error: null }[]> = {}) =>
+    createFakeSupabase({
+      project_workstreams: [{ data: { id: 'ws-1', project_id: 'proj-1', status: 'completed' }, error: null }],
+      project_members: [{ data: { role: 'curator' }, error: null }],
+      projects: [{ data: project, error: null }],
+      workstream_artifacts: [{ data: [{ id: 'art-1' }], error: null }],
+      workstream_promotions: [
+        { data: null, error: null },
+        { data: { id: 'promo-1' }, error: null },
+      ],
+      ...overrides,
+    })
+
+  it("only lets a builder's Project's builder of record request promotion -- not a builder they invited", async () => {
+    const supabase = builderWorkspace({ owner_id: 'builder-1', builder_id: null, portfolio_category: 'builder_lab' })
+    await expect(submitWorkstreamForPromotion(ctxWith(supabase, { userId: 'invited-1' }), 'ws-1', [], null, true)).rejects.toThrow(
+      'Only the builder who owns this work'
+    )
+  })
+
+  it("requires the builder to confirm their client agreed", async () => {
+    const supabase = builderWorkspace({ owner_id: 'builder-1', builder_id: null, portfolio_category: 'builder_lab' })
+    await expect(submitWorkstreamForPromotion(ctxWith(supabase), 'ws-1')).rejects.toThrow('client has agreed')
+  })
+
+  it('lets the builder of record request promotion from a client Project the agency took over at go-live', async () => {
+    const supabase = builderWorkspace({ owner_id: 'agency-1', builder_id: 'builder-1', portfolio_category: 'builder_lab' })
+    const result = await submitWorkstreamForPromotion(ctxWith(supabase), 'ws-1', [], null, true)
+    expect(result).toEqual({ promotionId: 'promo-1' })
+    const insert = supabase._calls.find((c) => c.table === 'workstream_promotions' && c.method === 'insert')
+    expect(insert?.args).toMatchObject({ submitted_by: 'builder-1', client_agreed_at: expect.any(String) })
+  })
+
+  it("approves the platform admin's own promotion straight away, with the admin as owner and builder", async () => {
+    const supabase = builderWorkspace(
+      { owner_id: 'admin-1', builder_id: null, portfolio_category: 'other' },
+      {
+        project_members: [{ data: { role: 'owner' }, error: null }],
+        workstream_promotions: [
+          { data: null, error: null },
+          { data: { id: 'promo-1' }, error: null },
+          { data: { id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'admin-1', status: 'pending', client_emails: [] }, error: null },
+        ],
+      }
+    )
+    const admin = createFakeSupabase({
+      project_workstreams: [
+        { data: { id: 'ws-1', name: 'Ember Pilot', project_id: 'proj-1' }, error: null },
+        { data: { id: 'new-ws-1' }, error: null },
+      ],
+      projects: [
+        { data: { owner_id: 'admin-1', builder_id: null, portfolio_category: 'other' }, error: null },
+        { data: { id: 'new-proj-1' }, error: null },
+      ],
+      workstream_artifacts: [{ data: [], error: null }],
+      agency_builders: [{ data: null, error: null }],
+      workstream_promotions: [{ data: [{ id: 'promo-1' }], error: null }],
+    })
+    createAdminClientMock.mockReturnValue(admin)
+
+    const result = await submitWorkstreamForPromotion(ctxWith(supabase, { userId: 'admin-1', role: 'admin' }), 'ws-1', [], null, true)
+
+    expect(result).toEqual({ promotionId: 'promo-1', createdProjectId: 'new-proj-1', clientViewers: [] })
+    const projectInsert = admin._calls.find((c) => c.table === 'projects' && c.method === 'insert')
+    expect(projectInsert?.args).toMatchObject({ owner_id: 'admin-1', builder_id: 'admin-1' })
+    expect(admin._calls.some((c) => c.table === 'project_members' && c.method === 'insert')).toBe(false)
+    const decisionUpdate = admin._calls.find((c) => c.table === 'workstream_promotions' && c.method === 'update')
+    expect(decisionUpdate?.args).toMatchObject({ status: 'approved', decided_by: 'admin-1', created_project_id: 'new-proj-1' })
+  })
+
+  it("makes the builder of record the new Project's owner and builder when promoting from a client Project after go-live", async () => {
+    const supabase = createFakeSupabase({
+      workstream_promotions: [
+        { data: { id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'builder-1', status: 'pending', client_emails: [] }, error: null },
+        { data: [{ id: 'promo-1' }], error: null },
+      ],
+    })
+    const admin = createFakeSupabase({
+      project_workstreams: [
+        { data: { id: 'ws-1', name: 'Phase 2', project_id: 'client-proj-1' }, error: null },
+        { data: { id: 'new-ws-1' }, error: null },
+      ],
+      projects: [
+        { data: { owner_id: 'agency-1', builder_id: 'builder-1', portfolio_category: 'builder_lab' }, error: null },
+        { data: { id: 'new-proj-1' }, error: null },
+      ],
+      workstream_artifacts: [{ data: [], error: null }],
+      agency_builders: [{ data: { agency_id: 'agency-1' }, error: null }],
+    })
+    createAdminClientMock.mockReturnValue(admin)
+
+    await approveWorkstreamPromotion(ctxWith(supabase, { userId: 'agency-1', role: 'admin' }), 'promo-1')
+
+    const projectInsert = admin._calls.find((c) => c.table === 'projects' && c.method === 'insert')
+    expect(projectInsert?.args).toMatchObject({ owner_id: 'builder-1', builder_id: 'builder-1', portfolio_category: 'builder_lab' })
+  })
+
+  it("records the builder's own share on the fee", async () => {
+    const supabase = createFakeSupabase({
+      workstream_promotions: [
+        {
+          data: {
+            id: 'promo-1',
+            workstream_id: 'ws-1',
+            submitted_by: 'builder-1',
+            status: 'pending',
+            client_emails: [],
+            proposed_fee_amount: 500,
+            proposed_fee_currency: 'USD',
+            proposed_fee_period: 'monthly',
+          },
+          error: null,
+        },
+        { data: [{ id: 'promo-1' }], error: null },
+      ],
+    })
+    const admin = builderProposalAdminFor({ builder_billing_shares: [{ data: { share_pct: 30 }, error: null }] })
+    createAdminClientMock.mockReturnValue(admin)
+
+    await approveWorkstreamPromotion(ctxWith(supabase, { userId: 'operator-1', role: 'admin' }), 'promo-1')
+
+    const feeInsert = admin._calls.find((c) => c.table === 'client_project_fees' && c.method === 'insert')
+    expect(feeInsert?.args).toMatchObject({ builder_share_pct: 30 })
+  })
+
+  it("never lets another curator on a builder's Project decide -- only the agency or the admin", async () => {
+    const supabase = createFakeSupabase({
+      workstream_promotions: [{ data: { id: 'promo-1', workstream_id: 'ws-1', submitted_by: 'builder-1', status: 'pending' }, error: null }],
+      project_workstreams: [{ data: { project_id: 'client-proj-1' }, error: null }],
+      projects: [{ data: { portfolio_category: 'builder_lab' }, error: null }],
+      project_members: [{ data: { role: 'curator' }, error: null }],
+    })
+    await expect(approveWorkstreamPromotion(ctxWith(supabase, { userId: 'invited-1', role: 'consultant' }), 'promo-1')).rejects.toThrow(
+      "Only the builder's agency or the platform admin"
+    )
+  })
+})
+
+function builderProposalAdminFor(overrides: Record<string, { data: unknown; error: null }[]> = {}) {
+  return createFakeSupabase({
+    project_workstreams: [
+      { data: { id: 'ws-1', name: 'Acme Order Automation', project_id: 'workspace-1' }, error: null },
+      { data: { id: 'new-ws-1' }, error: null },
+    ],
+    projects: [
+      { data: { owner_id: 'builder-1', portfolio_category: 'builder_lab' }, error: null },
+      { data: { id: 'new-proj-1' }, error: null },
+    ],
+    workstream_artifacts: [{ data: [], error: null }],
+    agency_builders: [{ data: { agency_id: 'agency-1' }, error: null }],
+    ...overrides,
+  })
+}
+
 describe('rejectWorkstreamPromotion', () => {
   it('rejects the submitter deciding their own promotion', async () => {
     const supabase = createFakeSupabase({

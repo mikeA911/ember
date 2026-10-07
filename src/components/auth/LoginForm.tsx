@@ -74,7 +74,8 @@ export function LoginForm({ next }: { next?: string | null }) {
       >
         {submitting ? 'Signing in…' : 'Sign in'}
       </button>
-      <div className="flex justify-end text-sm text-zinc-600">
+      <div className="flex justify-between text-sm text-zinc-600">
+        <Link href="/register" className="underline">Want to build? Request access</Link>
         <Link href="/forgot-password" className="underline">Forgot password?</Link>
       </div>
     </form>

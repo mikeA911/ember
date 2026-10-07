@@ -5,7 +5,9 @@ import type { WorkbenchCallerContext } from './context'
 const createAdminClientMock = vi.fn()
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: (...args: unknown[]) => createAdminClientMock(...args) }))
 
-const { getPlatformRatePct, setPlatformRatePct, setClientProjectFee, monthlyEquivalent, validateFee } = await import('./client-billing')
+const { getPlatformRatePct, setPlatformRatePct, setClientProjectFee, setBuilderSharePct, monthlyEquivalent, validateFee } = await import(
+  './client-billing'
+)
 
 beforeEach(() => {
   createAdminClientMock.mockReset()
@@ -53,7 +55,9 @@ describe('platform rate', () => {
 
 describe('setClientProjectFee', () => {
   it("rejects a curator who isn't the project owner's agency", async () => {
-    createAdminClientMock.mockReturnValue(createFakeSupabase({ projects: [{ data: { owner_id: 'builder-1' }, error: null }] }))
+    createAdminClientMock.mockReturnValue(
+      createFakeSupabase({ projects: [{ data: { owner_id: 'builder-1' }, error: null }], workstream_promotions: [{ data: { id: 'promo-1' }, error: null }], })
+    )
     const supabase = createFakeSupabase({ agency_builders: [{ data: null, error: null }] })
     await expect(setClientProjectFee(ctxWith(supabase), 'proj-1', { amount: 100, currency: 'USD', period: 'monthly' })).rejects.toThrow(
       "Only this builder's agency"
@@ -64,6 +68,7 @@ describe('setClientProjectFee', () => {
     createAdminClientMock.mockReturnValue(
       createFakeSupabase({
         projects: [{ data: { owner_id: 'builder-1' }, error: null }],
+        workstream_promotions: [{ data: { id: 'promo-1' }, error: null }],
         settings: [{ data: { value: { platformRatePct: 10 } }, error: null }],
       })
     )
@@ -88,6 +93,7 @@ describe('setClientProjectFee', () => {
     createAdminClientMock.mockReturnValue(
       createFakeSupabase({
         projects: [{ data: { owner_id: 'agency-1', builder_id: 'builder-1' }, error: null }],
+        workstream_promotions: [{ data: { id: 'promo-1' }, error: null }],
         settings: [{ data: { value: { platformRatePct: 10, builderSharePct: 10 } }, error: null }],
       })
     )
@@ -109,10 +115,55 @@ describe('setClientProjectFee', () => {
   })
 
   it('keeps the recorded rate when correcting an existing fee', async () => {
-    createAdminClientMock.mockReturnValue(createFakeSupabase({}))
+    createAdminClientMock.mockReturnValue(
+      createFakeSupabase({ projects: [{ data: { owner_id: 'builder-1' }, error: null }], workstream_promotions: [{ data: { id: 'promo-1' }, error: null }], })
+    )
     const supabase = createFakeSupabase({ client_project_fees: [{ data: { platform_rate_pct: 8 }, error: null }] })
     await setClientProjectFee(ctxWith(supabase, { userId: 'admin-1', role: 'admin' }), 'proj-1', { amount: 30000, currency: 'PHP', period: 'monthly' })
     const update = supabase._calls.find((c) => c.table === 'client_project_fees' && c.method === 'update')
     expect(update?.args).toEqual({ amount: 30000, currency: 'PHP', billing_period: 'monthly', set_by: 'admin-1' })
+  })
+
+  it('refuses a fee on a project that was not promoted from a workstream', async () => {
+    createAdminClientMock.mockReturnValue(
+      createFakeSupabase({ projects: [{ data: { owner_id: 'builder-1' }, error: null }], workstream_promotions: [{ data: null, error: null }] })
+    )
+    await expect(
+      setClientProjectFee(ctxWith(createFakeSupabase({}), { role: 'admin' }), 'proj-1', { amount: 100, currency: 'USD', period: 'monthly' })
+    ).rejects.toThrow('Only a project promoted from a workstream')
+  })
+
+  it("records a new fee at the builder's own share when they have one", async () => {
+    createAdminClientMock.mockReturnValue(
+      createFakeSupabase({
+        projects: [{ data: { owner_id: 'builder-1' }, error: null }],
+        workstream_promotions: [{ data: { id: 'promo-1' }, error: null }],
+        settings: [{ data: { value: { platformRatePct: 10, builderSharePct: 10 } }, error: null }],
+        builder_billing_shares: [{ data: { share_pct: 25 }, error: null }],
+      })
+    )
+    const supabase = createFakeSupabase({ client_project_fees: [{ data: null, error: null }] })
+    await setClientProjectFee(ctxWith(supabase, { userId: 'admin-1', role: 'admin' }), 'proj-1', { amount: 1000, currency: 'USD', period: 'monthly' })
+    const insert = supabase._calls.find((c) => c.table === 'client_project_fees' && c.method === 'insert')
+    expect(insert?.args).toMatchObject({ platform_rate_pct: 10, builder_share_pct: 25 })
+  })
+})
+
+describe('setBuilderSharePct', () => {
+  it('is admin only', async () => {
+    await expect(setBuilderSharePct(ctxWith(createFakeSupabase({})), 'builder-1', 20)).rejects.toThrow('Only the platform admin')
+  })
+
+  it("sets a builder's own share, and null puts them back on the default", async () => {
+    const supabase = createFakeSupabase({})
+    const ctx = ctxWith(supabase, { userId: 'admin-1', role: 'admin' })
+    await setBuilderSharePct(ctx, 'builder-1', 20)
+    expect(supabase._calls).toContainEqual({
+      table: 'builder_billing_shares',
+      method: 'upsert',
+      args: { builder_id: 'builder-1', share_pct: 20, set_by: 'admin-1' },
+    })
+    await setBuilderSharePct(ctx, 'builder-1', null)
+    expect(supabase._calls.some((c) => c.table === 'builder_billing_shares' && c.method === 'delete')).toBe(true)
   })
 })

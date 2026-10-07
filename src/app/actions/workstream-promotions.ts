@@ -15,11 +15,13 @@ export async function submitWorkstreamForPromotionAction(
   projectId: string,
   workstreamId: string,
   clientEmails?: string[],
-  fee?: FeeInput | null
+  fee?: FeeInput | null,
+  clientAgreed = false
 ) {
   const ctx = await requireUser()
-  const result = await submitWorkstreamForPromotion(ctx, workstreamId, clientEmails, fee)
+  const result = await submitWorkstreamForPromotion(ctx, workstreamId, clientEmails, fee, clientAgreed)
   revalidatePath(`/projects/${projectId}/workstreams/${workstreamId}`)
+  if (result.createdProjectId) revalidatePath('/projects')
   return result
 }
 

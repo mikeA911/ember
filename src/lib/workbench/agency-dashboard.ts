@@ -135,6 +135,9 @@ export interface AgencyBuilderRow {
   attention: AgencyAttention | null
   // null when the dashboard was assembled without spend (tests, fixtures).
   spend: BuilderSpendSummary | null
+  // This builder's own share of maintenance fees (builder_billing_shares);
+  // null means the deployment default.
+  sharePct: number | null
 }
 
 export interface AgencyGroup {
@@ -237,6 +240,8 @@ export interface AgencyDashboardInput {
   platformRatePct: number
   builderSharePct?: number
   spendByBuilder?: Map<string, BuilderSpendSummary>
+  // Optional so fixtures can omit it.
+  builderShares?: { builder_id: string; share_pct: number }[]
 }
 
 function laterOf(a: string | null, b: string | null): string | null {
@@ -425,6 +430,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
 
   const agencyByBuilder = new Map(input.roster.map((r) => [r.builder_id, r.agency_id]))
 
+  const shareByBuilder = new Map((input.builderShares ?? []).map((r) => [r.builder_id, Number(r.share_pct)]))
   const builderRows: AgencyBuilderRow[] = input.builders.map((b) => {
     const proposals = (proposalsByOwner.get(b.id) ?? []).sort(newestFirst)
     const clientProjects = (clientProjectsByOwner.get(b.id) ?? []).sort(newestFirst)
@@ -441,6 +447,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
       lastActivityAt: all.reduce<string | null>((latest, r) => laterOf(latest, r.lastActivityAt), null),
       attention: attentionFor(all.flatMap((r) => (r.latestUpdate ? [r.latestUpdate] : []))),
       spend: input.spendByBuilder?.get(b.id) ?? null,
+      sharePct: shareByBuilder.get(b.id) ?? null,
     }
   })
   builderRows.sort(byEmail)
@@ -617,11 +624,15 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     knowledgeBases = data ?? []
   }
 
-  const [pendingPromotionRows, rates, spendByBuilder] = await Promise.all([
+  const [pendingPromotionRows, rates, spendByBuilder, { data: builderShares, error: sharesError }] = await Promise.all([
     shapePendingPromotions(promotions.filter((p) => p.status === 'pending')),
     getBillingRates(admin),
     getBuilderSpendSummaries(admin, builderIds),
+    builderIds.length > 0
+      ? admin.from('builder_billing_shares').select('builder_id, share_pct').in('builder_id', builderIds)
+      : Promise.resolve({ data: [], error: null }),
   ])
+  if (sharesError) throw sharesError
 
   return assembleAgencyDashboard({
     viewerIsAdmin,
@@ -642,6 +653,7 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     platformRatePct: rates.platformRatePct,
     builderSharePct: rates.builderSharePct,
     spendByBuilder,
+    builderShares: builderShares ?? [],
   })
 }
 

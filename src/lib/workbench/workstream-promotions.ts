@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ProjectValidationError } from '@/lib/projects/errors'
 import { getActiveProjectRole, type WorkbenchCallerContext } from './context'
 import { enrollInOrganizationHome } from './projects'
-import { getBillingRates, validateFee, type FeeInput } from './client-billing'
+import { getBillingRates, getBuilderSharePct, validateFee, type FeeInput } from './client-billing'
 
 // Workstream promotion (business-process handoff): a completed Workstream
 // is submitted for review by any active member of its Project; that
@@ -49,16 +49,27 @@ export function normalizeClientEmails(raw: string[] | undefined): string[] {
 
 // For a builder's accepted client proposal: clientEmails are the client
 // people to add as viewers on the new client Project once it's approved,
-// and fee is the maintenance fee agreed with the client (client-billing.ts).
+// fee is the maintenance fee agreed with the client (client-billing.ts),
+// and clientAgreed is the builder's confirmation that the client has
+// agreed to the project -- a builder's workstream becomes a project only
+// then (20261028100001_builder_edition_agency_rules.sql).
+//
+// On a builder's Project (builder_lab -- their workspace, or a client
+// Project they built) only the builder of record requests promotion: they
+// alone are paid for it, and sharing with anyone they invited is up to
+// them. The platform admin's own requests (Ember-sourced work) are
+// approved straight away -- there's no one above them to decide.
 export async function submitWorkstreamForPromotion(
   ctx: WorkbenchCallerContext,
   workstreamId: string,
   clientEmails?: string[],
-  fee?: FeeInput | null
-): Promise<{ promotionId: string }> {
+  fee?: FeeInput | null,
+  clientAgreed = false
+): Promise<{ promotionId: string; createdProjectId?: string; clientViewers?: ClientViewerResult[] }> {
   if (ctx.profile.role === 'anonymous') throw new AuthError('Create an account to submit a workstream for promotion')
   const normalizedClientEmails = normalizeClientEmails(clientEmails)
   const proposedFee = fee ? validateFee(fee) : null
+  const isAdmin = ctx.profile.role === 'admin'
 
   const { data: workstream, error: workstreamError } = await ctx.supabase
     .from('project_workstreams')
@@ -68,7 +79,20 @@ export async function submitWorkstreamForPromotion(
   if (workstreamError || !workstream) throw workstreamError ?? new ProjectValidationError('Workstream not found')
 
   const role = await getActiveProjectRole(ctx, workstream.project_id)
-  if (!role) throw new AuthError('You must be an active member of this workstream\'s project to submit it for promotion')
+  if (!role && !isAdmin) throw new AuthError('You must be an active member of this workstream\'s project to submit it for promotion')
+
+  const { data: project } = await ctx.supabase
+    .from('projects')
+    .select('owner_id, builder_id, portfolio_category')
+    .eq('id', workstream.project_id)
+    .maybeSingle()
+  const isBuilderWork = project?.portfolio_category === 'builder_lab'
+  if (isBuilderWork && !isAdmin && (project.builder_id ?? project.owner_id) !== ctx.user.id) {
+    throw new AuthError('Only the builder who owns this work can request its promotion')
+  }
+  if ((isBuilderWork || isAdmin) && !clientAgreed) {
+    throw new ProjectValidationError('Confirm your client has agreed to this project before requesting its promotion')
+  }
   if (workstream.status !== 'completed') {
     throw new ProjectValidationError('Only a completed workstream can be submitted for promotion')
   }
@@ -101,11 +125,16 @@ export async function submitWorkstreamForPromotion(
       proposed_fee_amount: proposedFee?.amount ?? null,
       proposed_fee_currency: proposedFee?.currency ?? null,
       proposed_fee_period: proposedFee?.period ?? null,
+      client_agreed_at: clientAgreed ? new Date().toISOString() : null,
     })
     .select('id')
     .single()
   if (error || !promotion) throw error ?? new ProjectValidationError('Failed to submit workstream for promotion')
 
+  if (isAdmin) {
+    const approved = await approveWorkstreamPromotion(ctx, promotion.id)
+    return { promotionId: promotion.id, ...approved }
+  }
   return { promotionId: promotion.id }
 }
 
@@ -219,6 +248,10 @@ export async function listPendingWorkstreamPromotionsForProject(ctx: WorkbenchCa
 // also passes for that builder's promotions -- it's never a member of the
 // builder's private workspace, so the project-role check alone would
 // leave only the platform admin able to decide them.
+//
+// A builder's own work (a builder_lab Project) is decided by their agency
+// or the platform admin only -- never by another curator on that Project,
+// such as a builder they invited (20261028100001).
 async function requirePromotionDecider(ctx: WorkbenchCallerContext, promotion: { workstream_id: string; submitted_by: string }): Promise<void> {
   if (ctx.profile.role === 'admin') return
   if (ctx.profile.role === 'curator') {
@@ -232,6 +265,10 @@ async function requirePromotionDecider(ctx: WorkbenchCallerContext, promotion: {
   }
   const { data: workstream, error } = await ctx.supabase.from('project_workstreams').select('project_id').eq('id', promotion.workstream_id).single()
   if (error || !workstream) throw error ?? new ProjectValidationError('Workstream not found')
+  const { data: project } = await ctx.supabase.from('projects').select('portfolio_category').eq('id', workstream.project_id).maybeSingle()
+  if (project?.portfolio_category === 'builder_lab') {
+    throw new AuthError("Only the builder's agency or the platform admin can decide a builder's promotion")
+  }
   const role = await getActiveProjectRole(ctx, workstream.project_id)
   if (role !== 'owner' && role !== 'curator') {
     throw new AuthError('Requires this workstream\'s own Project owner or curator role, the builder\'s agency, or platform admin to decide a promotion')
@@ -294,7 +331,9 @@ export async function approveWorkstreamPromotion(
     .single()
   if (fetchError || !promotion) throw fetchError ?? new ProjectValidationError('Promotion not found')
   if (promotion.status !== 'pending') throw new ProjectValidationError('This promotion has already been decided')
-  if (promotion.submitted_by === ctx.user.id) throw new AuthError('You cannot decide a promotion you submitted yourself')
+  // The platform admin's own (Ember-sourced) work needs no further approval.
+  const selfApproved = promotion.submitted_by === ctx.user.id
+  if (selfApproved && ctx.profile.role !== 'admin') throw new AuthError('You cannot decide a promotion you submitted yourself')
 
   await requirePromotionDecider(ctx, promotion)
 
@@ -309,13 +348,18 @@ export async function approveWorkstreamPromotion(
 
   const { data: sourceProject, error: sourceProjectError } = await admin
     .from('projects')
-    .select('owner_id, portfolio_category')
+    .select('owner_id, builder_id, portfolio_category')
     .eq('id', workstream.project_id)
     .single()
   if (sourceProjectError || !sourceProject) throw sourceProjectError ?? new ProjectValidationError('Original project is missing')
-  // A builder's accepted client proposal: promoted from their own
-  // builder_lab workspace, by them.
-  const isBuilderProposal = sourceProject.portfolio_category === 'builder_lab' && sourceProject.owner_id === promotion.submitted_by
+  // A builder's accepted client proposal: promoted by its builder of record
+  // from their builder_lab workspace, or from a client Project they built
+  // and now maintain as curator after the agency took it over at go-live.
+  // The platform admin's own work is treated the same way: they own and
+  // build the new Project.
+  const isBuilderProposal =
+    selfApproved ||
+    (sourceProject.portfolio_category === 'builder_lab' && (sourceProject.builder_id ?? sourceProject.owner_id) === promotion.submitted_by)
 
   const { data: approvedArtifacts, error: artifactsError } = await admin
     .from('workstream_artifacts')
@@ -342,7 +386,7 @@ export async function approveWorkstreamPromotion(
             project_type: 'consulting',
             owner_id: promotion.submitted_by,
             builder_id: promotion.submitted_by,
-            portfolio_category: 'builder_lab',
+            portfolio_category: sourceProject.portfolio_category,
           }
         : { name: workstream.name, project_type: 'consulting', owner_id: ctx.user.id }
     )
@@ -359,7 +403,7 @@ export async function approveWorkstreamPromotion(
       .eq('builder_id', promotion.submitted_by)
       .maybeSingle()
     if (agencyError) throw agencyError
-    if (agencyLink) secondMember = { user_id: agencyLink.agency_id, role: 'curator' }
+    if (agencyLink && agencyLink.agency_id !== promotion.submitted_by) secondMember = { user_id: agencyLink.agency_id, role: 'curator' }
   } else {
     secondMember = { user_id: promotion.submitted_by, role: 'consultant' }
   }
@@ -410,7 +454,7 @@ export async function approveWorkstreamPromotion(
       currency: promotion.proposed_fee_currency,
       billing_period: promotion.proposed_fee_period,
       platform_rate_pct: rates.platformRatePct,
-      builder_share_pct: rates.builderSharePct,
+      builder_share_pct: await getBuilderSharePct(admin, promotion.submitted_by, rates.builderSharePct),
       set_by: ctx.user.id,
     })
     if (feeError) throw feeError
@@ -425,7 +469,10 @@ export async function approveWorkstreamPromotion(
   // admin client -- if the checks above were ever wrong, RLS
   // (workstream_promotions_decide_curator) is the backstop, same "zero
   // rows updated = no permission" pattern as approveSourceSubmission.
-  const { data: updated, error: updateError } = await ctx.supabase
+  // The admin's own promotion goes through the admin client: RLS never lets
+  // a submitter decide their own, and selfApproved is already limited to
+  // the platform admin above.
+  const { data: updated, error: updateError } = await (selfApproved ? admin : ctx.supabase)
     .from('workstream_promotions')
     .update({ status: 'approved', decided_by: ctx.user.id, decided_at: new Date().toISOString(), created_project_id: newProject.id })
     .eq('id', promotionId)

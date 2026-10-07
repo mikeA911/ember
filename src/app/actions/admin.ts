@@ -108,7 +108,7 @@ export async function assignKBsToCurator(userId: string, kbIds: string[]) {
 // one for a real account -- self-registration is off. So the profile is
 // inserted directly, with the role picked here.
 export async function createUserAction(input: { email: string; password: string; role: 'member' | 'consultant' | 'curator' | 'admin' }) {
-  await requireRole('admin')
+  const { user } = await requireRole('admin')
   if (input.password.length < 8) throw new Error('Password must be at least 8 characters')
 
   const admin = createAdminClient()
@@ -137,6 +137,14 @@ export async function createUserAction(input: { email: string; password: string;
   // the agency's own staff, not builders).
   if (input.role === 'consultant') {
     await provisionBuilderProject(admin, created.user.id, input.email)
+    // Builder edition: the platform owner is every builder's agency
+    // (20261028100001_builder_edition_agency_rules.sql) -- they approve the
+    // builder's promotions and take over Live projects. Reassign from
+    // /agency for a deployment with its own agencies.
+    const { error: agencyError } = await admin
+      .from('agency_builders')
+      .insert({ builder_id: created.user.id, agency_id: user.id, assigned_by: user.id })
+    if (agencyError) throw agencyError
   }
 
   revalidatePath('/admin')

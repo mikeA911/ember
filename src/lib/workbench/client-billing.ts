@@ -90,19 +90,56 @@ export async function setPlatformRatePct(ctx: WorkbenchCallerContext, pct: numbe
   await setBillingRates(ctx, { platformRatePct: pct })
 }
 
+// Each builder can have their own share (builder_billing_shares,
+// 20261028100001), raised as they bring more paid projects; without one
+// they get the deployment default. Read where a new fee is recorded.
+export async function getBuilderSharePct(supabase: SupabaseClient<Database>, builderId: string, defaultPct?: number): Promise<number> {
+  const { data, error } = await supabase.from('builder_billing_shares').select('share_pct').eq('builder_id', builderId).maybeSingle()
+  if (error) throw error
+  if (data) return Number(data.share_pct)
+  return defaultPct ?? (await getBillingRates(supabase)).builderSharePct
+}
+
+// Admin only. null removes the builder's own share, back to the default.
+// Applies to fees recorded from now on; recorded fees keep their share.
+export async function setBuilderSharePct(ctx: WorkbenchCallerContext, builderId: string, pct: number | null): Promise<void> {
+  if (ctx.profile.role !== 'admin') throw new AuthError("Only the platform admin can set a builder's share")
+  if (pct === null) {
+    const { error } = await ctx.supabase.from('builder_billing_shares').delete().eq('builder_id', builderId)
+    if (error) throw error
+    return
+  }
+  const { error } = await ctx.supabase
+    .from('builder_billing_shares')
+    .upsert({ builder_id: builderId, share_pct: validateRatePct(pct, "Builder's share"), set_by: ctx.user.id }, { onConflict: 'builder_id' })
+  if (error) throw error
+}
+
 // Admin, or the agency of this client Project's builder (the builder of
-// record, or the owner before a builder_id was recorded). A new fee row
-// takes today's platform rate and builder's share; correcting an existing
-// fee keeps the platform rate it was recorded with.
+// record, or the owner before a builder_id was recorded). Only a Project
+// created by an approved workstream promotion is paid. A new fee row takes
+// today's platform rate and the builder's own share; correcting an
+// existing fee keeps the platform rate it was recorded with.
 export async function setClientProjectFee(ctx: WorkbenchCallerContext, projectId: string, input: FeeInput): Promise<void> {
   const fee = validateFee(input)
   const admin = createAdminClient()
 
+  const { data: project, error: projectError } = await admin.from('projects').select('owner_id, builder_id').eq('id', projectId).maybeSingle()
+  if (projectError) throw projectError
+  const builderId = project?.builder_id ?? project?.owner_id
+  if (!builderId) throw new ProjectValidationError('Project not found')
+
+  const { data: promotion, error: promotionError } = await admin
+    .from('workstream_promotions')
+    .select('id')
+    .eq('created_project_id', projectId)
+    .eq('status', 'approved')
+    .limit(1)
+    .maybeSingle()
+  if (promotionError) throw promotionError
+  if (!promotion) throw new ProjectValidationError('Only a project promoted from a workstream can have a client fee')
+
   if (ctx.profile.role !== 'admin') {
-    const { data: project, error: projectError } = await admin.from('projects').select('owner_id, builder_id').eq('id', projectId).maybeSingle()
-    if (projectError) throw projectError
-    const builderId = project?.builder_id ?? project?.owner_id
-    if (!builderId) throw new ProjectValidationError('Project not found')
     const { data: link, error: linkError } = await ctx.supabase
       .from('agency_builders')
       .select('builder_id')
@@ -134,7 +171,7 @@ export async function setClientProjectFee(ctx: WorkbenchCallerContext, projectId
     const rates = await getBillingRates(admin)
     ;({ error } = await ctx.supabase.from('client_project_fees').insert({
       project_id: projectId,
-      builder_share_pct: rates.builderSharePct,
+      builder_share_pct: await getBuilderSharePct(admin, builderId, rates.builderSharePct),
       ...row,
       platform_rate_pct: rates.platformRatePct,
     }))
