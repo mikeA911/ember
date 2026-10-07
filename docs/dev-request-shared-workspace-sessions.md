@@ -56,7 +56,7 @@ Finishes the shared Ember chat (R3, R4). The migration (`20261027100001_collabor
 
 ### Phase 4 rollout controls (7 October 2026)
 
-The migration (`20261029100001_collaboration_rollout.sql`) is **not yet applied** to the live backend.
+The migration (`20261029100001_collaboration_rollout.sql`) was applied to the live backend on 7 October 2026 and verified (`16 | 100 | 51 | 50 | 2`).
 
 - **Where it's on.** The build flag stays the master switch. Within it, platform admins choose in Admin → Live collaboration:
   - **Every Project** (the default, so behaviour is unchanged);

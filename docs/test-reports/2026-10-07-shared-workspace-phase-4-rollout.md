@@ -2,7 +2,7 @@
 
 Date: 7 October 2026. Plan: [shared workspace sessions](../dev-request-shared-workspace-sessions.md#phase-4-rollout-controls-7-october-2026). Release note: [live collaboration](../Deployment/shared-workspace-sessions-release.md).
 
-Run in a cloud development container against **local, disposable** databases. The migration (`20261029100001_collaboration_rollout.sql`) is **not applied** to the live backend.
+Run in a cloud development container against **local, disposable** databases. The migration (`20261029100001_collaboration_rollout.sql`) was then applied to the live backend by the owner on 7 October 2026 and verified (below).
 
 | Check | How | Result |
 |---|---|---|
@@ -17,7 +17,11 @@ Run in a cloud development container against **local, disposable** databases. Th
 
 Found while testing: the Project page treats a failed rollout check as "off". So code deployed before this migration, or before Supabase's API has reloaded its schema, hides Collaborate everywhere. This is fail-closed and deliberate. Apply the migration first; the release note says so.
 
-## Applying to the live backend (needs the owner's go-ahead)
+## Applied to the live backend (7 October 2026)
+
+The owner ran the migration in the Supabase SQL Editor (one paste) and the check below returned `16 | 100 | 51 | 50 | 2`, as expected. The mode starts as **Every Project**, so Collaborate shows again wherever the flag is on.
+
+### What was applied
 
 One file: `supabase/migrations/20261029100001_collaboration_rollout.sql`, about 15,000 characters (one paste).
 - It adds three `collaboration_*` tables (RLS on, no grants) and seven functions.
