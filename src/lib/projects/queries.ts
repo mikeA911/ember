@@ -104,6 +104,8 @@ export interface LinkedKnowledgeBase {
   name: string
   // 'pending' shows a "Pending admin review" label next to it.
   status?: KnowledgeBase['status']
+  // Set when the platform admin assigned it to this builder's workspace.
+  assignedByPlatform?: boolean
 }
 
 // Backs the project page's Knowledge section list. Joins through
@@ -116,15 +118,18 @@ export async function listKnowledgeBasesForProject(
 ): Promise<LinkedKnowledgeBase[]> {
   const { data: links, error: linkError } = await supabase
     .from('project_knowledge_bases')
-    .select('knowledge_base_id')
+    .select('knowledge_base_id, purpose')
     .eq('project_id', projectId)
   if (linkError) throw linkError
   const kbIds = (links ?? []).map((l) => l.knowledge_base_id)
   if (kbIds.length === 0) return []
+  // Assigned to this builder by the platform admin -- only the admin removes
+  // it (20261030100001_builder_assigned_knowledge_bases.sql).
+  const assignedIds = new Set((links ?? []).filter((l) => l.purpose === 'assigned_by_platform').map((l) => l.knowledge_base_id))
 
   const { data: kbs, error: kbError } = await supabase.from('knowledge_bases').select('id, name, status').in('id', kbIds)
   if (kbError) throw kbError
-  return kbs ?? []
+  return (kbs ?? []).map((kb) => (assignedIds.has(kb.id) ? { ...kb, assignedByPlatform: true } : kb))
 }
 
 // Builder Ontology, Part D: same shape as listKnowledgeBasesForProject

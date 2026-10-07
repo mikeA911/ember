@@ -13,6 +13,7 @@ const builder: AgencyBuilderRow = {
   attention: null,
   spend: null,
   rates: { platformRatePct: null, builderSharePct: null },
+  assignedKnowledgeBaseIds: [],
   clientProjects: [
     {
       id: 'p-acme',
@@ -60,6 +61,7 @@ const builder: AgencyBuilderRow = {
 
 const dashboard: AgencyDashboard = {
   viewerIsAdmin: false,
+  assignableKnowledgeBases: [],
   platformRatePct: 10,
   builderSharePct: 10,
   agencies: [{ agencyId: 'agency-1', email: 'agency@example.com', fullName: 'North Agency', builders: [builder] }],

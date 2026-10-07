@@ -17,9 +17,9 @@ export interface WorkstreamAllowance {
   pendingRequest: { requestedLimit: number; createdAt: string } | null
 }
 
-// Admin client for the counts: a narrow tally across the builder's own
-// workspaces, never their content.
-async function workspaceIdsOf(admin: ReturnType<typeof createAdminClient>, builderId: string): Promise<string[]> {
+// A builder's own workspaces: builder_lab Projects they own that no
+// promotion created. Admin client: a narrow lookup, never their content.
+export async function workspaceIdsOf(admin: ReturnType<typeof createAdminClient>, builderId: string): Promise<string[]> {
   const { data: projects, error } = await admin.from('projects').select('id').eq('owner_id', builderId).eq('portfolio_category', 'builder_lab')
   if (error) throw error
   const ids = (projects ?? []).map((p) => p.id)

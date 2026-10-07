@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/lib/auth'
 import { assignBuilderToAgency } from '@/lib/workbench/agency-dashboard'
 import { assignProjectBuilder } from '@/lib/workbench/project-builder'
+import { setBuilderKnowledgeBases } from '@/lib/workbench/builder-knowledge-bases'
 import { setBillingRates, setBuilderRates, type BuilderRates, setClientProjectFee, type BillingRates, type FeeInput } from '@/lib/workbench/client-billing'
 
 export async function assignBuilderToAgencyAction(builderId: string, agencyId: string | null) {
@@ -36,4 +37,11 @@ export async function assignProjectBuilderAction(projectId: string, builderId: s
   await assignProjectBuilder(ctx, projectId, builderId)
   revalidatePath(`/projects/${projectId}/members`)
   revalidatePath('/agency')
+}
+
+export async function setBuilderKnowledgeBasesAction(builderId: string, knowledgeBaseIds: string[]) {
+  const ctx = await requireUser()
+  await setBuilderKnowledgeBases(ctx, builderId, knowledgeBaseIds)
+  revalidatePath('/agency')
+  revalidatePath('/admin')
 }

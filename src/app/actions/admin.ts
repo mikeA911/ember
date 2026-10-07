@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireActiveKnowledgeBase } from '@/lib/knowledge-bases'
+import { setBuilderKnowledgeBases } from '@/lib/workbench/builder-knowledge-bases'
 import { enrollInOrganizationHome, provisionBuilderProject } from '@/lib/workbench/projects'
 
 // Every action here requires admin first (using the caller's own RLS-scoped
@@ -90,9 +91,19 @@ export async function updateUserActive(userId: string, isActive: boolean) {
 }
 
 export async function assignKBsToCurator(userId: string, kbIds: string[]) {
-  const { supabase } = await requireRole('admin')
+  const ctx = await requireRole('admin')
+  const { supabase } = ctx
   await Promise.all(kbIds.map((id) => requireActiveKnowledgeBase(supabase, id)))
   const admin = createAdminClient()
+  // A builder's assigned knowledge bases are also attached to their
+  // workspace so they can actually see them (builder-knowledge-bases.ts).
+  const { data: target } = await admin.from('profiles').select('role').eq('id', userId).maybeSingle()
+  if (target?.role === 'consultant') {
+    await setBuilderKnowledgeBases(ctx, userId, kbIds)
+    revalidatePath('/admin')
+    revalidatePath('/agency')
+    return
+  }
   const { error } = await admin.from('profiles').update({ assigned_kbs: kbIds }).eq('id', userId)
   if (error) throw error
   revalidatePath('/admin')

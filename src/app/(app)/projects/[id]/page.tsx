@@ -704,6 +704,7 @@ export default async function ProjectPage({
           <ul className="flex flex-col gap-1 text-sm">
             {effectiveKnowledgeBases.map((kb) => {
               const sources = sourcesByKbId.get(kb.id) ?? []
+              const assignedByPlatform = 'assignedByPlatform' in kb && !!kb.assignedByPlatform
               return (
                 <li key={kb.id} className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
@@ -711,8 +712,12 @@ export default async function ProjectPage({
                       Project Knowledge: {kb.name}
                       {kb.status === 'pending' && <PendingReviewBadge />}
                     </span>
-                    {/* Owner/curator/admin -- the same bar as project_knowledge_bases' RLS. */}
-                    {canCurateWorkstreams && <KnowledgeBaseDetachButton projectId={project.id} knowledgeBaseId={kb.id} />}
+                    {/* Owner/curator/admin -- the same bar as project_knowledge_bases' RLS;
+                        one the platform admin assigned is theirs alone to remove. */}
+                    {assignedByPlatform && <span className="text-xs text-zinc-500">Assigned by Ember</span>}
+                    {canCurateWorkstreams && (!assignedByPlatform || viewerProfile?.role === 'admin') && (
+                      <KnowledgeBaseDetachButton projectId={project.id} knowledgeBaseId={kb.id} />
+                    )}
                   </div>
                   {sources.length > 0 && (
                     <ul className="ml-4 flex flex-col gap-0.5 text-xs text-zinc-600">

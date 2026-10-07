@@ -138,6 +138,8 @@ export interface AgencyBuilderRow {
   // This builder's own starting rates (builder_billing_shares); a null
   // figure means the deployment default.
   rates: BuilderRates
+  // Knowledge bases the platform admin assigned (builder-knowledge-bases.ts).
+  assignedKnowledgeBaseIds: string[]
 }
 
 export interface AgencyGroup {
@@ -169,6 +171,8 @@ export interface AgencyDashboard {
   // In category order; only categories with work in them.
   completionByCategory: AgencyCategoryCompletion[]
   overallCompletion: AgencyCompletion
+  // Admin only (empty for an agency curator).
+  assignableKnowledgeBases: AssignableKnowledgeBase[]
 }
 
 interface ProfileRow {
@@ -176,6 +180,8 @@ interface ProfileRow {
   email: string | null
   full_name: string | null
   is_active: boolean
+  // Builders only; optional so fixtures can omit it.
+  assigned_kbs?: string[]
 }
 
 export interface AgencyDashboardInput {
@@ -242,6 +248,14 @@ export interface AgencyDashboardInput {
   spendByBuilder?: Map<string, BuilderSpendSummary>
   // Optional so fixtures can omit it.
   builderShares?: { builder_id: string; share_pct: number | null; platform_rate_pct: number | null }[]
+  // Admin only: knowledge bases that can be assigned to builders.
+  assignableKnowledgeBases?: AssignableKnowledgeBase[]
+}
+
+export interface AssignableKnowledgeBase {
+  id: string
+  name: string
+  visibilityScope: string
 }
 
 function laterOf(a: string | null, b: string | null): string | null {
@@ -456,6 +470,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
       attention: attentionFor(all.flatMap((r) => (r.latestUpdate ? [r.latestUpdate] : []))),
       spend: input.spendByBuilder?.get(b.id) ?? null,
       rates: ratesByBuilder.get(b.id) ?? { platformRatePct: null, builderSharePct: null },
+      assignedKnowledgeBaseIds: b.assigned_kbs ?? [],
     }
   })
   builderRows.sort(byEmail)
@@ -502,6 +517,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
     unassigned,
     completionByCategory,
     overallCompletion: completionOf(completionByCategory.map((c) => c.completion)),
+    assignableKnowledgeBases: input.assignableKnowledgeBases ?? [],
   }
 }
 
@@ -524,7 +540,7 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     const [{ data: curatorRows, error: curatorError }, { data: builderRows, error: builderError }] = await Promise.all([
       // The platform admin can run an agency too (agency_builders).
       admin.from('profiles').select(profileColumns).in('role', ['curator', 'admin']),
-      admin.from('profiles').select(profileColumns).eq('role', 'consultant'),
+      admin.from('profiles').select(`${profileColumns}, assigned_kbs`).eq('role', 'consultant'),
     ])
     if (curatorError) throw curatorError
     if (builderError) throw builderError
@@ -642,6 +658,18 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
   ])
   if (sharesError) throw sharesError
 
+  let assignableKnowledgeBases: AssignableKnowledgeBase[] = []
+  if (viewerIsAdmin) {
+    const { data: kbs, error: kbError } = await admin
+      .from('knowledge_bases')
+      .select('id, name, visibility_scope')
+      .eq('lifecycle_status', 'active')
+      .neq('status', 'rejected')
+      .order('name')
+    if (kbError) throw kbError
+    assignableKnowledgeBases = (kbs ?? []).map((kb) => ({ id: kb.id, name: kb.name, visibilityScope: kb.visibility_scope }))
+  }
+
   return assembleAgencyDashboard({
     viewerIsAdmin,
     agencies,
@@ -662,6 +690,7 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     builderSharePct: rates.builderSharePct,
     spendByBuilder,
     builderShares: builderShares ?? [],
+    assignableKnowledgeBases,
   })
 }
 
