@@ -43,6 +43,8 @@ export default async function SharedConversationPage({ params }: { params: Promi
   }
   if (shell.projectId !== id) notFound()
   const live = shell.sessions.find((s) => s.status === 'active') ?? null
+  // Rollout: resuming needs live collaboration on for this Project.
+  const collaborationOn = await collaborationApi.projectEnabled(supabase, shell.projectId).catch(() => false)
   const isViewer = shell.myRole === 'viewer'
   const pairNames = shell.participants.map((p) => p.name).join(' & ')
 
@@ -69,7 +71,11 @@ export default async function SharedConversationPage({ params }: { params: Promi
 
       <SharedChat conversationId={shell.id} />
 
-      {!isViewer && shell.otherUserId && shell.otherName && (
+      {!isViewer && !collaborationOn && !live && (
+        <p className="text-sm text-zinc-500">Live collaboration isn’t turned on for this Project at the moment, so a new live session can’t be started here.</p>
+      )}
+
+      {!isViewer && shell.otherUserId && shell.otherName && (collaborationOn || live) && (
         <SharedConversationActions
           projectId={shell.projectId}
           conversationId={shell.id}

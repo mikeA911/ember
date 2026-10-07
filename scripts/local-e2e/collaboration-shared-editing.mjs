@@ -26,7 +26,8 @@ const sql = async (q, params = []) => {
 await db.query(
   'truncate collaboration_proposal_uses, collaboration_summaries, collaboration_turns, collaboration_messages, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations'
 )
-// Seeded memberships, whatever an earlier (failed) run left behind.
+// Seeded memberships and rollout, whatever an earlier (failed) run left behind.
+await db.query("update collaboration_rollout set mode = 'all'")
 await db.query("update project_members set status = 'active', role = 'viewer' where project_id = 'b0000000-0000-4000-8000-000000000001' and user_id in ('a0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000004')")
 await db.query('update projects set goal = null, objective = $2, starter_prompt = null where id = $1', [P, 'Replace the CAD system at the harbour dispatch centre'])
 await db.query(`update project_workstreams set summary = null, deliverables = '[{"label":"Call flow","completed":false},{"label":"Staffing plan","completed":false}]' where id = $1`, [W1])

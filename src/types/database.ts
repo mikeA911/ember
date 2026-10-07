@@ -3730,6 +3730,11 @@ interface DatabaseDefinition {
       collaboration_admin_cancel_turn: { Args: { p_turn: string }; Returns: unknown }
       collaboration_admin_release_note: { Args: { p_message: string; p_index: number }; Returns: unknown }
       collaboration_admin_settle_all: { Args: Record<string, never>; Returns: unknown }
+      // Phase 4 rollout (20261029100001).
+      collaboration_project_enabled: { Args: { p_project: string }; Returns: unknown }
+      collaboration_admin_rollout: { Args: Record<string, never>; Returns: unknown }
+      collaboration_admin_set_rollout_mode: { Args: { p_mode: string }; Returns: unknown }
+      collaboration_admin_set_project_enabled: { Args: { p_project: string; p_enabled: boolean }; Returns: unknown }
       // Service role only (the turn runner).
       collaboration_claim_turn: { Args: { p_conversation: string; p_actor: string }; Returns: unknown }
       collaboration_complete_turn: {

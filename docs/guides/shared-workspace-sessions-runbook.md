@@ -44,6 +44,7 @@ The [pilot checklist](shared-workspace-pilot.md) walks two people and a viewer t
 
 ## Turning it on or off
 
-- The feature flag is `NEXT_PUBLIC_EMBER_COLLABORATION` in Vercel, per environment. It's fixed at build time, so redeploy after changing it.
-- Turning it off hides the bar, Collaborate, the shared chat and this admin tab. All data stays and reappears when it's turned back on.
-- Database migrations, in order: `20261023100001`, `20261024100001`, `20261025100001`, `20261027100001`, `20261028100001`. Each is additive and safe to re-run. Apply them before deploying the code that needs them.
+- **The flag** (master switch): `NEXT_PUBLIC_EMBER_COLLABORATION` in Vercel, per environment. It's fixed at build time, so redeploy after changing it. Turning it off hides the bar, Collaborate, the shared chat and this admin tab. All data stays and reappears when it's turned back on.
+- **Where it's on** (this tab, top): **Every Project** (the default) or **Only the Projects below**, with Projects turned on and off one by one. Where it's off, no new live session can start (Collaborate is hidden; Ember and resuming are refused, and so is accepting an invitation sent before). Live sessions carry on: end them here if needed. It takes effect at once, with no redeploy. Every change is listed under *Recent changes*.
+- **Database migrations**, in order: `20261023100001`, `20261024100001`, `20261025100001`, `20261027100001`, `20261028100001`, `20261029100001`. Each is additive and safe to re-run. Apply them before deploying the code that needs them. Code deployed without `20261029100001` hides Collaborate everywhere: it fails closed.
+- **Release note and production order:** [live collaboration release](../Deployment/shared-workspace-sessions-release.md).

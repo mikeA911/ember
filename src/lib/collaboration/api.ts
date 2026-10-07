@@ -36,6 +36,8 @@ export const collaborationApi = {
   // active: the person used this tab since its last poll.
   status: (c: Client, connection: string | null, session: string | null, active = false) =>
     call<CollaborationStatus>(c, 'collaboration_status', { p_connection: connection, p_session: session, p_active: active }),
+  // Phase 4 rollout: whether live collaboration is on for this Project.
+  projectEnabled: (c: Client, projectId: string) => call<boolean>(c, 'collaboration_project_enabled', { p_project: projectId }),
   candidates: (c: Client, projectId: string) => call<CollaborationCandidate[]>(c, 'collaboration_candidates', { p_project: projectId }),
   history: (c: Client) => call<SharedConversationSummary[]>(c, 'collaboration_history', {}),
   conversation: (c: Client, conversationId: string) =>

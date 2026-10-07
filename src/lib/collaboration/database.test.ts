@@ -12,6 +12,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261025100001_collaboration_shared_chat.sql',
   'supabase/migrations/20261027100001_collaboration_shared_chat_tools.sql',
   'supabase/migrations/20261028100001_collaboration_operations.sql',
+  'supabase/migrations/20261029100001_collaboration_rollout.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const host = id(1), guest = id(2), outsider = id(3), third = id(4)
@@ -100,7 +101,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await db.exec(`
     reset role;
-    truncate collaboration_proposal_uses, collaboration_summaries, collaboration_turns, collaboration_messages, project_notes, knowledge_sources, wiki_articles, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
+    truncate collaboration_rollout_log, collaboration_project_rollout, collaboration_proposal_uses, collaboration_summaries, collaboration_turns, collaboration_messages, project_notes, knowledge_sources, wiki_articles, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
       collaboration_conversations, conversations, project_members, project_workstreams, projects, profiles cascade;
     insert into profiles values ('${host}', 'host@example.test', 'Hana Host', true), ('${guest}', 'guest@example.test', 'Gil Guest', true),
       ('${outsider}', 'out@example.test', 'Olu Outsider', true), ('${third}', 'third@example.test', null, true);
@@ -111,6 +112,7 @@ beforeEach(async () => {
       ('${workstream}', '${project}', 'Intake', '[{"label":"Call flow","completed":false},{"label":"Staffing","completed":false}]'),
       ('${foreignWorkstream}', '${otherProject}', 'Elsewhere', '[]');
     insert into conversations values ('${id(40)}', '${host}'), ('${id(41)}', '${guest}');
+    insert into collaboration_rollout(id, mode) values (true, 'all') on conflict (id) do update set mode = 'all';
     set role authenticated;
   `)
   await as(host)
@@ -1263,5 +1265,64 @@ describe('operations (Phase 4)', () => {
     expect((await call('collaboration_admin_overview', 24)).problems.overdueSessions).toBe(1)
     expect(await call('collaboration_admin_settle_all')).toBe(1)
     expect((await call('collaboration_admin_overview', 24)).live).toEqual([])
+  })
+})
+
+describe('rollout (Phase 4)', () => {
+  const admin = outsider
+  const makeAdmin = () => asAdmin(`update profiles set role = 'admin' where id = '${admin}'`)
+  const asAdminUser = async () => {
+    await makeAdmin()
+    await as(admin)
+  }
+
+  it('on for every Project by default; in selected mode, only where an admin turns it on', async () => {
+    expect(await call('collaboration_project_enabled', project)).toBe(true)
+    await asAdminUser()
+    expect((await call('collaboration_admin_set_rollout_mode', 'selected')).mode).toBe('selected')
+    await as(host)
+    expect(await call('collaboration_project_enabled', project)).toBe(false)
+    expect((await errorOf(call('collaboration_invite', project, guest))).message).toMatch(/isn't turned on for this Project/)
+    await as(admin)
+    const rollout = await call('collaboration_admin_set_project_enabled', project, true)
+    expect(rollout.projects).toMatchObject([{ projectId: project, projectName: 'Test Project', enabled: true }])
+    await as(host)
+    expect(await call('collaboration_project_enabled', project)).toBe(true)
+    expect((await call('collaboration_invite', project, guest)).status).toBe('pending')
+  })
+
+  it('turning a Project off refuses accepting a pending invitation (declining still works) but leaves a live session running', async () => {
+    // Hana invites Gil; before he answers, the Project is turned off.
+    const pending = await call('collaboration_invite', project, guest)
+    await asAdminUser()
+    await call('collaboration_admin_set_rollout_mode', 'selected')
+    await as(guest)
+    expect((await errorOf(call('collaboration_respond_invitation', pending.id, true, guestTab))).message).toMatch(/isn't turned on/)
+    expect((await call('collaboration_respond_invitation', pending.id, false, null)).invitation.status).toBe('declined')
+    // A session started while it was on carries on.
+    await as(admin)
+    await call('collaboration_admin_set_rollout_mode', 'all')
+    const { sessionId, snap } = await liveSession()
+    await as(admin)
+    await call('collaboration_admin_set_rollout_mode', 'selected')
+    await as(host)
+    expect((await call('collaboration_navigate', sessionId, hostTab, snap.controlGeneration, workstream)).location.workstreamId).toBe(workstream)
+    expect((await call('collaboration_status', hostTab, sessionId)).session.status).toBe('active')
+  })
+
+  it('only platform admins change the rollout, and every change is recorded', async () => {
+    expect((await errorOf(call('collaboration_admin_set_rollout_mode', 'selected'))).code).toBe('42501')
+    expect((await errorOf(call('collaboration_admin_rollout'))).code).toBe('42501')
+    await asAdminUser()
+    await call('collaboration_admin_set_rollout_mode', 'selected')
+    await call('collaboration_admin_set_rollout_mode', 'selected')
+    await call('collaboration_admin_set_project_enabled', project, true)
+    await call('collaboration_admin_set_project_enabled', project, false)
+    expect((await errorOf(call('collaboration_admin_set_rollout_mode', 'some'))).code).toBe('EC001')
+    const rollout = await call('collaboration_admin_rollout')
+    expect(rollout).toMatchObject({ mode: 'selected', updatedByName: 'Olu Outsider', projects: [{ projectId: project, enabled: false }] })
+    expect(rollout.recent.map((r: Json) => r.change)).toEqual(['project_off', 'project_on', 'mode:selected'])
+    await as(admin, { client_id: 'chatbot' })
+    expect((await errorOf(call('collaboration_admin_set_rollout_mode', 'all'))).code).toBe('42501')
   })
 })

@@ -47,6 +47,11 @@ export async function runPreviewCollaborationInvitation(
   rawInput: unknown
 ): Promise<{ recipientUserId: string; recipientName: string; projectName: string | null; canInvite: boolean; note: string }> {
   const input = InputSchema.parse(rawInput)
+  if (!(await collaborationApi.projectEnabled(ctx.supabase, projectId))) {
+    throw new CollaborationInvitationToolError(
+      "Live collaboration isn't turned on for this Project, so nobody can be invited here. A platform administrator can turn it on (Admin → Live collaboration)."
+    )
+  }
   const candidates = await collaborationApi.candidates(ctx.supabase, projectId)
   const recipient = candidates.find((c) => c.userId === input.recipientUserId)
   if (!recipient) {

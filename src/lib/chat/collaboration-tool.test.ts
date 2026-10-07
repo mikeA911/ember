@@ -35,14 +35,23 @@ beforeEach(() => {
 
 describe('preview_collaboration_invitation', () => {
   it('returns the person’s name for another active member, and sends nothing', async () => {
+    rpc.mockResolvedValueOnce({ data: true, error: null })
     rpc.mockResolvedValueOnce({ data: [{ userId: GIL, name: 'Gil Guest', role: 'viewer' }], error: null })
     const out = await runPreviewCollaborationInvitation(fakeCtx(), P, { recipientUserId: GIL })
     expect(out).toMatchObject({ recipientUserId: GIL, recipientName: 'Gil Guest', projectName: 'Test Project', canInvite: true })
-    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledTimes(2)
+    expect(rpc).toHaveBeenCalledWith('collaboration_project_enabled', { p_project: P })
     expect(rpc).toHaveBeenCalledWith('collaboration_candidates', { p_project: P })
   })
 
+  it('says so when live collaboration is off for the Project (rollout)', async () => {
+    rpc.mockResolvedValueOnce({ data: false, error: null })
+    await expect(runPreviewCollaborationInvitation(fakeCtx(), P, { recipientUserId: GIL })).rejects.toThrow("isn't turned on for this Project")
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
   it('refuses someone who is not another active member', async () => {
+    rpc.mockResolvedValueOnce({ data: true, error: null })
     rpc.mockResolvedValueOnce({ data: [{ userId: GIL, name: 'Gil Guest', role: 'viewer' }], error: null })
     await expect(runPreviewCollaborationInvitation(fakeCtx(), P, { recipientUserId: OTHER })).rejects.toThrow('not another active member')
   })
