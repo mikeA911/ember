@@ -132,6 +132,20 @@ try {
     if (taken !== 1) throw new Error(`${taken} take-over events`)
   })
 
+  await step('Connection check (pilot): each browser reports its own round trips, failures and how fast the other’s changes arrived', async () => {
+    await bar(gil.page).getByRole('button', { name: 'Connection check' }).click()
+    const dialog = gil.page.getByRole('dialog', { name: 'Connection check' })
+    await dialog.waitFor({ timeout: slower(10000) })
+    const results = await dialog.getAttribute('data-results')
+    const polls = Number(/Measured over: \d+ min, (\d+) polls/.exec(results ?? '')?.[1] ?? 0)
+    const seen = Number(/\((\d+) changes\)/.exec(results ?? '')?.[1] ?? 0)
+    if (!results?.includes('Connection: ') || polls < 10 || seen < 2) throw new Error(results ?? 'no results')
+    if (!/Others' changes seen within: median \d/.test(results)) throw new Error(results)
+    if (SHOTS) await gil.page.screenshot({ path: `${SHOTS}/net-connection-check.png` })
+    await dialog.getByRole('button', { name: 'Close' }).click()
+    return results.split('\n').filter((l) => /^(Connection|Poll round trip|Others)/.test(l)).join(' | ')
+  })
+
   await step('an administrator sees the session on Admin → Live collaboration and ends it; both bars say so', async () => {
     const olu = (people.olu = await signIn('olu@e2e.local'))
     await olu.page.goto(`${BASE}/admin`)

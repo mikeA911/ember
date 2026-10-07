@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { isAtSharedLocation } from '@/lib/collaboration/follow'
 import { minutesLabel } from '@/lib/collaboration/format'
+import { formatDuration, resultsText, type DiagnosticSummary } from '@/lib/collaboration/diagnostics'
 import { sharedPath } from '@/lib/collaboration/locations'
 import type { CollaborationPerson, OpenDraft, SessionSnapshot, SharedChatState, WatchSnapshot } from '@/lib/collaboration/types'
 import { END_WARNING_SECONDS, useCollaboration } from './CollaborationProvider'
@@ -234,6 +235,7 @@ function LiveSession({
       <Viewers session={session} />
       {session.openDrafts.length > 0 && <span className="text-xs font-medium text-amber-800">Unsaved: {draftsLabel(session.openDrafts)}</span>}
       {session.thisTabJoined && <ChatToggle chat={session.chat} />}
+      {session.thisTabJoined && <ConnectionCheck who={isHost ? session.host.name : session.guest.name} role={isHost ? 'host' : 'guest'} />}
     </div>
   )
 
@@ -466,6 +468,7 @@ function Watching({ watch, pathname }: { watch: WatchSnapshot; pathname: string 
         <Presence person={watch.guest} inControl={watch.controllerId === watch.guest.id} you={false} />
         <span className="text-xs text-zinc-500">Showing: {sharedLabel}</span>
         {watch.thisTabWatching && <ChatToggle chat={watch.chat} />}
+        {watch.thisTabWatching && <ConnectionCheck who="Viewer" role="watching" />}
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {here ? (
@@ -502,5 +505,88 @@ function ChatToggle({ chat }: { chat: SharedChatState | undefined }) {
       {collab.chatOpen ? 'Hide Ember chat' : 'Ember chat'}
       {status}
     </button>
+  )
+}
+
+// Phase 4 pilot: this browser's connection, as it measured it -- for the
+// pilot's results. Timings and the browser only, never content.
+function ConnectionCheck({ who, role }: { who: string; role: string }) {
+  const collab = useCollaboration()!
+  const [summary, setSummary] = useState<DiagnosticSummary | null>(null)
+  const [copied, setCopied] = useState(false)
+  const { diagnostics } = collab
+  const open = summary !== null
+  useEffect(() => {
+    if (!open) return
+    const timer = setInterval(() => setSummary(diagnostics()), 2000)
+    return () => clearInterval(timer)
+  }, [open, diagnostics])
+  const label = { good: 'good', fair: 'fair', poor: 'poor', unknown: 'checking…' }
+  const results = () =>
+    resultsText(diagnostics(), {
+      who,
+      role,
+      browser: navigator.userAgent,
+      screen: `${window.innerWidth}x${window.innerHeight}`,
+      at: new Date().toISOString(),
+    })
+  return (
+    <span className="relative">
+      <button type="button" className={secondary} aria-expanded={open} onClick={() => setSummary(open ? null : diagnostics())}>
+        Connection check
+      </button>
+      {summary && (
+        <span
+          className="fixed inset-x-4 top-28 z-40 flex flex-col gap-1 rounded-lg border border-zinc-200 bg-white p-3 text-xs text-zinc-700 shadow-xl sm:absolute sm:inset-x-auto sm:left-0 sm:top-full sm:mt-1 sm:w-80"
+          role="dialog"
+          aria-label="Connection check"
+          data-results={results()}
+        >
+          <span className="font-medium">
+            Connection: {label[summary.rating]} <span className="text-zinc-500">(this browser, last {summary.minutes} min)</span>
+          </span>
+          <span>
+            Checks with the server: {formatDuration(summary.pollMedianMs)} typical, 9 in 10 within {formatDuration(summary.pollP90Ms)} ·{' '}
+            {summary.failureRate === null ? '—' : `${Math.round(summary.failureRate * 1000) / 10}% failed`}
+          </span>
+          <span>Your actions (control, moves, saves): {formatDuration(summary.commandMedianMs)} typical</span>
+          <span>
+            Others&rsquo; changes reached you within {formatDuration(summary.changeSeenMedianMs)} typical, 9 in 10 within{' '}
+            {formatDuration(summary.changeSeenP90Ms)} ({summary.changesSeen} seen)
+          </span>
+          <span>
+            Ember answers you asked for: {summary.emberAnswers ? `${formatDuration(summary.emberAnswerMedianMs)} typical (${summary.emberAnswers})` : 'none yet'}
+          </span>
+          <span className="mt-1 flex gap-2">
+            <button
+              type="button"
+              className={secondary}
+              onClick={() =>
+                void navigator.clipboard?.writeText(results()).then(
+                  () => setCopied(true),
+                  () => setCopied(false)
+                )
+              }
+            >
+              {copied ? 'Copied' : 'Copy results'}
+            </button>
+            <button
+              type="button"
+              className={secondary}
+              onClick={() => {
+                collab.resetDiagnostics()
+                setSummary(diagnostics())
+                setCopied(false)
+              }}
+            >
+              Start again
+            </button>
+            <button type="button" className="underline" onClick={() => setSummary(null)}>
+              Close
+            </button>
+          </span>
+        </span>
+      )}
+    </span>
   )
 }
