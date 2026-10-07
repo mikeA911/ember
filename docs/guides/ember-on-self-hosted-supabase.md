@@ -5,7 +5,7 @@ Ember-specific additions to the **Supabase Per-Client Stack — Template and Met
 **Topology:** Ember's Next.js app stays on **Vercel**. Supabase moves to one Docker Compose stack per environment on a **Zadara zCompute VM in the Philippines** (`sandz-ember-lab`, `sandz-ember-prod`).
 
 ```text
-Browser ──HTTPS──▶ Vercel (Ember, region hkg1) ──HTTPS──▶ Caddy :443 on the Zadara VM ──▶ Supabase gateway :8000 (localhost) ──▶ Auth / REST / Storage ──▶ Postgres
+Browser ──HTTPS──▶ Vercel (Ember, region sin1) ──HTTPS──▶ Caddy :443 on the Zadara VM ──▶ Supabase gateway :8000 (localhost) ──▶ Auth / REST / Storage ──▶ Postgres
 Browser ──HTTPS────────────────────────────────────────▶ Caddy :443   (sign-in and password reset go straight to Supabase Auth)
                                                           Storage objects ──▶ Zadara S3 bucket
 ```
@@ -170,9 +170,9 @@ The runbook's `backup.sh` dumps the database only. Uploaded files (branding, blo
 
 ## 9. Vercel region
 
-`vercel.json` pins Ember's functions to **`hkg1` (Hong Kong)**, the Vercel region generally closest to the Philippines. Each page checks the user with Supabase and then makes several more database calls, so this round trip matters.
+`vercel.json` pins Ember's functions to **`sin1` (Singapore)**, close to the Philippines. Each page checks the user with Supabase and then makes several more database calls, so this round trip matters.
 
-After prod is up, compare the two candidates. Open a Project page several times and note the function duration in Vercel's Observability view. Then deploy a preview with `"regions": ["sin1"]` against the same stack and repeat. If Singapore (`sin1`) is consistently faster from the Zadara site, change `regions` in `vercel.json`.
+Don't use `hkg1` (Hong Kong), although it can be slightly nearer: OpenAI refuses API calls from Hong Kong ("403 Country, region, or territory not supported"), and Gemini isn't offered there either, so embedding, knowledge search and any OpenAI chat model fail from it. Ember ran from `hkg1` from 4 to 7 October 2026, when approving a source for chunking failed this way on the preview. Any other region must also be one the configured AI providers serve.
 
 ## 10. AI processing stays outside Zadara
 
