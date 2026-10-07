@@ -18,8 +18,9 @@ export function PublicHeader({ isAuthenticated, logoUrl }: { isAuthenticated: bo
             </span>
             Ember
           </Link>
-          <nav className="flex gap-4 text-sm text-zinc-600">
+          <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-600">
             <Link href="/about" className="hover:text-zinc-900">About</Link>
+            <Link href="/builders" className="hover:text-zinc-900">Builder&apos;s Journey</Link>
             {/* Public route stays /knowledge -- /wiki is already the
                 authenticated Wiki management app, reusing it here would
                 collide. "Wiki" is the label the design note wants. */}
@@ -28,11 +29,11 @@ export function PublicHeader({ isAuthenticated, logoUrl }: { isAuthenticated: bo
             <Link href="/blog" className="hover:text-zinc-900">Blog</Link>
           </nav>
         </div>
-        <div className="text-sm text-zinc-600">
+        <div className="shrink-0 whitespace-nowrap text-sm text-zinc-600">
           {isAuthenticated ? (
-            <Link href="/dashboard" className="rounded bg-zinc-900 px-3 py-1.5 text-white">Go to Workbench</Link>
+            <Link href="/dashboard" className="inline-block whitespace-nowrap rounded bg-zinc-900 px-3 py-1.5 text-white">Go to Workbench</Link>
           ) : (
-            <Link href="/login" className="rounded bg-zinc-900 px-3 py-1.5 text-white">Sign In</Link>
+            <Link href="/login" className="inline-block whitespace-nowrap rounded bg-zinc-900 px-3 py-1.5 text-white">Sign In</Link>
           )}
         </div>
       </div>

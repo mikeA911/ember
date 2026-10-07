@@ -22,7 +22,7 @@ export default async function Home() {
           The governed enterprise AI Workbench: organize trusted knowledge, apply it to real business work, connect safely to
           live systems, and let regional builders extend it with evidence-backed tools and agents.
         </p>
-        <div className="mx-auto flex gap-3">
+        <div className="mx-auto flex flex-wrap justify-center gap-3">
           {PUBLIC_EXAMPLES_ENABLED && (
             <Link href="/examples" className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
               Explore Examples
@@ -30,6 +30,9 @@ export default async function Home() {
           )}
           <Link href="/about" className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium">
             Learn How It Works
+          </Link>
+          <Link href="/builders" className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium">
+            Builder&apos;s Journey
           </Link>
           <Link href="/login" className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium">
             Sign In
