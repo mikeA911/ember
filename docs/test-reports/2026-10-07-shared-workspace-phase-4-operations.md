@@ -14,7 +14,8 @@ Everything below ran in a cloud development container against **local, disposabl
 | Admin functions | `src/lib/collaboration/database.test.ts`, 6 new tests (75 in all) | Only platform admins see the overview, never through MCP tokens, and it carries no message text. Stalled and failed turns, stuck notes and overdue sessions are listed. Ending a session (idempotent) shows "ended_by_admin" to both and is recorded with the admin as actor. Cancelling a running turn stops its late answer, and the pair can ask again. A stuck note is reset to failed and can be sent again. Overdue sessions are settled at once. All pass, first time. |
 | Admin view and connection drops, real UI | `scripts/local-e2e/collaboration-network.mjs` | 6/6 on the local, slow, lossy and drops networks |
 | Existing suites on poor networks and a phone | `E2E_NETWORK` / `E2E_DEVICE` (below) | See the matrix |
-| Whole repository | `vitest run`, `tsc --noEmit`, `eslint`, `next build` with the flag off | See the end |
+| Normal-network regression | All four suites on the final build | 26/26, 9/9, 13/13, 6/6 |
+| Whole repository | `vitest run`, `tsc --noEmit`, `eslint`, `next build` with the flag off | 1909 tests pass; all pass |
 
 ### Connection drops and the admin view (`collaboration-network.mjs`)
 
@@ -22,7 +23,7 @@ Everything below ran in a cloud development container against **local, disposabl
 2. Gil goes offline for 30 seconds while Hana opens a workstream.
    - His bar shows "Connection lost — reconnecting…".
    - Hana still sees him as connected (inside the 90-second window).
-   - Back online, his browser follows within **0.1 s**.
+   - Back online, his browser follows within **0.1–0.2 s**.
    - Control didn't move.
 3. Gil goes offline for over 90 seconds.
    - Hana sees him "not connected" and keeps control.
@@ -45,7 +46,7 @@ Everything below ran in a cloud development container against **local, disposabl
 |---|---|---|---|---|
 | Phase 1, navigation and control (26 steps) | pass | pass | pass | pass |
 | Phase 2, shared editing (9 steps) | pass | pass | pass | pass |
-| Phase 3, shared chat (13 steps) | pass | @@CHAT_LOSSY@@ | @@CHAT_DROPS@@ | pass |
+| Phase 3, shared chat (13 steps) | pass | pass | pass | pass |
 | Phase 4, connection drops and admin (6 steps) | pass | pass | pass | — |
 
 The poor-network and phone runs found these, all fixed and re-run:
