@@ -54,17 +54,26 @@ const RULES = [
   {
     title: 'Only promoted projects are paid',
     description:
-      'Proposals in your workspace are unpaid. A client maintenance fee is recorded only on a project promoted from one of your workstreams, together with your share of it.',
+      'Proposals in your workspace are unpaid. A client maintenance fee is recorded only on a project promoted from a workstream, together with how it is split.',
   },
   {
-    title: 'Your share grows with you',
+    title: 'You found the client: you keep most of it',
     description:
-      'Every builder starts at the default share of maintenance fees. As you bring more paid projects, Ember can raise your share for the projects you bring next.',
+      'Ember takes 5–10% of the maintenance fee and you keep the rest. Ember keeps the documentation, and you maintain the project through new workstreams in it.',
   },
   {
-    title: 'The builder who promotes is paid',
+    title: 'Ember found the client: you share in it',
+    description: 'You earn 5–10% of the maintenance fee for building and maintaining the project; Ember keeps the rest.',
+  },
+  {
+    title: 'Your terms improve as you succeed',
     description:
-      "The builder who requested the promotion is the builder of record and is paid for the project. If you invite other builders to help, how you share with them is up to you.",
+      'Each builder has their own rates, and each project can be set on its own. As you bring more paid projects, your terms can improve.',
+  },
+  {
+    title: 'Contract value is negotiable',
+    description:
+      'Commission on a project’s contract value is agreed with Ember case by case. Only the builder who requested the promotion is paid; if you invite other builders to help, how you share with them is up to you.',
   },
 ]
 
@@ -82,6 +91,7 @@ const TOOLS = [
     items: [
       'Request access with a short note on why you want to build with Ember. We reply to let you know if you are accepted.',
       'Your builder workspace is ready when your account is: no setup before you can start.',
+      'Your workspace holds up to 20 workstreams. Need more? Ask from the New Workstream page with a reason, and Ember reviews it. Workstreams in your client projects don’t count.',
     ],
   },
   {
@@ -120,7 +130,10 @@ const TOOLS = [
   },
   {
     stage: 'Reuse: start ahead next time',
-    items: ['Methods: promote a workstream that worked into a reusable Method. Once published, you and other builders can start new workstreams from it.'],
+    items: [
+      'Methods: promote a workstream that worked into a reusable Method. Once published, you and other builders can start new workstreams from it.',
+      'Your knowledge, portable: export your knowledge base to your own files at any time.',
+    ],
   },
 ]
 
@@ -132,6 +145,7 @@ const COMMUNITY = [
 const TRUST = [
   'Your projects are private by default: only the members you add can open them.',
   'Your conversations with Ember are yours alone, and your private notebooks and drafts never move into a client project.',
+  'Your knowledge base is yours: share it with your projects or export it whenever you like. Builder-only knowledge bases are coming next.',
   'Per-resource access groups, AI sensitivity levels that decide which models may see what, approval policies, and an audit log of every access change.',
 ]
 
@@ -145,7 +159,7 @@ export default function BuildersJourneyPage() {
           <p>
             Ember gives every builder a workspace that works as their sales funnel. Each client proposal is a workstream. When a client
             agrees, that workstream becomes its own client project, which you build and then maintain for a share of the client&apos;s
-            maintenance fee.
+            maintenance fee. Whether you or Ember found the client decides the split.
           </p>
           <p className="font-medium text-zinc-950">Over time you have one workspace, plus every project you&apos;ve won.</p>
         </div>

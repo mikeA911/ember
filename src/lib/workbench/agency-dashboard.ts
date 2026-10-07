@@ -15,7 +15,7 @@ import type {
 } from '@/types/database'
 import type { WorkbenchCallerContext } from './context'
 import { shapePendingPromotions, type PendingWorkstreamPromotionRow } from './workstream-promotions'
-import { DEFAULT_BUILDER_SHARE_PCT, getBillingRates, monthlyEquivalent } from './client-billing'
+import { DEFAULT_BUILDER_SHARE_PCT, getBillingRates, monthlyEquivalent, type BuilderRates } from './client-billing'
 import { CATEGORY_ORDER } from '@/lib/projects/portfolio-categories'
 import { getBuilderSpendSummaries, type BuilderSpendSummary } from '@/lib/ai'
 
@@ -135,9 +135,9 @@ export interface AgencyBuilderRow {
   attention: AgencyAttention | null
   // null when the dashboard was assembled without spend (tests, fixtures).
   spend: BuilderSpendSummary | null
-  // This builder's own share of maintenance fees (builder_billing_shares);
-  // null means the deployment default.
-  sharePct: number | null
+  // This builder's own starting rates (builder_billing_shares); a null
+  // figure means the deployment default.
+  rates: BuilderRates
 }
 
 export interface AgencyGroup {
@@ -241,7 +241,7 @@ export interface AgencyDashboardInput {
   builderSharePct?: number
   spendByBuilder?: Map<string, BuilderSpendSummary>
   // Optional so fixtures can omit it.
-  builderShares?: { builder_id: string; share_pct: number }[]
+  builderShares?: { builder_id: string; share_pct: number | null; platform_rate_pct: number | null }[]
 }
 
 function laterOf(a: string | null, b: string | null): string | null {
@@ -430,7 +430,15 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
 
   const agencyByBuilder = new Map(input.roster.map((r) => [r.builder_id, r.agency_id]))
 
-  const shareByBuilder = new Map((input.builderShares ?? []).map((r) => [r.builder_id, Number(r.share_pct)]))
+  const ratesByBuilder = new Map(
+    (input.builderShares ?? []).map((r) => [
+      r.builder_id,
+      {
+        platformRatePct: r.platform_rate_pct === null ? null : Number(r.platform_rate_pct),
+        builderSharePct: r.share_pct === null ? null : Number(r.share_pct),
+      },
+    ])
+  )
   const builderRows: AgencyBuilderRow[] = input.builders.map((b) => {
     const proposals = (proposalsByOwner.get(b.id) ?? []).sort(newestFirst)
     const clientProjects = (clientProjectsByOwner.get(b.id) ?? []).sort(newestFirst)
@@ -447,7 +455,7 @@ export function assembleAgencyDashboard(input: AgencyDashboardInput): AgencyDash
       lastActivityAt: all.reduce<string | null>((latest, r) => laterOf(latest, r.lastActivityAt), null),
       attention: attentionFor(all.flatMap((r) => (r.latestUpdate ? [r.latestUpdate] : []))),
       spend: input.spendByBuilder?.get(b.id) ?? null,
-      sharePct: shareByBuilder.get(b.id) ?? null,
+      rates: ratesByBuilder.get(b.id) ?? { platformRatePct: null, builderSharePct: null },
     }
   })
   builderRows.sort(byEmail)
@@ -629,7 +637,7 @@ export async function getAgencyDashboard(ctx: WorkbenchCallerContext): Promise<A
     getBillingRates(admin),
     getBuilderSpendSummaries(admin, builderIds),
     builderIds.length > 0
-      ? admin.from('builder_billing_shares').select('builder_id, share_pct').in('builder_id', builderIds)
+      ? admin.from('builder_billing_shares').select('builder_id, share_pct, platform_rate_pct').in('builder_id', builderIds)
       : Promise.resolve({ data: [], error: null }),
   ])
   if (sharesError) throw sharesError

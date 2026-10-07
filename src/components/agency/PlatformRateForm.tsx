@@ -4,9 +4,10 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { setBillingRatesAction } from '@/app/actions/agency'
 
-// Admin only. Both apply to fees recorded from now on; existing fees keep
-// the rates they were recorded with (the builder's share can still be
-// adjusted per fee).
+// Admin only. The deployment defaults: Ember's cut when a builder found the
+// client, and the builder's share when Ember found the client. Both apply
+// to fees recorded from now on; recorded fees keep their split, and each
+// builder or project can be adjusted on its own.
 export function PlatformRateForm({ current, currentBuilderShare }: { current: number; currentBuilderShare: number }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -30,7 +31,7 @@ export function PlatformRateForm({ current, currentBuilderShare }: { current: nu
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-600">
       <label className="flex items-center gap-2">
-        Platform share of client maintenance fees
+        Ember&apos;s cut when the builder found the client
         <input
           inputMode="decimal"
           value={value}
@@ -40,7 +41,7 @@ export function PlatformRateForm({ current, currentBuilderShare }: { current: nu
         %
       </label>
       <label className="flex items-center gap-2">
-        Default builder share
+        Builder&apos;s share when Ember found the client
         <input
           inputMode="decimal"
           value={builderShare}

@@ -1209,7 +1209,13 @@ export interface Project {
   // who built it, kept when the agency takes ownership at go-live. Set only
   // by the service layer or a platform admin.
   builder_id: string | null
+  // Who found the client: decides how the maintenance fee is split
+  // (20261029100001_client_source_and_workstream_limits.sql). Null on
+  // Projects not created by promotion. Service layer or admin only.
+  client_source: ClientSource | null
 }
+
+export type ClientSource = 'builder' | 'ember'
 
 export type ProjectApprovalStatus = 'pending' | 'approved' | 'rejected'
 export interface PendingProjectMember {
@@ -1882,12 +1888,40 @@ export interface AgencyBuilder {
   updated_at: string
 }
 
+// A builder's own workstream limit in their workspace (default 20) and
+// their requests for more. 20261029100001.
+export interface BuilderWorkstreamLimit {
+  builder_id: string
+  workstream_limit: number
+  set_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type WorkstreamLimitRequestStatus = 'pending' | 'approved' | 'declined'
+
+export interface BuilderWorkstreamLimitRequest {
+  id: string
+  builder_id: string
+  requested_limit: number
+  reason: string
+  status: WorkstreamLimitRequestStatus
+  decided_by: string | null
+  decided_at: string | null
+  decision_note: string | null
+  created_at: string
+}
+
 // A builder's own share of client maintenance fees, set by the platform
 // admin; builders without one get settings.builder_billing.builderSharePct.
 // 20261028100001_builder_edition_agency_rules.sql.
 export interface BuilderBillingShare {
   builder_id: string
-  share_pct: number
+  // The builder's share when Ember found the client; null = default.
+  share_pct: number | null
+  // Ember's cut when the builder found the client; null = default
+  // (20261029100001).
+  platform_rate_pct: number | null
   set_by: string | null
   created_at: string
   updated_at: string
@@ -2839,6 +2873,7 @@ export type ProjectInsert = Omit<
   | 'approval_decision_reason'
   | 'pending_members'
   | 'builder_id'
+  | 'client_source'
 > &
   Partial<
     Pick<
@@ -2862,6 +2897,7 @@ export type ProjectInsert = Omit<
       | 'approval_status'
       | 'pending_members'
       | 'builder_id'
+      | 'client_source'
     >
   >
 export type ProjectUpdate = Partial<Omit<Project, 'id' | 'created_at'>>
@@ -2982,7 +3018,8 @@ export type ClientProjectFeeUpdate = Partial<Omit<ClientProjectFee, 'project_id'
 
 export type AgencyBuilderInsert = Omit<AgencyBuilder, 'created_at' | 'updated_at'>
 export type AgencyBuilderUpdate = Partial<Omit<AgencyBuilder, 'builder_id' | 'created_at'>>
-export type BuilderBillingShareInsert = Omit<BuilderBillingShare, 'created_at' | 'updated_at'>
+export type BuilderBillingShareInsert = Omit<BuilderBillingShare, 'created_at' | 'updated_at' | 'share_pct' | 'platform_rate_pct'> &
+  Partial<Pick<BuilderBillingShare, 'share_pct' | 'platform_rate_pct'>>
 export type BuilderBillingShareUpdate = Partial<Omit<BuilderBillingShare, 'builder_id' | 'created_at'>>
 
 export type BuilderAiAllowanceInsert = Omit<BuilderAiAllowance, 'created_at' | 'updated_at'> &
@@ -3506,6 +3543,18 @@ interface DatabaseDefinition {
         Row: AgencyBuilder
         Insert: AgencyBuilderInsert
         Update: AgencyBuilderUpdate
+        Relationships: []
+      }
+      builder_workstream_limits: {
+        Row: BuilderWorkstreamLimit
+        Insert: Omit<BuilderWorkstreamLimit, 'created_at' | 'updated_at'>
+        Update: Partial<Omit<BuilderWorkstreamLimit, 'builder_id' | 'created_at'>>
+        Relationships: []
+      }
+      builder_workstream_limit_requests: {
+        Row: BuilderWorkstreamLimitRequest
+        Insert: Pick<BuilderWorkstreamLimitRequest, 'builder_id' | 'requested_limit' | 'reason'>
+        Update: Partial<Pick<BuilderWorkstreamLimitRequest, 'status' | 'decided_by' | 'decided_at' | 'decision_note'>>
         Relationships: []
       }
       builder_billing_shares: {

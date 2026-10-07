@@ -3,6 +3,8 @@ import { requireUser } from '@/lib/auth'
 import { getAgencyDashboard } from '@/lib/workbench/agency-dashboard'
 import { AgencyDashboardView } from '@/components/agency/AgencyDashboardView'
 import { AgencySummaryButton } from '@/components/agency/AgencySummaryButton'
+import { WorkstreamLimitRequestsReview } from '@/components/agency/WorkstreamLimitRequestsReview'
+import { listPendingWorkstreamLimitRequests } from '@/lib/workbench/workstream-limits'
 
 // Builder agency dashboard -- see src/lib/workbench/agency-dashboard.ts.
 // Gated on the viewer's own session profile role; getAgencyDashboard checks
@@ -12,7 +14,7 @@ export default async function AgencyPage() {
   if (!ctx) redirect('/login')
   if (ctx.profile.role !== 'admin' && ctx.profile.role !== 'curator') redirect('/dashboard')
 
-  const dashboard = await getAgencyDashboard(ctx)
+  const [dashboard, limitRequests] = await Promise.all([getAgencyDashboard(ctx), listPendingWorkstreamLimitRequests(ctx)])
 
   return (
     <div className="flex flex-col gap-6">
@@ -28,6 +30,7 @@ export default async function AgencyPage() {
           share -- their notebooks, conversations and drafts stay private to them.
         </p>
       </div>
+      <WorkstreamLimitRequestsReview requests={limitRequests} />
       <AgencyDashboardView dashboard={dashboard} />
     </div>
   )

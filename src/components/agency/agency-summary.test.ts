@@ -12,7 +12,7 @@ const builder: AgencyBuilderRow = {
   lastActivityAt: '2026-09-20T00:00:00Z',
   attention: null,
   spend: null,
-  sharePct: null,
+  rates: { platformRatePct: null, builderSharePct: null },
   clientProjects: [
     {
       id: 'p-acme',

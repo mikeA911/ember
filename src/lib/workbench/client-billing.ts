@@ -2,18 +2,17 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { AuthError } from '@/lib/auth'
 import { ProjectValidationError } from '@/lib/projects/errors'
-import type { Database, FeeBillingPeriod, FeeCurrency } from '@/types/database'
+import type { ClientSource, Database, FeeBillingPeriod, FeeCurrency } from '@/types/database'
 import type { WorkbenchCallerContext } from './context'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// Client maintenance fees and the platform's share (20261003100003_client_
-// project_fees.sql). Ember records figures for invoicing builders; it
-// never charges anyone. The platform rate is one per deployment, in
-// settings.builder_billing -- the platform owner's own business model.
-// The builder's share (20261008100001) works the same way: a deployment
-// default in settings.builder_billing, recorded on each fee when it's
-// created, and adjustable per Project -- for an employee it's a bonus on
-// the maintenance fee.
+// Client maintenance fees and how they're split (20261003100003_client_
+// project_fees.sql, 20261029100001_client_source_and_workstream_limits.sql).
+// Ember records figures for invoicing; it never charges anyone. The
+// deployment defaults live in settings.builder_billing: Ember's cut when a
+// builder found the client (platformRatePct) and the builder's share when
+// Ember found the client (builderSharePct). Both are recorded on each fee
+// when it's created, so changing a default never rewrites an agreed fee.
 
 export const DEFAULT_PLATFORM_RATE_PCT = 10
 export const DEFAULT_BUILDER_SHARE_PCT = 10
@@ -90,41 +89,101 @@ export async function setPlatformRatePct(ctx: WorkbenchCallerContext, pct: numbe
   await setBillingRates(ctx, { platformRatePct: pct })
 }
 
-// Each builder can have their own share (builder_billing_shares,
-// 20261028100001), raised as they bring more paid projects; without one
-// they get the deployment default. Read where a new fee is recorded.
-export async function getBuilderSharePct(supabase: SupabaseClient<Database>, builderId: string, defaultPct?: number): Promise<number> {
-  const { data, error } = await supabase.from('builder_billing_shares').select('share_pct').eq('builder_id', builderId).maybeSingle()
-  if (error) throw error
-  if (data) return Number(data.share_pct)
-  return defaultPct ?? (await getBillingRates(supabase)).builderSharePct
+// Who found the client decides the split, and the two shares always add up
+// to 100% (20261029100001_client_source_and_workstream_limits.sql):
+//   * builder-found -- Ember takes its cut (platformRatePct); the builder
+//     keeps the rest.
+//   * Ember-found   -- the builder gets their share (builderSharePct); Ember
+//     keeps the rest.
+// A builder can have their own starting figures for either case
+// (builder_billing_shares), raised as they succeed; each fee can still be
+// adjusted per Project.
+export interface FeeSplit {
+  platformRatePct: number
+  builderSharePct: number
 }
 
-// Admin only. null removes the builder's own share, back to the default.
-// Applies to fees recorded from now on; recorded fees keep their share.
-export async function setBuilderSharePct(ctx: WorkbenchCallerContext, builderId: string, pct: number | null): Promise<void> {
-  if (ctx.profile.role !== 'admin') throw new AuthError("Only the platform admin can set a builder's share")
-  if (pct === null) {
+export interface BuilderRates {
+  // Ember's cut when the builder found the client; null = default.
+  platformRatePct: number | null
+  // The builder's share when Ember found the client; null = default.
+  builderSharePct: number | null
+}
+
+export function feeSplitFor(source: ClientSource, defaults: BillingRates, own: BuilderRates | null): FeeSplit {
+  if (source === 'ember') {
+    const builderSharePct = own?.builderSharePct ?? defaults.builderSharePct
+    return { builderSharePct, platformRatePct: round2(100 - builderSharePct) }
+  }
+  const platformRatePct = own?.platformRatePct ?? defaults.platformRatePct
+  return { platformRatePct, builderSharePct: round2(100 - platformRatePct) }
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+export async function getBuilderRates(supabase: SupabaseClient<Database>, builderId: string): Promise<BuilderRates | null> {
+  const { data, error } = await supabase
+    .from('builder_billing_shares')
+    .select('share_pct, platform_rate_pct')
+    .eq('builder_id', builderId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  return {
+    platformRatePct: data.platform_rate_pct === null ? null : Number(data.platform_rate_pct),
+    builderSharePct: data.share_pct === null ? null : Number(data.share_pct),
+  }
+}
+
+// The split a new fee is recorded with, for this builder and source.
+export async function getFeeSplit(
+  supabase: SupabaseClient<Database>,
+  builderId: string,
+  source: ClientSource,
+  defaults?: BillingRates
+): Promise<FeeSplit> {
+  const [rates, own] = await Promise.all([defaults ? Promise.resolve(defaults) : getBillingRates(supabase), getBuilderRates(supabase, builderId)])
+  return feeSplitFor(source, rates, own)
+}
+
+// Admin only. A null figure puts the builder back on that default. Applies
+// to fees recorded from now on; recorded fees keep their split.
+export async function setBuilderRates(ctx: WorkbenchCallerContext, builderId: string, rates: BuilderRates): Promise<void> {
+  if (ctx.profile.role !== 'admin') throw new AuthError("Only the platform admin can set a builder's rates")
+  if (rates.platformRatePct === null && rates.builderSharePct === null) {
     const { error } = await ctx.supabase.from('builder_billing_shares').delete().eq('builder_id', builderId)
     if (error) throw error
     return
   }
-  const { error } = await ctx.supabase
-    .from('builder_billing_shares')
-    .upsert({ builder_id: builderId, share_pct: validateRatePct(pct, "Builder's share"), set_by: ctx.user.id }, { onConflict: 'builder_id' })
+  const { error } = await ctx.supabase.from('builder_billing_shares').upsert(
+    {
+      builder_id: builderId,
+      platform_rate_pct: rates.platformRatePct === null ? null : validateRatePct(rates.platformRatePct, "Ember's cut"),
+      share_pct: rates.builderSharePct === null ? null : validateRatePct(rates.builderSharePct, "Builder's share"),
+      set_by: ctx.user.id,
+    },
+    { onConflict: 'builder_id' }
+  )
   if (error) throw error
 }
 
 // Admin, or the agency of this client Project's builder (the builder of
 // record, or the owner before a builder_id was recorded). Only a Project
-// created by an approved workstream promotion is paid. A new fee row takes
-// today's platform rate and the builder's own share; correcting an
-// existing fee keeps the platform rate it was recorded with.
+// created by an approved workstream promotion is paid. A new fee takes the
+// split for who found the client and this builder's own rates; setting the
+// builder's share on a fee sets Ember's to the rest. Correcting only the
+// amount keeps the recorded split.
 export async function setClientProjectFee(ctx: WorkbenchCallerContext, projectId: string, input: FeeInput): Promise<void> {
   const fee = validateFee(input)
   const admin = createAdminClient()
 
-  const { data: project, error: projectError } = await admin.from('projects').select('owner_id, builder_id').eq('id', projectId).maybeSingle()
+  const { data: project, error: projectError } = await admin
+    .from('projects')
+    .select('owner_id, builder_id, client_source')
+    .eq('id', projectId)
+    .maybeSingle()
   if (projectError) throw projectError
   const builderId = project?.builder_id ?? project?.owner_id
   if (!builderId) throw new ProjectValidationError('Project not found')
@@ -162,18 +221,20 @@ export async function setClientProjectFee(ctx: WorkbenchCallerContext, projectId
     currency: fee.currency,
     billing_period: fee.period,
     set_by: ctx.user.id,
-    ...(fee.builderSharePct === undefined ? {} : { builder_share_pct: fee.builderSharePct }),
+    ...(fee.builderSharePct === undefined
+      ? {}
+      : { builder_share_pct: fee.builderSharePct, platform_rate_pct: round2(100 - fee.builderSharePct) }),
   }
   let error
   if (existing) {
     ;({ error } = await ctx.supabase.from('client_project_fees').update(row).eq('project_id', projectId))
   } else {
-    const rates = await getBillingRates(admin)
+    const split = await getFeeSplit(admin, builderId, project?.client_source ?? 'builder')
     ;({ error } = await ctx.supabase.from('client_project_fees').insert({
       project_id: projectId,
-      builder_share_pct: await getBuilderSharePct(admin, builderId, rates.builderSharePct),
+      platform_rate_pct: split.platformRatePct,
+      builder_share_pct: split.builderSharePct,
       ...row,
-      platform_rate_pct: rates.platformRatePct,
     }))
   }
   if (error) throw error

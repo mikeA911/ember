@@ -276,7 +276,7 @@ describe('approveWorkstreamPromotion', () => {
     expect(decisionUpdate?.args).toMatchObject({ status: 'approved', decided_by: 'operator-1', created_project_id: 'new-proj-1' })
   })
 
-  it('records the proposed fee on the client Project at today\'s platform rate', async () => {
+  it('records the proposed fee, split for a builder-found client: Ember\'s cut and the builder keeps the rest', async () => {
     const supabase = createFakeSupabase({
       workstream_promotions: [
         {
@@ -307,7 +307,7 @@ describe('approveWorkstreamPromotion', () => {
       currency: 'USD',
       billing_period: 'annual',
       platform_rate_pct: 12.5,
-      builder_share_pct: 10,
+      builder_share_pct: 87.5,
       set_by: 'operator-1',
     })
   })
@@ -479,7 +479,7 @@ describe('Builder edition rules (20261028100001)', () => {
 
     expect(result).toEqual({ promotionId: 'promo-1', createdProjectId: 'new-proj-1', clientViewers: [] })
     const projectInsert = admin._calls.find((c) => c.table === 'projects' && c.method === 'insert')
-    expect(projectInsert?.args).toMatchObject({ owner_id: 'admin-1', builder_id: 'admin-1' })
+    expect(projectInsert?.args).toMatchObject({ owner_id: 'admin-1', builder_id: 'admin-1', client_source: 'ember' })
     expect(admin._calls.some((c) => c.table === 'project_members' && c.method === 'insert')).toBe(false)
     const decisionUpdate = admin._calls.find((c) => c.table === 'workstream_promotions' && c.method === 'update')
     expect(decisionUpdate?.args).toMatchObject({ status: 'approved', decided_by: 'admin-1', created_project_id: 'new-proj-1' })
@@ -512,7 +512,7 @@ describe('Builder edition rules (20261028100001)', () => {
     expect(projectInsert?.args).toMatchObject({ owner_id: 'builder-1', builder_id: 'builder-1', portfolio_category: 'builder_lab' })
   })
 
-  it("records the builder's own share on the fee", async () => {
+  it("records the fee at the builder's own cut", async () => {
     const supabase = createFakeSupabase({
       workstream_promotions: [
         {
@@ -531,13 +531,15 @@ describe('Builder edition rules (20261028100001)', () => {
         { data: [{ id: 'promo-1' }], error: null },
       ],
     })
-    const admin = builderProposalAdminFor({ builder_billing_shares: [{ data: { share_pct: 30 }, error: null }] })
+    const admin = builderProposalAdminFor({ builder_billing_shares: [{ data: { share_pct: null, platform_rate_pct: 6 }, error: null }] })
     createAdminClientMock.mockReturnValue(admin)
 
     await approveWorkstreamPromotion(ctxWith(supabase, { userId: 'operator-1', role: 'admin' }), 'promo-1')
 
     const feeInsert = admin._calls.find((c) => c.table === 'client_project_fees' && c.method === 'insert')
-    expect(feeInsert?.args).toMatchObject({ builder_share_pct: 30 })
+    expect(feeInsert?.args).toMatchObject({ platform_rate_pct: 6, builder_share_pct: 94 })
+    const projectInsert = admin._calls.find((c) => c.table === 'projects' && c.method === 'insert')
+    expect(projectInsert?.args).toMatchObject({ client_source: 'builder' })
   })
 
   it("never lets another curator on a builder's Project decide -- only the agency or the admin", async () => {
