@@ -54,6 +54,21 @@ Finishes the shared Ember chat (R3, R4). The migration (`20261027100001_collabor
 - **Wider audiences.** A note and a Project field reach more people than the conversation, so publishing a summary, sending a proposed note or using proposed field text first checks that every active Project member can open the evidence behind it (`collaboration_evidence_project_visible`, the real access rules evaluated as each member). A Project that isn't private takes proposed field text only if it used no evidence at all. Platform administrators can read notes in Projects they oversee; they aren't checked individually.
 - **Not done.** No conversation-wide re-summarizing after access changes (a summary that stops being common is skipped, and the next summary covers only later messages); Ember still has no tool that changes anything itself.
 
+### Phase 4 rollout controls (7 October 2026)
+
+The migration (`20261029100001_collaboration_rollout.sql`) was applied to the live backend on 7 October 2026 and verified (`16 | 100 | 51 | 50 | 2`).
+
+- **Where it's on.** The build flag stays the master switch. Within it, platform admins choose in Admin → Live collaboration:
+  - **Every Project** (the default, so behaviour is unchanged);
+  - **Only the Projects below**, turned on one by one.
+- **Where it's off:**
+  - Collaborate is hidden, and resuming isn't offered.
+  - Ember's invitation tool says it's off.
+  - The database refuses new invitations, and refuses accepting an invitation sent earlier. Declining still works.
+  - Live sessions carry on until they end, or an admin ends them. Conversations, chats and viewers stay readable.
+- **Recorded.** Every mode and Project change is logged with the admin. Turning a Project off sets it to off; nothing is deleted.
+- **[Release note](Deployment/shared-workspace-sessions-release.md)** gives the production order: migrations, region, *selected Projects only* before the flag, then widen.
+
 ### Phase 4 pilot kit (7 October 2026)
 
 What the remote pilot needs:

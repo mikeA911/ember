@@ -29,7 +29,9 @@ const sql = async (q, params = []) => {
 await db.query(
   'truncate collaboration_proposal_uses, collaboration_summaries, collaboration_turns, collaboration_messages, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations'
 )
-// Seeded memberships, whatever an earlier (failed) run left behind.
+// Seeded memberships and rollout, whatever an earlier (failed) run left behind.
+await db.query("update collaboration_rollout set mode = 'all'")
+await db.query('truncate collaboration_rollout_log, collaboration_project_rollout')
 await db.query("update project_members set status = 'active', role = 'viewer' where project_id = 'b0000000-0000-4000-8000-000000000001' and user_id in ('a0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000004')")
 const oluRole = await sql('select role from profiles where id = $1', [OLU])
 await db.query("update profiles set role = 'admin' where id = $1", [OLU])
@@ -162,12 +164,37 @@ try {
     if ((await sql("select count(*)::int from collaboration_events e join profiles p on p.id = e.actor_id where e.event = 'ended:ended_by_admin' and p.email = 'olu@e2e.local'")) !== 1) throw new Error('not recorded')
   })
 
+  await step('rollout: in "selected Projects" mode, Collaborate disappears until an admin turns the Project on', async () => {
+    const olu = people.olu
+    const rollout = olu.page.locator('[data-collaboration-rollout]')
+    // The choice shows once the database has it (not before).
+    await rollout.getByLabel('Only the Projects below').click()
+    await rollout.getByText('Turned on for 0 Projects', { exact: true }).waitFor({ timeout: slower(10000) })
+    if (!(await rollout.getByLabel('Only the Projects below').isChecked())) throw new Error('mode not shown')
+    await hana.page.goto(`${BASE}/projects/${P}`)
+    await hana.page.getByRole('heading', { name: 'Harbour Dispatch Upgrade' }).waitFor({ timeout: slower(15000) })
+    if (await hana.page.getByRole('button', { name: 'Collaborate' }).count()) throw new Error('Collaborate still offered')
+    // Turn it on for this Project.
+    await rollout.getByLabel('Find a Project').fill('Harbour')
+    await rollout.getByRole('button', { name: 'Turn on' }).first().click({ timeout: slower(10000) })
+    await rollout.getByText('Turned on for 1 Project', { exact: true }).waitFor({ timeout: slower(10000) })
+    await hana.page.reload()
+    await hana.page.getByRole('button', { name: 'Collaborate' }).waitFor({ timeout: slower(15000) })
+    if (SHOTS) await olu.page.screenshot({ path: `${SHOTS}/net-rollout.png`, fullPage: true })
+    const log = await db.query('select change from collaboration_rollout_log order by id')
+    if (log.rows.map((r) => r.change).join(',') !== 'mode:selected,project_on') throw new Error(JSON.stringify(log.rows))
+    // Back to every Project for the other suites.
+    await rollout.getByLabel('Every Project').click()
+    await rollout.getByText(/used once you choose/).waitFor({ timeout: slower(10000) })
+  })
+
   await step('nobody else can open the admin view', async () => {
     await hana.page.goto(`${BASE}/admin`)
     await hana.page.waitForURL((u) => !u.pathname.startsWith('/admin'), { timeout: slower(15000) })
   })
 } finally {
   await db.query('update profiles set role = $2 where id = $1', [OLU, oluRole])
+  await db.query("update collaboration_rollout set mode = 'all'")
   await browser.close()
   await db.end()
 }

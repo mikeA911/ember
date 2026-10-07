@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/browser'
 import { collaborationAdminApi, type CollaborationOverview } from '@/lib/collaboration/admin'
 import { CollaborationError } from '@/lib/collaboration/errors'
 import { minutesLabel } from '@/lib/collaboration/format'
+import { CollaborationRollout } from './CollaborationRollout'
 
 // Shared workspace sessions, Phase 4: the administrators' view -- live
 // sessions, counts for a period and recent problems -- with the recovery
@@ -114,6 +115,8 @@ export function CollaborationAdmin() {
           </span>
         )}
       </div>
+
+      <CollaborationRollout />
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Live sessions ({live.length})</h2>

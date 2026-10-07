@@ -50,6 +50,8 @@ import { getProjectApprovalState } from '@/lib/workbench/project-approval'
 import { ProjectApprovalBanner } from '@/components/projects/ProjectApprovalBanner'
 import { WorkstreamsDropdown } from '@/components/projects/WorkstreamsDropdown'
 import { CollaborateButton } from '@/components/collaboration/CollaborateButton'
+import { collaborationApi } from '@/lib/collaboration/api'
+import { collaborationEnabled } from '@/lib/collaboration/flag'
 
 const TYPE_LABELS: Record<string, string> = {
   learning: 'Learning',
@@ -296,6 +298,10 @@ export default async function ProjectPage({
   // Workstreams are curator+ manageable, not just owner -- matches
   // project_workstreams_manage_curator's can_curate_project RLS bar exactly.
   const canCurateWorkstreams = canManage || viewerMembership?.role === 'curator'
+  // Shared workspace sessions: the build flag, then the rollout (all
+  // Projects, or only those an admin turned on). The database enforces it.
+  const collaborationOn =
+    collaborationEnabled() && !!user && !!viewerMembership ? await collaborationApi.projectEnabled(supabase, project.id).catch(() => false) : false
 
   // Workstream Promotion: this Project's own curator/owner/admin reviews
   // promotions submitted from this Project's own workstreams -- the
@@ -584,7 +590,7 @@ export default async function ProjectPage({
             />
             {/* Shared workspace sessions -- any active member; renders
                 nothing while the feature flag is off. */}
-            {user && viewerMembership && <CollaborateButton projectId={project.id} projectName={project.name} />}
+            {user && viewerMembership && collaborationOn && <CollaborateButton projectId={project.id} projectName={project.name} />}
             {canManage && (
               <>
                 <Link href={`/projects/${project.id}/members`} className="text-sm underline">
