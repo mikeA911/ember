@@ -3724,6 +3724,12 @@ interface DatabaseDefinition {
         Returns: unknown
       }
       collaboration_set_reply_proposals: { Args: { p_turn: string; p_lease: string; p_proposals: unknown }; Returns: unknown }
+      // Phase 4 (20261028100001), platform admins only.
+      collaboration_admin_overview: { Args: { p_hours?: number }; Returns: unknown }
+      collaboration_admin_end_session: { Args: { p_session: string }; Returns: unknown }
+      collaboration_admin_cancel_turn: { Args: { p_turn: string }; Returns: unknown }
+      collaboration_admin_release_note: { Args: { p_message: string; p_index: number }; Returns: unknown }
+      collaboration_admin_settle_all: { Args: Record<string, never>; Returns: unknown }
       // Service role only (the turn runner).
       collaboration_claim_turn: { Args: { p_conversation: string; p_actor: string }; Returns: unknown }
       collaboration_complete_turn: {

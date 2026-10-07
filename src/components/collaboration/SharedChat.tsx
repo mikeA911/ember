@@ -45,30 +45,43 @@ export function SharedChat({ conversationId, compact = false }: { conversationId
   const watching = watch?.conversationId === conversationId ? watch : null
   const version = inSession?.chat?.version ?? watching?.chat?.version ?? null
 
+  // Reload now (after posting, or Refresh). Tries three times -- a single
+  // dropped request mustn't leave the chat stale -- then says it failed.
   const reload = useCallback(async () => {
-    try {
-      setChat(await loadChat(conversationId))
-      setLoadError(null)
-    } catch (err) {
-      setLoadError(errorText(err))
+    for (let n = 0; n < 3; n++) {
+      try {
+        setChat(await loadChat(conversationId))
+        setLoadError(null)
+        return
+      } catch (err) {
+        if (n === 2) setLoadError(errorText(err))
+        else await new Promise((r) => setTimeout(r, 1000 * (n + 1)))
+      }
     }
   }, [loadChat, conversationId])
 
-  // Load, and reload whenever the polled chat state changes.
+  // Load, and reload whenever the polled chat state changes. A failed load
+  // is retried (after 2, 4, 8 s...) -- the next change might be a while.
   useEffect(() => {
     let cancelled = false
-    loadChat(conversationId).then(
-      (next) => {
-        if (cancelled) return
-        setChat(next)
-        setLoadError(null)
-      },
-      (err) => {
-        if (!cancelled) setLoadError(errorText(err))
-      }
-    )
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const attempt = (n: number) =>
+      loadChat(conversationId).then(
+        (next) => {
+          if (cancelled) return
+          setChat(next)
+          setLoadError(null)
+        },
+        (err) => {
+          if (cancelled) return
+          setLoadError(errorText(err))
+          if (n < 6) timer = setTimeout(() => void attempt(n + 1), 2000 * 2 ** Math.min(n, 3))
+        }
+      )
+    void attempt(0)
     return () => {
       cancelled = true
+      if (timer) clearTimeout(timer)
     }
   }, [loadChat, conversationId, version])
 
@@ -120,9 +133,12 @@ export function SharedChat({ conversationId, compact = false }: { conversationId
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Shared Ember chat</h2>
         {!inSession && !watching && (
-          <button type="button" onClick={() => void reload()} className="text-xs text-blue-700 underline">
-            Refresh
-          </button>
+          <span className="flex items-center gap-2">
+            {loadError && <span className="text-xs text-red-600">Couldn’t refresh: {loadError}</span>}
+            <button type="button" onClick={() => void reload()} className="text-xs text-blue-700 underline">
+              Refresh
+            </button>
+          </span>
         )}
       </div>
 

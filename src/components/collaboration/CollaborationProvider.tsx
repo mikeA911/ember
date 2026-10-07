@@ -49,6 +49,9 @@ interface CollaborationContextValue {
   watchable: WatchableSession[]
   endedWatch: WatchSnapshot | null
   following: boolean
+  // Phase 4: polls have failed twice running while in a session or
+  // watching -- what's shown may be out of date until they succeed.
+  reconnecting: boolean
   busy: boolean
   error: string | null
   invite: (projectId: string, inviteeId: string, conversationId?: string | null) => Promise<CollaborationInvitation | null>
@@ -132,7 +135,12 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
 
   // The live session this tab last saw, so a poll after it ends can say why.
   const lastSessionRef = useRef<string | null>(null)
+  // Until this time, a session we just accepted is on its way: poll at the
+  // in-session rate even before a poll has returned it (a dropped poll
+  // right after accepting must not fall back to the idle backoff).
+  const expectSessionUntilRef = useRef(0)
   const failuresRef = useRef(0)
+  const [reconnecting, setReconnecting] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollRef = useRef<() => void>(() => {})
   const joiningRef = useRef<string | null>(null)
@@ -199,7 +207,7 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     // From this response, not sessionRef: the ref only catches up after
     // the next render, and the poll that first finds a session must
     // already switch to the fast in-session interval.
-    let inSession = !!sessionRef.current
+    let inSession = !!sessionRef.current || Date.now() < expectSessionUntilRef.current
     let waiting = false
     const startedAt = Date.now()
     lastPollStartRef.current = startedAt
@@ -230,12 +238,14 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
         if (!watching) failuresRef.current = 0
         setStatus((prev) => ({ ...prev, incoming: result.incoming, outgoing: result.outgoing, watchable: result.watchable ?? [] }))
         applySession(result.session)
-        inSession = result.session?.status === 'active'
+        if (result.session) expectSessionUntilRef.current = 0
+        inSession = result.session?.status === 'active' || Date.now() < expectSessionUntilRef.current
         waiting = result.outgoing.length > 0
       } catch {
         if (!watching) failuresRef.current += 1
       }
     }
+    setReconnecting((inSession || watching) && failuresRef.current >= 2)
     if (inSession || watching) accessTokenRef.current = (await supabase.auth.getSession()).data.session?.access_token ?? null
     const delay = nextPollDelay({
       inSession: inSession || watching,
@@ -280,13 +290,20 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
         ...target,
       })
     }
+    // Back online: don't wait out the failure backoff (up to 30 s).
+    const onOnline = () => {
+      failuresRef.current = 0
+      poll()
+    }
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', poll)
+    window.addEventListener('online', onOnline)
     window.addEventListener('pageshow', onShow)
     window.addEventListener('pagehide', onHide)
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', poll)
+      window.removeEventListener('online', onOnline)
       window.removeEventListener('pageshow', onShow)
       window.removeEventListener('pagehide', onHide)
       if (timerRef.current) clearTimeout(timerRef.current)
@@ -487,6 +504,7 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     watchable: status.watchable,
     endedWatch,
     following,
+    reconnecting,
     busy,
     error,
     invite: (projectId, inviteeId, conversationId) =>
@@ -495,12 +513,17 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     respondInvitation: (invitationId, accept) =>
       run(async () => {
         const result = await collaborationApi.respondInvitation(supabase, invitationId, accept, connection)
+        // Answered: off the bar at once, whatever the next poll does.
+        setStatus((prev) => ({ ...prev, incoming: prev.incoming.filter((i) => i.id !== invitationId) }))
         if (result.sessionId) {
           setEndedSession(null)
           lastSessionRef.current = result.sessionId
+          expectSessionUntilRef.current = Date.now() + 60_000
           // Joining a session of your own ends watching (the database too).
           applyWatch(null)
         }
+        // Pick the session up now, not at the next idle poll.
+        void pollRef.current()
         return result
       }).then(() => undefined),
     requestControl: (withdraw = false) => withSession((s, tab) => collaborationApi.requestControl(supabase, s.id, tab, withdraw)),

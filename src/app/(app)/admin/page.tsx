@@ -29,6 +29,8 @@ import { getAICostReport } from '@/lib/workbench/ai-cost-report'
 import { AICostReportView } from '@/components/admin/AICostReportView'
 import { getEmberReadinessOverview } from '@/lib/eval/readiness-overview'
 import { EmberReadinessAdmin } from '@/components/admin/EmberReadinessAdmin'
+import { CollaborationAdmin } from '@/components/admin/CollaborationAdmin'
+import { collaborationEnabled } from '@/lib/collaboration/flag'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -169,6 +171,8 @@ export default async function AdminPage() {
             label: 'Builder Operations',
             content: <BuilderOperationsReview rows={builderOperationsRows} />,
           },
+          // Shared workspace sessions (docs/dev-request-shared-workspace-sessions.md, Phase 4).
+          ...(collaborationEnabled() ? [{ id: 'collaboration', label: 'Live collaboration', content: <CollaborationAdmin /> }] : []),
         ]}
       />
 

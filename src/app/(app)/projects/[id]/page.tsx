@@ -606,7 +606,7 @@ export default async function ProjectPage({
             </Link>
           )}
         </div>
-        <div className="mt-1 flex items-center gap-2">
+        <div className="mt-1 flex flex-wrap items-center gap-2">
           <p className="text-sm text-zinc-500">{TYPE_LABELS[project.project_type] ?? project.project_type}</p>
           <span className="text-zinc-300">·</span>
           <ProjectCategorySelector projectId={project.id} category={project.portfolio_category} canEdit={canCurateWorkstreams} />

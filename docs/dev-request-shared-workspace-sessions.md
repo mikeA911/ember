@@ -54,6 +54,14 @@ Finishes the shared Ember chat (R3, R4). The migration (`20261027100001_collabor
 - **Wider audiences.** A note and a Project field reach more people than the conversation, so publishing a summary, sending a proposed note or using proposed field text first checks that every active Project member can open the evidence behind it (`collaboration_evidence_project_visible`, the real access rules evaluated as each member). A Project that isn't private takes proposed field text only if it used no evidence at all. Platform administrators can read notes in Projects they oversee; they aren't checked individually.
 - **Not done.** No conversation-wide re-summarizing after access changes (a summary that stops being common is skipped, and the next summary covers only later messages); Ember still has no tool that changes anything itself.
 
+### Phase 4 operations, as built (7 October 2026)
+
+The first part of the remote pilot and release phase: being able to see and fix problems, and checking behaviour on poor networks. The migration (`20261028100001_collaboration_operations.sql`) is **not yet applied** to the live backend.
+
+- **Monitoring.** **Admin → Live collaboration** (platform admins, when the flag is on): live sessions with presence, control, deadline, watchers, Ember state and unsaved drafts; problems needing attention (stalled or failed Ember answers, notes stuck sending, sessions past their deadline); counts for 24 hours, 7 or 30 days (invitations, sessions by end reason, control changes, saves, abandoned drafts, answers and retries, answer time, comments, summaries, notes sent). Names and statuses only, never content.
+- **Recovery.** End a live session ("An administrator ended the live session"; drafts kept as abandoned), settle overdue sessions, cancel a stalled Ember answer (the pair can ask again), reset a note stuck sending to failed. Each is a status change recorded in `collaboration_events` with the admin as actor; refused for anyone else and for external MCP tokens. [Runbook](guides/shared-workspace-sessions-runbook.md).
+- **Poor networks.** The browser now polls at once when it comes back online (previously up to the 30-second failure backoff), and the bar shows "Connection lost — reconnecting…" after two failed polls in a row, while in a session or watching. Checked on simulated slow and lossy networks, offline periods and a phone-sized screen (Chromium; see the test report). Firefox and Safari are left to the pilot: they can't be installed in the development container.
+
 ### Requirements and design decisions
 
 The user requested the following outcomes and constraints:
@@ -200,7 +208,7 @@ These are planning ranges in engineering weeks for one experienced developer wit
 | 1: session foundation | Ember invitation entry, shared-conversation shell in both histories, session bar, presence, host/end controls, shared navigation, control requests, lease and revocation | 2–3 weeks | Remote pair can join, follow, exchange control and recover without ambiguity; shared AI turns remain disabled until Phase 3 |
 | 2: Project and Workstream editing (built 6 Oct, see above) | Shared drafts and saves for allowlisted fields; conflict detection; unsaved-state and unsupported-route behavior | 2–3 weeks | Both users can edit in turn with no lost acknowledged drafts or silent overwrites |
 | 3: shared Ember chat (built 6 Oct, see above) | Shared conversation/history, author attribution, common evidence scope, single-turn coordination; viewers read a recap and can post to the same chat, restricted tool set | 3–4 weeks | Both see one consistent conversation; isolation and duplicate-execution tests pass |
-| 4: remote-location pilot and release | Feature flag, operational monitoring, browser/network validation, usability fixes and deployment docs | 1–2 weeks | Pilot users complete real remote work; recovery and access-revocation cases pass |
+| 4: remote-location pilot and release (operations built 7 Oct, see above) | Feature flag, operational monitoring, browser/network validation, usability fixes and deployment docs | 1–2 weeks | Pilot users complete real remote work; recovery and access-revocation cases pass |
 | 5: voice and optional transcription | Session audio, mute/reconnect, consent, attributed transcript and reviewable summary | Estimate after media/provider spike; excluded below | Two-location audio and relay tests pass; consent, access, retention and failure recovery verified |
 
 Initial complete release: approximately **9–14 engineering weeks**, subject to re-estimation after Phase 0. A useful Project/Workstream pilot can begin after Phase 2, approximately **5–8 engineering weeks**, while shared chat is built. These are working estimates, not measured repository implementation times.

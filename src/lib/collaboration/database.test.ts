@@ -11,6 +11,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261024100001_collaboration_shared_editing.sql',
   'supabase/migrations/20261025100001_collaboration_shared_chat.sql',
   'supabase/migrations/20261027100001_collaboration_shared_chat_tools.sql',
+  'supabase/migrations/20261028100001_collaboration_operations.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const host = id(1), guest = id(2), outsider = id(3), third = id(4)
@@ -1158,5 +1159,109 @@ describe('shared chat summary and proposals (Phase 3 completed)', () => {
     expect((await call('collaboration_chat', conversationId)).summary).toMatchObject({ publishedNoteId: id(82) })
     await as(third)
     expect((await errorOf(call('collaboration_mark_summary_published', summaryId, id(82)))).code).toBe('42501')
+  })
+})
+
+describe('operations (Phase 4)', () => {
+  const admin = outsider
+  const makeAdmin = () => asAdmin(`update profiles set role = 'admin' where id = '${admin}'`)
+  async function service<T = Json>(fn: string, ...args: unknown[]): Promise<T> {
+    await db.exec('reset role; set role service_role')
+    try {
+      return await call<T>(fn, ...args)
+    } finally {
+      await db.exec('reset role; set role authenticated')
+    }
+  }
+  const events = async () => {
+    await db.exec('reset role')
+    const { rows } = await db.query<{ event: string; actor_id: string }>('select event, actor_id from collaboration_events order by id')
+    await db.exec('set role authenticated')
+    return rows
+  }
+
+  it('only platform admins see the overview: live sessions with names and presence, counts, no content', async () => {
+    const { sessionId, snap } = await liveSession()
+    await call('collaboration_ask_ember', sessionId, hostTab, 'Secret question text', crypto.randomUUID())
+    await as(admin)
+    expect((await errorOf(call('collaboration_admin_overview', 24))).code).toBe('42501')
+    await makeAdmin()
+    const overview = await call('collaboration_admin_overview', 24)
+    expect(overview.live).toMatchObject([
+      { id: sessionId, conversationId: snap.conversationId, projectName: 'Test Project', hostName: 'Hana Host', guestName: 'Gil Guest', controllerName: 'Hana Host', hostPresent: true, turnsWaiting: 1, overdue: false },
+    ])
+    expect(overview.counts).toMatchObject({ sessionsStarted: 1, invitations: { accepted: 1 }, turns: { queued: 1 } })
+    expect(JSON.stringify(overview)).not.toContain('Secret question text')
+    await as(admin, { client_id: 'chatbot' })
+    expect((await errorOf(call('collaboration_admin_overview', 24))).code).toBe('42501')
+  })
+
+  it('lists stalled and failed turns and notes stuck sending', async () => {
+    const { sessionId, snap } = await liveSession()
+    await call('collaboration_ask_ember', sessionId, hostTab, 'Q1', crypto.randomUUID())
+    await call('collaboration_ask_ember', sessionId, hostTab, 'Q2', crypto.randomUUID())
+    const first = await service('collaboration_claim_turn', snap.conversationId, host)
+    await service('collaboration_fail_turn', first.turnId, first.leaseId, 'Model down')
+    const second = await service('collaboration_claim_turn', snap.conversationId, host)
+    await asAdmin(`update collaboration_turns set lease_expires_at = now() - interval '1 second' where id = '${second.turnId}'`)
+    await makeAdmin()
+    await as(admin)
+    const { problems } = await call('collaboration_admin_overview', 24)
+    expect(problems.failedTurns).toMatchObject([{ id: first.turnId, error: 'Model down', requestedByName: 'Hana Host' }])
+    expect(problems.stalledTurns).toMatchObject([{ id: second.turnId, status: 'running' }])
+  })
+
+  it('an admin ends a live session; both see why; it is recorded; nobody else can', async () => {
+    const { sessionId } = await liveSession()
+    await as(guest)
+    expect((await errorOf(call('collaboration_admin_end_session', sessionId))).code).toBe('42501')
+    await makeAdmin()
+    await as(admin)
+    expect(await call('collaboration_admin_end_session', sessionId)).toEqual({ status: 'ended', endReason: 'ended_by_admin' })
+    expect(await call('collaboration_admin_end_session', sessionId)).toEqual({ status: 'ended', endReason: 'ended_by_admin' })
+    await as(host)
+    expect((await call('collaboration_status', hostTab, sessionId)).session).toMatchObject({ status: 'ended', endReason: 'ended_by_admin' })
+    expect((await events()).filter((e) => e.event === 'ended:ended_by_admin')).toEqual([{ event: 'ended:ended_by_admin', actor_id: admin }])
+  })
+
+  it('an admin cancels a running turn; the run can no longer answer it', async () => {
+    const { sessionId, snap } = await liveSession()
+    await call('collaboration_ask_ember', sessionId, hostTab, 'Q', crypto.randomUUID())
+    const claim = await service('collaboration_claim_turn', snap.conversationId, host)
+    await makeAdmin()
+    await as(admin)
+    expect(await call('collaboration_admin_cancel_turn', claim.turnId)).toEqual({ status: 'cancelled' })
+    expect((await errorOf(service('collaboration_complete_turn', claim.turnId, claim.leaseId, 'Late', '[]', 'p', 'm'))).code).toBe('EC003')
+    await as(host)
+    expect((await call('collaboration_chat', snap.conversationId)).messages[0].turn).toMatchObject({ status: 'cancelled', error: 'Cancelled by an administrator.' })
+    // Asking again works as for any cancelled answer.
+    expect((await call('collaboration_queue_turn', sessionId, hostTab, (await call('collaboration_chat', snap.conversationId)).messages[0].id)).status).toBe('queued')
+    expect((await events()).some((e) => e.event === 'admin_cancelled_turn' && e.actor_id === admin)).toBe(true)
+  })
+
+  it('an admin resets a note stuck sending, so the pair can send it again', async () => {
+    const { sessionId, snap } = await liveSession()
+    await call('collaboration_ask_ember', sessionId, hostTab, 'Q', crypto.randomUUID())
+    const claim = await service('collaboration_claim_turn', snap.conversationId, host)
+    const { replyId } = await service('collaboration_complete_turn', claim.turnId, claim.leaseId, 'A', '[]', 'p', 'm')
+    await service('collaboration_set_reply_proposals', claim.turnId, claim.leaseId, JSON.stringify([{ kind: 'note', recipientType: 'project_team', recipientUserId: null, recipientName: 'team', subject: 'S', body: 'B' }]))
+    await call('collaboration_update_proposal', replyId, 0, 'sending', '{}')
+    await asAdmin(`update collaboration_proposal_uses set updated_at = now() - interval '10 minutes'`)
+    await makeAdmin()
+    await as(admin)
+    expect((await call('collaboration_admin_overview', 24)).problems.stuckNotes).toMatchObject([{ messageId: replyId, index: 0, byName: 'Hana Host' }])
+    expect(await call('collaboration_admin_release_note', replyId, 0)).toEqual({ status: 'failed' })
+    await as(guest)
+    expect(await call('collaboration_update_proposal', replyId, 0, 'sending', '{}')).toMatchObject({ status: 'sending' })
+  })
+
+  it('an admin settles every overdue session at once', async () => {
+    await liveSession()
+    await asAdmin(`update collaboration_participants set last_active_at = now() - interval '31 minutes'`)
+    await makeAdmin()
+    await as(admin)
+    expect((await call('collaboration_admin_overview', 24)).problems.overdueSessions).toBe(1)
+    expect(await call('collaboration_admin_settle_all')).toBe(1)
+    expect((await call('collaboration_admin_overview', 24)).live).toEqual([])
   })
 })

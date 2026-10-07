@@ -42,7 +42,16 @@ const send = (res, code, body) => { res.writeHead(code, { 'content-type': 'appli
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x')
   if (req.method === 'OPTIONS') return send(res, 200, {})
-  const chunks = []; for await (const c of req) chunks.push(c); const raw = Buffer.concat(chunks)
+  // A client that drops the connection mid-request (the lossy network
+  // profile does) must not take the gateway down.
+  req.on('error', () => {})
+  res.on('error', () => {})
+  let raw
+  try {
+    const chunks = []; for await (const c of req) chunks.push(c); raw = Buffer.concat(chunks)
+  } catch {
+    return
+  }
   try {
     if (url.pathname.startsWith('/auth/v1/')) {
       const route = url.pathname.slice(9)

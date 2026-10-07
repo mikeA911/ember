@@ -110,8 +110,18 @@ describe('polling', () => {
     expect(nextPollDelay({ inSession: true, hidden: false, consecutiveFailures: 0 })).toBe(POLL.sessionVisibleMs)
     expect(nextPollDelay({ inSession: true, hidden: true, consecutiveFailures: 0 })).toBe(POLL.sessionHiddenMs)
     expect(nextPollDelay({ inSession: false, waiting: true, hidden: false, consecutiveFailures: 0 })).toBe(POLL.sessionVisibleMs)
-    expect(nextPollDelay({ inSession: true, hidden: false, consecutiveFailures: 2 })).toBe(POLL.sessionVisibleMs * 4)
+    // One failure: retried at the normal rate; then doubling.
+    expect(nextPollDelay({ inSession: true, hidden: false, consecutiveFailures: 1 })).toBe(POLL.sessionVisibleMs)
+    expect(nextPollDelay({ inSession: true, hidden: false, consecutiveFailures: 2 })).toBe(POLL.sessionVisibleMs * 2)
+    expect(nextPollDelay({ inSession: true, hidden: false, consecutiveFailures: 3 })).toBe(POLL.sessionVisibleMs * 4)
     expect(nextPollDelay({ inSession: false, hidden: true, consecutiveFailures: 9 })).toBe(POLL.maxBackoffMs)
+  })
+
+  it('in a visible session, failures back off to at most 10 seconds, so a dropping connection catches up quickly', () => {
+    expect(nextPollDelay({ inSession: true, hidden: false, consecutiveFailures: 9 })).toBe(10_000)
+    expect(nextPollDelay({ inSession: true, hidden: true, consecutiveFailures: 9 })).toBe(30_000)
+    // Using Ember outside a session: an invitation still shows within seconds.
+    expect(nextPollDelay({ inSession: false, recentlyActive: true, hidden: false, consecutiveFailures: 9 })).toBe(10_000)
   })
 
   it('outside a session, polls every 5 seconds while the person is using Ember and every 30 once they stop', () => {
