@@ -1587,7 +1587,9 @@ export interface Method {
   name: string
   slug: string
   description: string | null
-  derived_from_workstream_id: string
+  // Cleared when the source workstream is deleted -- the Method stays
+  // (20261031100001_methods_outlive_workstreams.sql).
+  derived_from_workstream_id: string | null
   derived_from_wiki_article_id: string | null
   requirements: string | null
   evidence: string | null

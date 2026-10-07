@@ -317,7 +317,7 @@ Ember tools (Stage 5; `src/lib/chat/requirements-tool.ts`): `list_requirement_st
 ## Assessments and Methods
 
 - **System assessments** (`20260816`). Owner/curator authors assessments with versioned question sets (`draft → active → retired`). Members other than viewers submit responses; the author or a Project curator can edit them. Completed responses can appear on a public full-detail Project.
-- **Methods** (`20260927`). Owner/curator promotes a Workstream that worked into a draft Method; a platform curator or admin publishes it; owner/curator instantiates a published Method as a new Workstream. The 18-method Handbook catalog is separate Wiki content that Ember uses for method-fit reasoning.
+- **Methods** (`20260927`). Owner/curator promotes a Workstream that worked into a draft Method; a platform curator or admin publishes it; owner/curator instantiates a published Method as a new Workstream. A Method outlives the Workstream it came from: deleting the Workstream (or its Project) clears `derived_from_workstream_id` and the Method stays, and its creator keeps access to their own draft (`20261031`). Only drafts can be edited by the originator. The 18-method Handbook catalog is separate Wiki content that Ember uses for method-fit reasoning.
 
 ## Publishing, blog, Trending and feedback
 
