@@ -509,10 +509,10 @@ export function VerificationMethodForm({ requirementId, methodId, initial }: { r
       </div>
       <textarea
         required
-        rows={2}
+        rows={3}
         value={value.passCriteria}
         onChange={(e) => set('passCriteria', e.target.value)}
-        placeholder="Pass criteria — explicit and checkable (e.g. location shown in K-Dispatch within 2 s for 20 of 20 test calls)"
+        placeholder="Pass criteria — explicit and checkable (e.g. location shown in K-Dispatch within 2 s for 20 of 20 test calls). Several criteria: one per line; each gets its own checkbox when a result is recorded."
         className={input}
       />
       {value.method === 'operational_measure' && (

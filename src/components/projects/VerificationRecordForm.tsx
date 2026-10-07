@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { recordVerificationAction } from '@/app/actions/requirements'
+import { criterionText, parseCriteria } from '@/lib/projects/criteria'
 import type { ArtifactType, VerificationEnvironment, VerificationMethodKind, VerificationResult } from '@/types/database'
 import { ARTIFACT_TYPE_LABELS, ENVIRONMENT_LABELS, METHOD_LABELS, RESULT_LABELS, options } from './requirement-labels'
 
@@ -34,6 +35,8 @@ export interface RecordFormInitial {
   solutionReference: string
   configurationReference: string
   artifactIds: string[]
+  // The criteria the corrected record ticked as met, to start from.
+  criteriaMet?: string[]
 }
 
 const input = 'w-full rounded border border-zinc-300 px-2 py-1 text-sm'
@@ -81,6 +84,15 @@ export function VerificationRecordForm({
   const set = <K extends keyof typeof value>(key: K, v: (typeof value)[K]) => setValue({ ...value, [key]: v })
   const method = methods.find((m) => m.id === value.methodId)
   const needsEvidence = value.result === 'pass' || value.result === 'conditional_pass'
+  // A checklist when the pass criteria hold more than one criterion: each is
+  // ticked met or not and saved with the record.
+  const criteria = useMemo(() => {
+    const items = parseCriteria(method?.pass_criteria).map(criterionText)
+    return items.length > 1 ? items : []
+  }, [method?.pass_criteria])
+  const [met, setMet] = useState<Set<string>>(() => new Set(initial?.criteriaMet ?? []))
+  const metCount = criteria.filter((c) => met.has(c)).length
+  const unmetOnPass = value.result === 'pass' && metCount < criteria.length
 
   if (!open) {
     return (
@@ -88,6 +100,13 @@ export function VerificationRecordForm({
         {label ?? (supersedesId ? 'Correct' : 'Record result')}
       </button>
     )
+  }
+
+  function toggleCriterion(criterion: string) {
+    const next = new Set(met)
+    if (next.has(criterion)) next.delete(criterion)
+    else next.add(criterion)
+    setMet(next)
   }
 
   function toggleArtifact(id: string) {
@@ -99,8 +118,13 @@ export function VerificationRecordForm({
       onSubmit={(e) => {
         e.preventDefault()
         setError(null)
+        if (unmetOnPass) {
+          setError('A pass needs every pass criterion ticked as met. Record a conditional pass or a fail if some aren’t.')
+          return
+        }
+        const criteriaChecks = criteria.map((criterion) => ({ criterion, met: met.has(criterion) }))
         startTransition(async () => {
-          const result = await recordVerificationAction(requirementId, { ...value, supersedesId: supersedesId ?? null })
+          const result = await recordVerificationAction(requirementId, { ...value, criteriaChecks, supersedesId: supersedesId ?? null })
           if (result.error) {
             setError(result.error)
             return
@@ -138,11 +162,35 @@ export function VerificationRecordForm({
           </select>
         </label>
       </div>
-      {method && (
-        <p className="text-xs text-zinc-600">
+      {method && criteria.length === 0 && (
+        <p className="whitespace-pre-wrap text-xs text-zinc-600">
           Pass criteria: {method.pass_criteria}
           {method.threshold && ` · threshold ${method.threshold}, measured ${method.measure_window}`}
         </p>
+      )}
+      {method && criteria.length > 0 && (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="font-medium">
+            Pass criteria{' '}
+            <span className="font-normal text-zinc-500">
+              · {metCount} of {criteria.length} met
+              {method.threshold && ` · threshold ${method.threshold}, measured ${method.measure_window}`}
+            </span>
+          </legend>
+          <ul className="flex flex-col gap-1 rounded border border-zinc-200 bg-white p-2">
+            {criteria.map((c) => (
+              <li key={c}>
+                <label className="flex items-start gap-2 text-xs">
+                  <input type="checkbox" checked={met.has(c)} onChange={() => toggleCriterion(c)} className="mt-0.5" />
+                  <span>{c}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          {unmetOnPass && (
+            <p className="text-xs text-amber-800">A pass needs every criterion met. Tick each one, or record a conditional pass or a fail.</p>
+          )}
+        </fieldset>
       )}
       {value.result === 'conditional_pass' && (
         <textarea required rows={2} value={value.conditions} onChange={(e) => set('conditions', e.target.value)} placeholder="Conditions (what must still be done, by when)" className={input} />

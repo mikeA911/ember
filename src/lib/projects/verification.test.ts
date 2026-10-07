@@ -109,6 +109,21 @@ describe('recordVerification', () => {
     expect(rpcMock).toHaveBeenCalled()
   })
 
+  it('passes the criteria checklist through, and refuses a pass with an unmet criterion', async () => {
+    const { rpcMock, ctx } = makeCtx()
+    await recordVerification(ctx, 'req-1', { ...input, criteriaChecks: [{ criterion: ' AC1: one ', met: true }, { criterion: ' ', met: false }] })
+    expect(rpcMock).toHaveBeenCalledWith('record_solution_verification', expect.objectContaining({ p_criteria_checks: [{ criterion: 'AC1: one', met: true }] }))
+
+    const unmet = makeCtx()
+    const checks = [{ criterion: 'AC1: one', met: true }, { criterion: 'AC2: two', met: false }]
+    await expect(recordVerification(unmet.ctx, 'req-1', { ...input, criteriaChecks: checks })).rejects.toBeInstanceOf(RequirementValidationError)
+    expect(unmet.rpcMock).not.toHaveBeenCalled()
+
+    const conditional = makeCtx()
+    await recordVerification(conditional.ctx, 'req-1', { ...input, result: 'conditional_pass', conditions: 'AC2 by November', criteriaChecks: checks })
+    expect(conditional.rpcMock).toHaveBeenCalledWith('record_solution_verification', expect.objectContaining({ p_criteria_checks: checks }))
+  })
+
   it('turns the database refusals into clear messages', async () => {
     const { ctx } = makeCtx({}, { rpc: { data: null, error: { message: 'record_solution_verification: that record has already been corrected' } } })
     await expect(recordVerification(ctx, 'req-1', { ...input, supersedesId: 'rec-0' })).rejects.toThrow('That record has already been corrected. Correct the newer record instead.')
@@ -143,5 +158,18 @@ describe('solution_verification_records migration', () => {
     expect(sql).toMatch(/requirement_id uuid not null references solution_requirements\(id\),/)
     expect(sql).toMatch(/revoke execute on function record_solution_verification\(uuid, uuid, text, text, text, date, uuid\[\], text, text, text, text, text, text, uuid\) from public, anon;/)
     expect(sql).toMatch(/perform apply_oauth_read_only_policies\(\);/)
+  })
+})
+
+describe('verification criteria checks migration', () => {
+  const sql = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20261026100001_verification_criteria_checks.sql'), 'utf-8')
+
+  it('replaces the recording function rather than overloading it, and refuses a pass with an unmet criterion', () => {
+    expect(sql).toMatch(/drop function if exists record_solution_verification\(uuid, uuid, text, text, text, date, uuid\[\], text, text, text, text, text, text, uuid\);/)
+    expect(sql).toMatch(/grant execute on function record_solution_verification\(uuid, uuid, text, text, text, date, uuid\[\], text, text, text, text, text, text, uuid, jsonb\) to authenticated/)
+    expect(sql).toMatch(/p_result = 'pass' and exists \(\s+select 1 from jsonb_array_elements\(p_criteria_checks\) c where not \(c ->> 'met'\)::boolean/)
+    // Every earlier rule still holds.
+    expect(sql).toMatch(/p_result in \('pass', 'conditional_pass'\) and cardinality\(v_artifact_ids\) = 0/)
+    expect(sql).toMatch(/not can_run_project_evals\(v_requirement\.project_id, v_uid\)/)
   })
 })
