@@ -3714,6 +3714,16 @@ interface DatabaseDefinition {
       collaboration_post_comment: { Args: { p_conversation: string; p_content: string; p_request: string }; Returns: unknown }
       collaboration_queue_turn: { Args: { p_session: string; p_connection: string; p_message: string }; Returns: unknown }
       collaboration_common_evidence: { Args: { p_conversation: string; p_evidence: unknown }; Returns: unknown }
+      // Phase 3 completed (20261027100001).
+      collaboration_evidence_project_visible: { Args: { p_conversation: string; p_evidence: unknown; p_require_private?: boolean }; Returns: unknown }
+      collaboration_update_proposal: { Args: { p_message: string; p_index: number; p_status: string; p_result?: unknown }; Returns: unknown }
+      collaboration_mark_summary_published: { Args: { p_summary: string; p_note: string }; Returns: unknown }
+      collaboration_turn_context: { Args: { p_turn: string; p_lease: string }; Returns: unknown }
+      collaboration_record_summary: {
+        Args: { p_conversation: string; p_upto_ord: number; p_content: string; p_evidence: unknown; p_provider: string; p_model: string }
+        Returns: unknown
+      }
+      collaboration_set_reply_proposals: { Args: { p_turn: string; p_lease: string; p_proposals: unknown }; Returns: unknown }
       // Service role only (the turn runner).
       collaboration_claim_turn: { Args: { p_conversation: string; p_actor: string }; Returns: unknown }
       collaboration_complete_turn: {

@@ -179,6 +179,23 @@ try {
     await rpc(ch, 'collaboration_add_viewer', s.conversationId, vera)
   }
 
+  // 2b. A wider audience (a note, a Project field): every active member of
+  //     the Project, under the real rules. Olu is a member outside the
+  //     conversation, and can't open the restricted source.
+  {
+    const visible = (evidence, requirePrivate = false) =>
+      rpc(ch, 'collaboration_evidence_project_visible', s.conversationId, JSON.stringify(evidence), requirePrivate)
+    const ok = (await visible([ks(general), wa(platformWiki)])) === true && (await visible([ks(restricted)])) === false && (await visible([])) === true
+    await admin.query("update projects set visibility = 'internal' where id = $1", [p.id])
+    const internal = (await visible([ks(general)], true)) === false && (await visible([ks(general)], false)) === true
+    await admin.query("update projects set visibility = 'private' where id = $1", [p.id])
+    await ch.query('begin')
+    await visible([ks(general)])
+    const { rows } = await ch.query('select auth.uid() as uid')
+    await ch.query('commit')
+    check(ok && internal && rows[0].uid === hana, 'note/field audience: all Project members under the real rules; a non-private Project takes no evidence; identity restored')
+  }
+
   // 3. The caller's identity is put back, and only the pair may ask.
   {
     await ch.query('begin')

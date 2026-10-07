@@ -212,7 +212,40 @@ export interface SharedChatMessage {
   // Absent when hidden: the caller can't open everything a reply drew on.
   content?: string
   evidence?: SharedEvidence[]
+  // An answer's proposals (absent when hidden).
+  proposals?: SharedProposal[]
   hidden?: true
+}
+
+// Something Ember proposes; a person acts on it with their own rights.
+export type SharedProposal =
+  | {
+      kind: 'note'
+      recipientType: 'user' | 'project_team'
+      recipientUserId: string | null
+      recipientName: string
+      subject: string
+      body: string
+    }
+  | { kind: 'field'; field: SharedTextFieldName; targetId: string; targetName: string | null; text: string }
+
+export interface SharedProposalUse {
+  messageId: string
+  index: number
+  status: 'sending' | 'sent' | 'failed' | 'applied' | 'dismissed'
+  byName: string | null
+  result: { noteId?: string; error?: string }
+}
+
+// The latest summary of what's older than Ember's 30-message window.
+export interface SharedChatSummary {
+  id: string
+  uptoOrd: number
+  content: string
+  evidence: SharedEvidence[]
+  createdAt: string
+  publishedNoteId: string | null
+  publishedAt: string | null
 }
 
 export interface SharedChat {
@@ -222,4 +255,8 @@ export interface SharedChat {
   liveSessionId: string | null
   state: SharedChatState
   messages: SharedChatMessage[]
+  proposalUses: SharedProposalUse[]
+  summary: SharedChatSummary | null
+  // A summary exists that the caller may not read.
+  summaryHidden: boolean
 }

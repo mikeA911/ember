@@ -10,6 +10,7 @@ import type {
   CollaborationStatus,
   SessionSnapshot,
   SharedChat,
+  SharedEvidence,
   SharedConversationShell,
   SharedConversationSummary,
 } from './types'
@@ -144,6 +145,16 @@ export const collaborationApi = {
     call<{ messageId: string; turnId: string }>(c, 'collaboration_ask_ember', { p_session: sessionId, p_connection: connection, p_content: content, p_request: request }),
   postComment: (c: Client, conversationId: string, content: string, request: string) =>
     call<{ messageId: string }>(c, 'collaboration_post_comment', { p_conversation: conversationId, p_content: content, p_request: request }),
+  // Phase 3 completed: what happened to a proposal, and whether every
+  // Project member can open some evidence (before it reaches a wider audience).
+  updateProposal: (c: Client, messageId: string, index: number, status: 'applied' | 'dismissed') =>
+    call<unknown>(c, 'collaboration_update_proposal', { p_message: messageId, p_index: index, p_status: status, p_result: {} }),
+  projectAudienceOk: (c: Client, conversationId: string, evidence: SharedEvidence[], requirePrivate: boolean) =>
+    call<boolean>(c, 'collaboration_evidence_project_visible', {
+      p_conversation: conversationId,
+      p_evidence: evidence.map(({ type, id }) => ({ type, id })),
+      p_require_private: requirePrivate,
+    }),
   // Pass a viewer's comment on to Ember, or ask again after a failed answer.
   queueTurn: (c: Client, sessionId: string, connection: string, messageId: string) =>
     call<{ messageId: string; turnId: string; status: string }>(c, 'collaboration_queue_turn', { p_session: sessionId, p_connection: connection, p_message: messageId }),

@@ -20,7 +20,7 @@ const sql = async (q) => {
   const { rows } = await db.query(q)
   return rows.length ? String(Object.values(rows[0])[0]) : ''
 }
-await db.query('truncate collaboration_turns, collaboration_messages, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations')
+await db.query('truncate collaboration_proposal_uses, collaboration_summaries, collaboration_turns, collaboration_messages, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations')
 let failures = 0
 const step = async (label, fn) => {
   const t = Date.now()

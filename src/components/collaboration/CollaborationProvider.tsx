@@ -14,6 +14,7 @@ import type {
   CollaborationStatus,
   SessionSnapshot,
   SharedChat,
+  SharedEvidence,
   SharedTextFieldName,
   WatchableSession,
   WatchSnapshot,
@@ -83,6 +84,8 @@ interface CollaborationContextValue {
   askEmber: (content: string, request: string) => Promise<void>
   postComment: (conversationId: string, content: string, request: string) => Promise<void>
   queueTurn: (messageId: string) => Promise<void>
+  updateProposal: (messageId: string, index: number, status: 'applied' | 'dismissed') => Promise<void>
+  projectAudienceOk: (conversationId: string, evidence: SharedEvidence[], requirePrivate: boolean) => Promise<boolean>
   dismissEnded: () => void
   dismissError: () => void
 }
@@ -572,6 +575,10 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
       void startSharedTurnRunner(s.conversationId)
       pollRef.current()
     },
+    updateProposal: async (messageId, index, status) => {
+      await collaborationApi.updateProposal(supabase, messageId, index, status)
+    },
+    projectAudienceOk: (conversationId, evidence, requirePrivate) => collaborationApi.projectAudienceOk(supabase, conversationId, evidence, requirePrivate),
     dismissEnded: () => setEndedSession(null),
     dismissError: () => setError(null),
   }

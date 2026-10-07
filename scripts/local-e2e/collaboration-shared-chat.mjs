@@ -3,8 +3,8 @@
 // viewer -- against the local stack in scripts/local-e2e/README.md, with
 // scripts/local-e2e/fake-model.mjs standing in for the AI model. Prints
 // pass/FAIL per step; exits 1 on any failure. Resets only the
-// collaboration tables of the LOCAL database, and points its default chat
-// provider at the stand-in model.
+// collaboration tables and the seeded Project's goal of the LOCAL database,
+// and points its default chat provider at the stand-in model.
 import { createRequire } from 'node:module'
 import pg from 'pg'
 const require = createRequire(`${process.env.PLAYWRIGHT_DIR ?? process.cwd()}/`)
@@ -26,8 +26,9 @@ const sql = async (q, params = []) => {
   return rows.length ? Object.values(rows[0])[0] : null
 }
 await db.query(
-  'truncate collaboration_turns, collaboration_messages, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations'
+  'truncate collaboration_proposal_uses, collaboration_summaries, collaboration_turns, collaboration_messages, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations'
 )
+await db.query('update projects set goal = null where id = $1', [P])
 // The default chat model's provider answers from the stand-in.
 await db.query(
   "update ai_providers set base_url = $1 where id = (select provider_id from ai_models where model_type = 'generation' and is_default and enabled limit 1)",
@@ -91,6 +92,10 @@ async function signIn(email) {
 const bar = (page) => page.getByLabel('Live collaboration')
 const chat = (page) => page.getByLabel('Shared Ember chat')
 const waitPath = (page, path, timeout = 15000) => page.waitForURL((u) => u.pathname === path, { timeout })
+// Saves the goal's shared draft (the Phase 2 form).
+async function collabSave(page) {
+  await page.locator('[data-shared-field="project_goal"]').getByRole('button', { name: /^Save/ }).click()
+}
 async function ask(page, text) {
   await chat(page).getByLabel('Message to Ember').fill(text)
   await chat(page).getByRole('button', { name: 'Ask Ember' }).click()
@@ -148,12 +153,13 @@ await step('questions from both are answered one at a time, in order, each under
   return 'the second answer also says it was shown both earlier answers: ' + (texts.join(' ').includes('Earlier answers shown: 2') ? 'yes' : 'no')
 })
 
-await step('Ember searches the Project knowledge (the only tool it has here)', async () => {
+await step('Ember searches the Project knowledge; it is offered only the shared-chat tools', async () => {
   await ask(hana.page, 'Please search the knowledge for dispatch')
   await chat(gil.page).getByText(/Test answer to "Please search the knowledge for dispatch" \(searched: \d+ results\)/).waitFor({ timeout: 20000 })
   const tools = await (await fetch(`${MODEL_URL.replace(/\/v1$/, '')}/log`)).json()
   const offered = new Set(tools.flatMap((r) => r.tools))
-  if ([...offered].some((t) => t !== 'search_project_knowledge')) throw new Error(`offered ${[...offered]}`)
+  const allowed = ['search_project_knowledge', 'list_workstreams', 'list_project_members', 'propose_project_note', 'propose_field_edit']
+  if ([...offered].some((t) => !allowed.includes(t))) throw new Error(`offered ${[...offered]}`)
 })
 
 await step('a failed answer shows to both; Ask again answers it once', async () => {
@@ -230,6 +236,73 @@ await step('an answer drawn from a source Vera can’t open is hidden from her, 
   const last = log.filter((r) => r.question === 'Summarise so far').at(-1)
   if (JSON.stringify(last.messages).includes('40k')) throw new Error('restricted answer reached the model')
   if (SHOTS) await vera.page.screenshot({ path: `${SHOTS}/p3-3-hidden-for-viewer.png` })
+})
+
+await step('Ember proposes a note; Gil reviews and sends it as himself; both see it sent', async () => {
+  await ask(hana.page, 'Please propose a note to the team')
+  const card = (page) => chat(page).locator('[data-proposal="note"]').last()
+  await card(gil.page).getByText('Proposed Project note to the project team: “Call flow update”').waitFor({ timeout: 20000 })
+  await card(gil.page).getByRole('button', { name: 'Review and send' }).click()
+  await card(gil.page).getByLabel('Note body').fill('The call flow is mapped; staffing is next. (Reviewed by Gil.)')
+  await card(gil.page).getByRole('button', { name: 'Send note' }).click()
+  await card(hana.page).getByText('Sent by Gil Guest').waitFor({ timeout: 15000 })
+  if (SHOTS) await hana.page.screenshot({ path: `${SHOTS}/p3-4-note-proposal-sent.png` })
+  const note = await db.query("select author_id, recipient_type, body from project_notes where subject = 'Call flow update' order by created_at desc limit 1")
+  if (note.rows[0]?.author_id !== GIL || note.rows[0].recipient_type !== 'project_team' || !note.rows[0].body.includes('Reviewed by Gil')) throw new Error(JSON.stringify(note.rows))
+  if (await card(hana.page).getByRole('button', { name: 'Review and send' }).count()) throw new Error('can still send twice')
+})
+
+await step('Ember proposes a goal; Hana, in control on the Project page, puts it in the shared draft and saves it', async () => {
+  await ask(hana.page, 'Please propose a goal')
+  const card = chat(hana.page).locator('[data-proposal="field"]').last()
+  await card.getByText('Replace the CAD by March').waitFor({ timeout: 20000 })
+  // Gil isn't in control: he can't use it.
+  await chat(gil.page).locator('[data-proposal="field"]').last().getByText('To use it: have control').waitFor({ timeout: 10000 })
+  await card.getByRole('button', { name: 'Put in shared draft' }).click()
+  await hana.page.locator('[data-shared-field="project_goal"] textarea').waitFor({ timeout: 10000 })
+  await gil.page.locator('[data-shared-field="project_goal"]').getByText('Hana Host is editing — not saved yet').waitFor({ timeout: 10000 })
+  await card.getByText('Hana Host put it into the shared draft.').waitFor({ timeout: 10000 })
+  if (SHOTS) await gil.page.screenshot({ path: `${SHOTS}/p3-5-field-proposal-in-draft.png` })
+  await collabSave(hana.page)
+  await eventually('select goal from projects where id = $1', [P], 'Replace the CAD by March', 'goal not saved')
+})
+
+await step('once enough messages fall outside Ember’s window, a summary is written from common evidence and can be published', async () => {
+  // Earlier conversation, recorded directly (40 answered questions).
+  await db.query(`do $$
+    declare s uuid := (select id from collaboration_sessions where status = 'active' limit 1);
+            c uuid := '${conversationId}'; q uuid; r uuid; t uuid; n bigint;
+    begin
+      for i in 1..20 loop
+        n := (select max(seq) from collaboration_messages where conversation_id = c);
+        insert into collaboration_messages(conversation_id, seq, kind, author_id, session_id, content) values (c, n + 1, 'message', '${HANA}', s, 'Earlier question ' || i) returning id into q;
+        insert into collaboration_turns(conversation_id, session_id, prompt_id, requested_by, status, lease_id) values (c, s, q, '${HANA}', 'done', gen_random_uuid()) returning id into t;
+        insert into collaboration_messages(conversation_id, seq, kind, session_id, content, turn_id) values (c, n + 2, 'reply', s, 'Earlier answer ' || i, t) returning id into r;
+        update collaboration_turns set reply_id = r where id = t;
+      end loop;
+    end $$`)
+  const before = Number(await sql('select count(*) from collaboration_summaries where conversation_id = $1', [conversationId]))
+  await ask(hana.page, 'One more question')
+  await chat(hana.page).getByText('Test answer to "One more question"').waitFor({ timeout: 20000 })
+  await eventually('select count(*)::int from collaboration_summaries where conversation_id = $1', [conversationId], before + 1, 'no summary')
+  const log = await (await fetch(`${MODEL_URL.replace(/\/v1$/, '')}/log`)).json()
+  const request = log.filter((r) => r.question === '(summary)').at(-1)
+  if (JSON.stringify(request.messages).includes('40k')) throw new Error('restricted answer reached the summary')
+  await chat(hana.page).getByText('Test answer to "One more question"').waitFor()
+  await hana.page.goto(`${BASE}/projects/${P}/shared/${conversationId}`)
+  await chat(hana.page).getByRole('button', { name: 'Show summary of earlier messages' }).click({ timeout: 15000 })
+  await chat(hana.page).getByText(/Test summary of \d+ earlier messages/).waitFor()
+  await chat(hana.page).getByRole('button', { name: 'Publish as Project note' }).click()
+  await chat(hana.page).getByRole('button', { name: 'Publish', exact: true }).click()
+  await chat(hana.page).getByText('Published as a').waitFor({ timeout: 15000 })
+  if ((await sql("select count(*)::int from project_notes where subject = 'Summary of our shared conversation' and author_id = $1", [HANA])) < 1) throw new Error('no note')
+  // Vera reads the summary too (it drew only on common evidence).
+  await chat(vera.page).getByRole('button', { name: 'Refresh' }).click()
+  await chat(vera.page).getByRole('button', { name: 'Show summary of earlier messages' }).click({ timeout: 15000 })
+  await chat(vera.page).getByText(/Test summary of \d+ earlier messages/).waitFor()
+  if (SHOTS) await vera.page.screenshot({ path: `${SHOTS}/p3-6-summary-for-viewer.png` })
+  await hana.page.goto(`${BASE}/projects/${P}`)
+  await bar(hana.page).getByRole('button', { name: /^Ember chat/ }).click({ timeout: 15000 })
 })
 
 await step('when Gil leaves, Hana can no longer ask; the chat stays in the conversation', async () => {
