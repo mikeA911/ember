@@ -5,7 +5,10 @@
 //   lossy  -- slow, and 25% of polls (status, watch, chat reads) fail, as on a
 //             dropping connection; commands (navigate, save, ask) still go
 //             through, because a failed command shows an error to retry;
+//   drops  -- only the failed polls, no throttling (to tell the two apart);
 //   (unset) -- the local network as it is.
+// On a simulated network the scripts' waits are three times longer
+// (slower()): they were written for the local network.
 // E2E_DEVICE=phone gives each browser a phone-sized screen and touch.
 
 const PROFILES = {

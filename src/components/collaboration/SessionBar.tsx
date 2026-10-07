@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { isAtSharedLocation } from '@/lib/collaboration/follow'
 import { minutesLabel } from '@/lib/collaboration/format'
 import { sharedPath } from '@/lib/collaboration/locations'
@@ -164,14 +165,21 @@ export function SessionBar() {
   const chatConversation = session?.thisTabJoined && session.status === 'active' ? session.conversationId : watch?.thisTabWatching ? watch.conversationId : null
   return (
     <div className="sticky top-0 z-30 border-b border-amber-200 bg-amber-50 text-sm text-zinc-800" aria-label="Live collaboration">
-      {collab.chatOpen && chatConversation && (
-        <div className="fixed bottom-20 right-4 z-40 flex max-h-[75vh] w-[min(28rem,calc(100vw-2rem))] flex-col gap-2 overflow-hidden rounded-lg border border-zinc-200 bg-white p-3 shadow-xl">
+      {/* Rendered at the top of the page (a portal), not inside this
+          sticky bar: on phones a fixed panel inside it lost its taps to the
+          page underneath. */}
+      {collab.chatOpen &&
+        chatConversation &&
+        typeof document !== 'undefined' &&
+        createPortal(
+        <div className="fixed bottom-20 left-4 z-40 flex max-h-[75vh] w-[calc(100vw-2rem)] sm:left-auto sm:right-4 sm:w-[28rem] flex-col gap-2 overflow-hidden rounded-lg border border-zinc-200 bg-white p-3 shadow-xl">
           <button type="button" className="self-end text-xs text-zinc-500 underline" onClick={() => collab.setChatOpen(false)}>
             Close
           </button>
           <SharedChat conversationId={chatConversation} compact />
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
       <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-2">
         {collab.reconnecting && (
           <div className="text-xs font-medium text-red-700" role="status">

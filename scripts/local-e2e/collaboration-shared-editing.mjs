@@ -6,7 +6,7 @@
 // LOCAL database.
 import { createRequire } from 'node:module'
 import pg from 'pg'
-import { applyNetwork, contextOptions, network, device } from './network.mjs'
+import { applyNetwork, contextOptions, network, device, slower } from './network.mjs'
 const require = createRequire(`${process.env.PLAYWRIGHT_DIR ?? process.cwd()}/`)
 const { chromium } = require('playwright-core')
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3100'
@@ -53,7 +53,7 @@ const step = async (label, fn) => {
     console.log(`pass  ${label}${extra ? ` (${extra})` : ''} [${Date.now() - t} ms]`)
   } catch (e) {
     failures++
-    console.log(`FAIL  ${label}: ${String(e.message).split('\n')[0]}`)
+    console.log(`FAIL  ${label}: ${process.env.E2E_VERBOSE ? e.message : String(e.message).split("\n")[0]}`)
     if (SHOTS) for (const [who, pg_] of [['hana', hana.page], ['gil', gil.page]]) await pg_.screenshot({ path: `${SHOTS}/p2-fail-${failures}-${who}.png` }).catch(() => {})
   }
 }
@@ -67,7 +67,7 @@ async function signIn(email) {
   await page.locator('input').nth(0).fill(email)
   await page.locator('input').nth(1).fill('local-only')
   await page.locator('form button').first().click()
-  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30000 })
+  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: slower(30000) })
   return { ctx, page }
 }
 const bar = (page) => page.getByLabel('Live collaboration')
@@ -85,29 +85,29 @@ await step('a live session starts (Hana in control on the Project page)', async 
   await hana.page.getByRole('button', { name: 'Collaborate' }).click()
   await hana.page.getByRole('button', { name: /Gil Guest/ }).click()
   await hana.page.getByRole('button', { name: 'Send invitation' }).click()
-  await bar(gil.page).getByRole('button', { name: 'Accept' }).click({ timeout: 20000 })
+  await bar(gil.page).getByRole('button', { name: 'Accept' }).click({ timeout: slower(20000) })
   await waitPath(gil.page, `/projects/${P}`)
-  await bar(hana.page).getByText('You’re in control').waitFor({ timeout: 20000 })
+  await bar(hana.page).getByText('You’re in control').waitFor({ timeout: slower(20000) })
 })
 
 await step('Hana writes the goal as a shared draft; Gil sees it as she types, marked unsaved', async () => {
   await shared(hana.page, 'project_goal').getByRole('button', { name: '+ Add goal' }).click()
   const box = shared(hana.page, 'project_goal').locator('textarea')
-  await box.waitFor({ timeout: 10000 })
+  await box.waitFor({ timeout: slower(10000) })
   t0 = Date.now()
   await box.pressSequentially('Replace the CAD by March', { delay: 20 })
-  await shared(gil.page, 'project_goal').getByText('Hana Host is editing — not saved yet').waitFor({ timeout: 10000 })
-  await shared(gil.page, 'project_goal').getByText('Replace the CAD by March').waitFor({ timeout: 10000 })
+  await shared(gil.page, 'project_goal').getByText('Hana Host is editing — not saved yet').waitFor({ timeout: slower(10000) })
+  await shared(gil.page, 'project_goal').getByText('Replace the CAD by March').waitFor({ timeout: slower(10000) })
   if (await shared(gil.page, 'project_goal').locator('textarea').count()) throw new Error('observer got an editable box')
-  await bar(gil.page).getByText('Unsaved: Goal').waitFor({ timeout: 5000 })
+  await bar(gil.page).getByText('Unsaved: Goal').waitFor({ timeout: slower(5000) })
   if (SHOTS) await gil.page.screenshot({ path: `${SHOTS}/p2-1-observer-sees-draft.png` })
   return `Gil saw the finished text ${Date.now() - t0} ms after Hana started typing`
 })
 
 await step('Hana saves; the goal is saved once and both pages show it', async () => {
   await shared(hana.page, 'project_goal').getByRole('button', { name: 'Save goal' }).click()
-  await shared(gil.page, 'project_goal').getByText('Replace the CAD by March').waitFor({ timeout: 10000 })
-  await shared(gil.page, 'project_goal').getByText('is editing').waitFor({ state: 'detached', timeout: 10000 })
+  await shared(gil.page, 'project_goal').getByText('Replace the CAD by March').waitFor({ timeout: slower(10000) })
+  await shared(gil.page, 'project_goal').getByText('is editing').waitFor({ state: 'detached', timeout: slower(10000) })
   await eventually('select goal from projects where id = $1', [P], 'Replace the CAD by March', 'not saved')
   const saves = await sql("select count(*)::int from collaboration_saves where field = 'project_goal'")
   if (saves !== 1) throw new Error(`${saves} saves`)
@@ -119,27 +119,27 @@ await step('an edit made outside the session meanwhile is a conflict; Hana keeps
   await box.fill('Replace the CAD by April')
   await hana.page.waitForTimeout(800)
   await sql('update projects set goal = $2 where id = $1', [P, 'Changed in another tab'])
-  await shared(hana.page, 'project_goal').getByText('This was changed outside the session').waitFor({ timeout: 10000 })
+  await shared(hana.page, 'project_goal').getByText('This was changed outside the session').waitFor({ timeout: slower(10000) })
   await shared(hana.page, 'project_goal').getByText('Changed in another tab').waitFor()
   if (SHOTS) await hana.page.screenshot({ path: `${SHOTS}/p2-2-conflict.png` })
   if (await shared(hana.page, 'project_goal').getByRole('button', { name: 'Save goal' }).isEnabled()) throw new Error('save allowed during conflict')
   if ((await sql('select goal from projects where id = $1', [P])) !== 'Changed in another tab') throw new Error('overwritten')
   await shared(hana.page, 'project_goal').getByRole('button', { name: /Keep my text/ }).click()
-  await shared(hana.page, 'project_goal').getByText('This was changed outside the session').waitFor({ state: 'detached', timeout: 10000 })
+  await shared(hana.page, 'project_goal').getByText('This was changed outside the session').waitFor({ state: 'detached', timeout: slower(10000) })
   await shared(hana.page, 'project_goal').getByRole('button', { name: 'Save goal' }).click()
-  await shared(gil.page, 'project_goal').getByText('Replace the CAD by April').waitFor({ timeout: 10000 })
+  await shared(gil.page, 'project_goal').getByText('Replace the CAD by April').waitFor({ timeout: slower(10000) })
   await eventually('select goal from projects where id = $1', [P], 'Replace the CAD by April', 'not saved')
 })
 
 let granted
 await step('in control, Gil (a Project viewer) can edit nothing; made a curator, he can edit the description but not the goal', async () => {
   await bar(gil.page).getByRole('button', { name: 'Ask for control' }).click()
-  await bar(hana.page).getByRole('button', { name: 'Give control' }).click({ timeout: 10000 })
-  await bar(gil.page).getByText('You’re in control').waitFor({ timeout: 10000 })
+  await bar(hana.page).getByRole('button', { name: 'Give control' }).click({ timeout: slower(10000) })
+  await bar(gil.page).getByText('You’re in control').waitFor({ timeout: slower(10000) })
   await gil.page.waitForTimeout(2500)
   if (await gil.page.locator('[data-shared-field] button', { hasText: /^(Edit|\+ Add)/ }).count()) throw new Error('viewer offered an edit')
   await sql("update project_members set role = 'curator' where project_id = $1 and user_id = $2", [P, GIL])
-  await shared(gil.page, 'project_objective').getByRole('button', { name: 'Edit' }).waitFor({ timeout: 10000 })
+  await shared(gil.page, 'project_objective').getByRole('button', { name: 'Edit' }).waitFor({ timeout: slower(10000) })
   if (await shared(gil.page, 'project_goal').getByRole('button', { name: 'Edit' }).count()) throw new Error('curator offered the goal')
   granted = true
 })
@@ -151,16 +151,16 @@ await step('Gil drafts the description and hands control back without saving; Ha
   await box.fill('Cut over to the new CAD with no missed calls')
   // Ask and give immediately: the typing must go out before control moves.
   await bar(hana.page).getByRole('button', { name: 'Ask for control' }).click()
-  await bar(gil.page).getByRole('button', { name: 'Give control' }).click({ timeout: 10000 })
-  await bar(hana.page).getByText('You’re in control').waitFor({ timeout: 10000 })
+  await bar(gil.page).getByRole('button', { name: 'Give control' }).click({ timeout: slower(10000) })
+  await bar(hana.page).getByText('You’re in control').waitFor({ timeout: slower(10000) })
   const hanaBox = shared(hana.page, 'project_objective').locator('textarea')
-  await hanaBox.waitFor({ timeout: 10000 })
+  await hanaBox.waitFor({ timeout: slower(10000) })
   const inherited = await hanaBox.inputValue()
   if (inherited !== 'Cut over to the new CAD with no missed calls') throw new Error(`inherited "${inherited}"`)
   await shared(hana.page, 'project_objective').getByRole('button', { name: 'Save description' }).click()
   // Gil already sees this text as the draft; wait until it shows as saved.
-  await shared(gil.page, 'project_objective').getByText('is editing').waitFor({ state: 'detached', timeout: 10000 })
-  await shared(gil.page, 'project_objective').getByText('Cut over to the new CAD with no missed calls').waitFor({ timeout: 10000 })
+  await shared(gil.page, 'project_objective').getByText('is editing').waitFor({ state: 'detached', timeout: slower(10000) })
+  await shared(gil.page, 'project_objective').getByText('Cut over to the new CAD with no missed calls').waitFor({ timeout: slower(10000) })
   await eventually('select objective from projects where id = $1', [P], 'Cut over to the new CAD with no missed calls', 'not saved')
 })
 
@@ -168,11 +168,11 @@ await step('on a workstream, Hana ticks a deliverable; it saves at once and Gil 
   await routerNav(hana.page, `/projects/${P}/workstreams/${W1}`)
   await waitPath(gil.page, `/projects/${P}/workstreams/${W1}`)
   const hanaBox = shared(hana.page, 'workstream_deliverables').locator('li', { hasText: 'Call flow' }).locator('input')
-  await hanaBox.waitFor({ timeout: 10000 })
+  await hanaBox.waitFor({ timeout: slower(10000) })
   t0 = Date.now()
   await hanaBox.click()
   const gilBox = shared(gil.page, 'workstream_deliverables').locator('li', { hasText: 'Call flow' }).locator('input')
-  await gil.page.waitForFunction((el) => el.checked, await gilBox.elementHandle(), { timeout: 10000 })
+  await gil.page.waitForFunction((el) => el.checked, await gilBox.elementHandle(), { timeout: slower(10000) })
   const latency = Date.now() - t0
   if (!(await gilBox.isDisabled())) throw new Error('observer can tick')
   const items = await sql('select deliverables from project_workstreams where id = $1', [W1])
@@ -183,22 +183,22 @@ await step('on a workstream, Hana ticks a deliverable; it saves at once and Gil 
 await step('an unsaved summary is listed in the bar; ending warns, and the draft is never saved', async () => {
   await shared(hana.page, 'workstream_summary').getByRole('button', { name: '+ Add summary' }).click()
   await shared(hana.page, 'workstream_summary').locator('textarea').fill('Call flow mapped; staffing pending')
-  await bar(gil.page).getByText('Unsaved: Summary (Call intake)').waitFor({ timeout: 10000 })
+  await bar(gil.page).getByText('Unsaved: Summary (Call intake)').waitFor({ timeout: slower(10000) })
   await routerNav(hana.page, `/projects/${P}`)
   await waitPath(gil.page, `/projects/${P}`)
-  await bar(hana.page).getByText('Unsaved: Summary (Call intake)').waitFor({ timeout: 10000 })
+  await bar(hana.page).getByText('Unsaved: Summary (Call intake)').waitFor({ timeout: slower(10000) })
   await bar(hana.page).getByRole('button', { name: 'End session' }).click()
   await bar(hana.page).getByText('Unsaved Summary (Call intake) will not be saved.').waitFor()
   if (SHOTS) await hana.page.screenshot({ path: `${SHOTS}/p2-3-end-warning.png` })
   await bar(hana.page).getByRole('button', { name: 'End session' }).click()
-  await bar(gil.page).getByText('The host ended the live session').waitFor({ timeout: 15000 })
+  await bar(gil.page).getByText('The host ended the live session').waitFor({ timeout: slower(15000) })
   if ((await sql('select summary from project_workstreams where id = $1', [W1])) !== null) throw new Error('draft was saved')
   if ((await sql("select status from collaboration_drafts where field = 'workstream_summary'")) !== 'abandoned') throw new Error('draft not kept as abandoned')
 })
 
 await step('after the session the ordinary forms are back', async () => {
-  await shared(hana.page, 'project_goal').waitFor({ state: 'detached', timeout: 10000 })
-  await hana.page.locator('#goal').getByRole('button', { name: 'Edit' }).waitFor({ timeout: 10000 })
+  await shared(hana.page, 'project_goal').waitFor({ state: 'detached', timeout: slower(10000) })
+  await hana.page.locator('#goal').getByRole('button', { name: 'Edit' }).waitFor({ timeout: slower(10000) })
 })
 
 await browser.close()

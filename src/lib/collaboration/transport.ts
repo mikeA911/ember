@@ -46,7 +46,9 @@ export function nextPollDelay(input: {
         : input.recentlyActive
           ? POLL.idleActiveVisibleMs
           : POLL.idleVisibleMs
-  if (input.consecutiveFailures <= 0) return base
+  // One failed poll is retried at the normal rate (a dropping connection
+  // loses odd requests); back off only from the second failure in a row.
+  if (input.consecutiveFailures <= 1) return base
   const cap = (input.inSession || input.waiting) && !input.hidden ? POLL.sessionMaxBackoffMs : POLL.maxBackoffMs
-  return Math.min(cap, base * 2 ** Math.min(input.consecutiveFailures, 5))
+  return Math.min(cap, base * 2 ** Math.min(input.consecutiveFailures - 1, 5))
 }

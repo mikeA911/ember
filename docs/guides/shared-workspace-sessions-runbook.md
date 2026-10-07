@@ -36,7 +36,7 @@ The same data is available to an admin from the SQL Editor: `select collaboratio
 
 - **Bar texts after an end:** "The host ended the live session", "An administrator ended the live session", "…ended after 30 minutes with nobody active", "…because one of you was inactive for an hour", "…reached its 12-hour limit", "…no longer has access to this Project".
 - **Presence:** connected (polled in the last 90 seconds), away (no input for 10 minutes), not connected (no poll for 90 seconds, or the tab closed).
-- **Polling** (browser straight to Supabase): every 2 seconds in a session (10 seconds in a hidden tab); 5 seconds while using Ember outside a session, otherwise 30 seconds. After failures it backs off: up to 10 seconds in a visible session, otherwise up to 30 seconds. It polls at once when the browser comes back online and right after someone answers an invitation.
+- **Polling** (browser straight to Supabase): every 2 seconds in a session (10 seconds in a hidden tab); 5 seconds while using Ember outside a session, otherwise 30 seconds. A single failed poll is retried at the normal rate; from the second failure in a row it backs off, up to 10 seconds in a visible session and up to 30 seconds otherwise. It polls at once when the browser comes back online and right after someone answers an invitation.
 
 ## Turning it on or off
 

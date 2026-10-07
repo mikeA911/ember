@@ -8,7 +8,7 @@
 // Olu a platform admin for the run (put back afterwards).
 import { createRequire } from 'node:module'
 import pg from 'pg'
-import { applyNetwork, contextOptions, network, device } from './network.mjs'
+import { applyNetwork, contextOptions, network, device, slower } from './network.mjs'
 const require = createRequire(`${process.env.PLAYWRIGHT_DIR ?? process.cwd()}/`)
 const { chromium } = require('playwright-core')
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3100'
@@ -44,7 +44,7 @@ const step = async (label, fn) => {
     console.log(`pass  ${label}${extra ? ` (${extra})` : ''} [${Date.now() - t} ms]`)
   } catch (e) {
     failures++
-    console.log(`FAIL  ${label}: ${String(e.message).split('\n')[0]}`)
+    console.log(`FAIL  ${label}: ${process.env.E2E_VERBOSE ? e.message : String(e.message).split("\n")[0]}`)
     if (SHOTS) for (const [who, p] of Object.entries(people)) await p.page.screenshot({ path: `${SHOTS}/net-fail-${failures}-${who}.png` }).catch(() => {})
   } finally {
     // A failed step never leaves anyone offline for the next one.
@@ -60,7 +60,7 @@ async function signIn(email) {
   await page.locator('input').nth(0).fill(email)
   await page.locator('input').nth(1).fill('local-only')
   await page.locator('form button').first().click()
-  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30000 })
+  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: slower(30000) })
   return { ctx, page }
 }
 const bar = (page) => page.getByLabel('Live collaboration')
@@ -80,53 +80,53 @@ try {
     await hana.page.getByRole('button', { name: 'Collaborate' }).click()
     await hana.page.getByRole('button', { name: /Gil Guest/ }).click()
     await hana.page.getByRole('button', { name: 'Send invitation' }).click()
-    await bar(gil.page).getByRole('button', { name: 'Accept' }).click({ timeout: 30000 })
+    await bar(gil.page).getByRole('button', { name: 'Accept' }).click({ timeout: slower(30000) })
     await waitPath(gil.page, `/projects/${P}`)
-    await bar(hana.page).getByText('You’re in control').waitFor({ timeout: 30000 })
+    await bar(hana.page).getByText('You’re in control').waitFor({ timeout: slower(30000) })
   })
 
   await step('Gil drops offline for 30 s while Hana moves on: he stays "connected", sees he is reconnecting, then catches up at once', async () => {
     await gil.ctx.setOffline(true)
     await routerNav(hana.page, `/projects/${P}/workstreams/${W1}`)
     await waitPath(hana.page, `/projects/${P}/workstreams/${W1}`)
-    await bar(gil.page).getByText('Connection lost — reconnecting…').waitFor({ timeout: 30000 })
+    await bar(gil.page).getByText('Connection lost — reconnecting…').waitFor({ timeout: slower(30000) })
     await sleep(Math.max(0, 30000 - 5000))
     // Within the 90-second presence window: no "not connected" for Hana.
     if (await bar(hana.page).getByText('not connected').count()) throw new Error('shown as not connected after 30 s')
     t0 = Date.now()
     await gil.ctx.setOffline(false)
     await waitPath(gil.page, `/projects/${P}/workstreams/${W1}`)
-    await bar(gil.page).getByText('Connection lost').waitFor({ state: 'detached', timeout: 15000 })
+    await bar(gil.page).getByText('Connection lost').waitFor({ state: 'detached', timeout: slower(15000) })
     if ((await controller()) !== 'hana@e2e.local') throw new Error('control moved')
     return `caught up ${Date.now() - t0} ms after reconnecting`
   })
 
   await step('Gil offline for over 90 s: Hana sees him "not connected", keeps control; he catches up when back', async () => {
     await gil.ctx.setOffline(true)
-    await bar(hana.page).getByText('not connected').first().waitFor({ timeout: 120000 })
+    await bar(hana.page).getByText('not connected').first().waitFor({ timeout: slower(120000) })
     await routerNav(hana.page, `/projects/${P}/workstreams/${W2}`)
     await waitPath(hana.page, `/projects/${P}/workstreams/${W2}`)
     if ((await controller()) !== 'hana@e2e.local') throw new Error('control moved')
     t0 = Date.now()
     await gil.ctx.setOffline(false)
     await waitPath(gil.page, `/projects/${P}/workstreams/${W2}`)
-    await bar(hana.page).getByText('not connected').first().waitFor({ state: 'detached', timeout: 15000 })
+    await bar(hana.page).getByText('not connected').first().waitFor({ state: 'detached', timeout: slower(15000) })
     return `back and following ${Date.now() - t0} ms after reconnecting`
   })
 
   await step('Hana (in control) goes offline: control stays with her until Gil chooses to take it; she can take it back', async () => {
     await hana.ctx.setOffline(true)
-    await bar(gil.page).getByText('not connected').first().waitFor({ timeout: 120000 })
+    await bar(gil.page).getByText('not connected').first().waitFor({ timeout: slower(120000) })
     if ((await controller()) !== 'hana@e2e.local') throw new Error('control moved on its own')
-    await bar(gil.page).getByRole('button', { name: 'Take control', exact: true }).click({ timeout: 10000 })
-    await bar(gil.page).getByText('You’re in control').waitFor({ timeout: 15000 })
+    await bar(gil.page).getByRole('button', { name: 'Take control', exact: true }).click({ timeout: slower(10000) })
+    await bar(gil.page).getByText('You’re in control').waitFor({ timeout: slower(15000) })
     await routerNav(gil.page, `/projects/${P}`)
     await waitPath(gil.page, `/projects/${P}`)
     await hana.ctx.setOffline(false)
     // Back online, Hana follows Gil and isn't in control any more.
     await waitPath(hana.page, `/projects/${P}`)
-    await bar(hana.page).getByRole('button', { name: 'Take control back' }).click({ timeout: 15000 })
-    await bar(hana.page).getByText('You’re in control').waitFor({ timeout: 15000 })
+    await bar(hana.page).getByRole('button', { name: 'Take control back' }).click({ timeout: slower(15000) })
+    await bar(hana.page).getByText('You’re in control').waitFor({ timeout: slower(15000) })
     if ((await controller()) !== 'hana@e2e.local') throw new Error('host could not take it back')
     const taken = await sql("select count(*)::int from collaboration_events where event = 'control_taken_while_away'")
     if (taken !== 1) throw new Error(`${taken} take-over events`)
@@ -135,14 +135,14 @@ try {
   await step('an administrator sees the session on Admin → Live collaboration and ends it; both bars say so', async () => {
     const olu = (people.olu = await signIn('olu@e2e.local'))
     await olu.page.goto(`${BASE}/admin`)
-    await olu.page.getByRole('button', { name: 'Live collaboration' }).click({ timeout: 30000 })
+    await olu.page.getByRole('button', { name: 'Live collaboration' }).click({ timeout: slower(30000) })
     const card = olu.page.locator('[data-admin-session]').first()
-    await card.getByText('Hana Host (connected) · Gil Guest (connected)').waitFor({ timeout: 30000 })
+    await card.getByText('Hana Host (connected) · Gil Guest (connected)').waitFor({ timeout: slower(30000) })
     if (SHOTS) await olu.page.screenshot({ path: `${SHOTS}/net-admin-overview.png`, fullPage: true })
     await card.getByRole('button', { name: 'End session…' }).click()
     await card.getByRole('button', { name: 'End session', exact: true }).click()
-    await olu.page.getByText('Session ended.').waitFor({ timeout: 15000 })
-    for (const p of [hana.page, gil.page]) await bar(p).getByText('An administrator ended the live session.').waitFor({ timeout: 30000 })
+    await olu.page.getByText('Session ended.').waitFor({ timeout: slower(15000) })
+    for (const p of [hana.page, gil.page]) await bar(p).getByText('An administrator ended the live session.').waitFor({ timeout: slower(30000) })
     const ended = await sql("select end_reason from collaboration_sessions order by started_at desc limit 1")
     if (ended !== 'ended_by_admin') throw new Error(ended)
     if ((await sql("select count(*)::int from collaboration_events e join profiles p on p.id = e.actor_id where e.event = 'ended:ended_by_admin' and p.email = 'olu@e2e.local'")) !== 1) throw new Error('not recorded')
@@ -150,7 +150,7 @@ try {
 
   await step('nobody else can open the admin view', async () => {
     await hana.page.goto(`${BASE}/admin`)
-    await hana.page.waitForURL((u) => !u.pathname.startsWith('/admin'), { timeout: 15000 })
+    await hana.page.waitForURL((u) => !u.pathname.startsWith('/admin'), { timeout: slower(15000) })
   })
 } finally {
   await db.query('update profiles set role = $2 where id = $1', [OLU, oluRole])
