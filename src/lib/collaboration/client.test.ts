@@ -114,6 +114,12 @@ describe('polling', () => {
     expect(nextPollDelay({ inSession: false, hidden: true, consecutiveFailures: 9 })).toBe(POLL.maxBackoffMs)
   })
 
+  it('in a visible session, failures back off to at most 10 seconds, so a dropping connection catches up quickly', () => {
+    expect(nextPollDelay({ inSession: true, hidden: false, consecutiveFailures: 1 })).toBe(4_000)
+    expect(nextPollDelay({ inSession: true, hidden: false, consecutiveFailures: 9 })).toBe(10_000)
+    expect(nextPollDelay({ inSession: true, hidden: true, consecutiveFailures: 9 })).toBe(30_000)
+  })
+
   it('outside a session, polls every 5 seconds while the person is using Ember and every 30 once they stop', () => {
     expect(nextPollDelay({ inSession: false, recentlyActive: true, hidden: false, consecutiveFailures: 0 })).toBe(5_000)
     expect(nextPollDelay({ inSession: false, recentlyActive: false, hidden: false, consecutiveFailures: 0 })).toBe(30_000)

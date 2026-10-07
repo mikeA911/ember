@@ -11,6 +11,7 @@
 const PROFILES = {
   slow: { latency: 400, downloadThroughput: (1.5 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8, pollLoss: 0 },
   lossy: { latency: 400, downloadThroughput: (1.5 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8, pollLoss: 0.25 },
+  drops: { latency: 0, pollLoss: 0.25 },
 }
 const POLLS = /\/rest\/v1\/rpc\/collaboration_(status|watch_status|chat)$/
 
@@ -28,14 +29,16 @@ export async function applyNetwork(page) {
   const stats = { dropped: 0, polls: 0 }
   const profile = PROFILES[network]
   if (!profile) return stats
-  const cdp = await page.context().newCDPSession(page)
-  await cdp.send('Network.enable')
-  await cdp.send('Network.emulateNetworkConditions', {
-    offline: false,
-    latency: profile.latency,
-    downloadThroughput: profile.downloadThroughput,
-    uploadThroughput: profile.uploadThroughput,
-  })
+  if (profile.latency) {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Network.enable')
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: profile.latency,
+      downloadThroughput: profile.downloadThroughput,
+      uploadThroughput: profile.uploadThroughput,
+    })
+  }
   if (profile.pollLoss > 0) {
     await page.route(POLLS, (route) => {
       stats.polls++

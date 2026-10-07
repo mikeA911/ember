@@ -55,7 +55,7 @@ export function CollaborateButton({ projectId, projectName }: { projectId: strin
         Collaborate
       </button>
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-72 rounded border border-zinc-200 bg-white p-3 text-sm shadow-lg">
+        <div className="fixed inset-x-4 top-24 z-40 mt-1 rounded border border-zinc-200 bg-white p-3 text-sm shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:z-20 sm:w-72">
           {sentTo ? (
             <div className="flex flex-col gap-2">
               <p>Invitation sent to {sentTo}. It lasts an hour; the bar at the top shows when they accept.</p>

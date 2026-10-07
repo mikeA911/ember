@@ -19,6 +19,9 @@ export const POLL = {
   idleVisibleMs: 30_000,
   idleHiddenMs: 30_000,
   maxBackoffMs: 30_000,
+  // In a session (or about to be): back off less, so a dropping connection
+  // still catches up within seconds once a poll gets through.
+  sessionMaxBackoffMs: 10_000,
   // "Using Ember" = any input this recently.
   recentlyActiveMs: 10 * 60_000,
 }
@@ -44,5 +47,6 @@ export function nextPollDelay(input: {
           ? POLL.idleActiveVisibleMs
           : POLL.idleVisibleMs
   if (input.consecutiveFailures <= 0) return base
-  return Math.min(POLL.maxBackoffMs, base * 2 ** Math.min(input.consecutiveFailures, 5))
+  const cap = (input.inSession || input.waiting) && !input.hidden ? POLL.sessionMaxBackoffMs : POLL.maxBackoffMs
+  return Math.min(cap, base * 2 ** Math.min(input.consecutiveFailures, 5))
 }
