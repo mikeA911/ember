@@ -2,7 +2,7 @@
 
 Date: 7 October 2026. Plan: [shared workspace sessions](../dev-request-shared-workspace-sessions.md#phase-4-operations-as-built-7-october-2026). Runbook: [operations](../guides/shared-workspace-sessions-runbook.md).
 
-Everything below ran in a cloud development container against **local, disposable** databases, with a stand-in AI model. The migration (`20261028100001_collaboration_operations.sql`) is **not applied** to the live backend.
+Everything below ran in a cloud development container against **local, disposable** databases, with a stand-in AI model. The migration (`20261028100001_collaboration_operations.sql`) was then applied to the live backend by the owner on 7 October 2026 and verified (see the end).
 
 ## What was tested
 
@@ -68,9 +68,13 @@ The poor-network and phone runs found these, all fixed and re-run:
 
 - **Firefox and Safari.** They can't be installed in the development container. They're left to the pilot, on real devices.
 - **Real remote networks.** Only simulated ones were tested. Latency between real locations is a pilot measurement.
-- **The live backend.** The migration isn't applied.
+- **The live backend, beyond the migration.** Applied and verified (below), but the admin view hasn't been used there yet.
 
-## Applying to the live backend (needs the owner's go-ahead)
+## Applied to the live backend (7 October 2026)
+
+The owner ran the file in the Supabase SQL Editor; the verification query below returned `13 | 96 | 47 | 41 | 2`, matching a local full build.
+
+### What the file does
 
 One migration: `supabase/migrations/20261028100001_collaboration_operations.sql`, about 14,000 characters (one paste).
 - It adds admin-only `collaboration_admin_*` functions.
