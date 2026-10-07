@@ -108,6 +108,7 @@ const TOOLS = [
       'Requirements register: requirements traced to standards, regulations, contract terms and vendor claims, each with a verification method and pass criteria. Ember drafts them from your project knowledge and cites the clauses.',
       'Verification records: append-only pass/fail results backed by evidence, so the client can see what was tested and when.',
       'Curated knowledge: upload sources, review and approve them, and build a project wiki. Ember answers from approved project knowledge.',
+      'Knowledge from Ember: Ember can give you knowledge bases suited to your work, including ones you could not attach yourself. They appear in your workspace, marked Assigned by Ember.',
       'Your tools, your model: bring your own LLM, hosted or local (e.g. Ollama), or connect your own AI assistant to Ember through MCP.',
     ],
   },
