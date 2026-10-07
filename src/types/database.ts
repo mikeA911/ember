@@ -973,6 +973,9 @@ export interface SolutionVerificationRecord {
   supersedes_id: string | null
   recorded_by: string | null
   recorded_at: string
+  // Each pass criterion ticked met or not, with the text it was judged
+  // against; null when the record has no checklist.
+  criteria_checks: { criterion: string; met: boolean }[] | null
 }
 
 export interface SolutionVerificationEvidence {
@@ -3805,6 +3808,7 @@ interface DatabaseDefinition {
           p_observations?: string | null
           p_defect_reference?: string | null
           p_supersedes_id?: string | null
+          p_criteria_checks?: { criterion: string; met: boolean }[] | null
         }
         Returns: string
       }

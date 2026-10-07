@@ -4,6 +4,7 @@ import { AuthError } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveProjectRole, type WorkbenchCallerContext } from '@/lib/workbench/context'
 import { RequirementValidationError } from '@/lib/projects/requirements'
+import type { CriterionCheck } from '@/lib/projects/criteria'
 import type {
   Database,
   RequirementVerificationStatus,
@@ -225,6 +226,8 @@ export interface VerificationRecordInput {
   defectReference?: string
   // A correction: the record this one supersedes.
   supersedesId?: string | null
+  // Each pass criterion ticked met or not (src/lib/projects/criteria.ts).
+  criteriaChecks?: CriterionCheck[]
 }
 
 function clean(value: string | undefined | null, max = 4000): string | null {
@@ -242,6 +245,8 @@ export async function canRecordVerification(ctx: WorkbenchCallerContext, project
 
 const FUNCTION_MESSAGES: [string, string][] = [
   ['a pass needs at least one evidence artifact', 'A pass needs at least one evidence artifact. A narrative assertion alone is not evidence.'],
+  ['a pass needs every pass criterion met', 'A pass needs every pass criterion ticked as met. Record a conditional pass or a fail if some aren’t.'],
+  ['each criteria check needs', 'Each pass criterion needs to be ticked met or not'],
   ['a conditional pass needs its conditions', 'A conditional pass needs its conditions'],
   ['not applicable needs a rationale', 'Not applicable needs a rationale'],
   ['an operational measure needs the measured value', 'An operational measure needs the measured value'],
@@ -288,6 +293,13 @@ export async function recordVerification(
   }
   if (input.result === 'conditional_pass' && !clean(input.conditions)) throw new RequirementValidationError('A conditional pass needs its conditions')
   if (input.result === 'not_applicable' && !clean(input.rationale)) throw new RequirementValidationError('Not applicable needs a rationale')
+  const criteriaChecks = (input.criteriaChecks ?? [])
+    .map((c) => ({ criterion: clean(c?.criterion, 2000), met: c?.met === true }))
+    .filter((c): c is CriterionCheck => !!c.criterion)
+    .slice(0, 50)
+  if (input.result === 'pass' && criteriaChecks.some((c) => !c.met)) {
+    throw new RequirementValidationError('A pass needs every pass criterion ticked as met. Record a conditional pass or a fail if some aren’t.')
+  }
 
   const { data: recordId, error } = await ctx.supabase.rpc('record_solution_verification', {
     p_requirement_id: requirementId,
@@ -304,6 +316,7 @@ export async function recordVerification(
     p_observations: clean(input.observations),
     p_defect_reference: clean(input.defectReference, 300),
     p_supersedes_id: input.supersedesId || null,
+    p_criteria_checks: criteriaChecks.length > 0 ? criteriaChecks : null,
   })
   if (error || !recordId) rethrow(error ?? new Error('Could not record the result'))
   return { projectId: requirement.project_id, recordId }

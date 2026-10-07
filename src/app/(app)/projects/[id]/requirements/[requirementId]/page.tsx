@@ -36,6 +36,7 @@ import {
   VerificationMethodForm,
 } from '@/components/projects/RequirementForms'
 import { VerificationRecordForm } from '@/components/projects/VerificationRecordForm'
+import { CriteriaChecks, CriteriaList } from '@/components/projects/CriteriaList'
 import { SupersedeRequirementButton } from '@/components/projects/BaselineForms'
 import { ResolveReverificationForm, ReviewIntervalForm } from '@/components/projects/ReverificationForms'
 import type { VerificationEnvironment, VerificationResult } from '@/types/database'
@@ -96,6 +97,7 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
               solutionReference: props.supersedes.solution_reference,
               configurationReference: props.supersedes.configuration_reference ?? '',
               artifactIds: props.supersedes.evidence.map((e) => e.artifactId).filter((x): x is string => !!x),
+              criteriaMet: (props.supersedes.criteria_checks ?? []).filter((c) => c.met).map((c) => c.criterion),
             }
           : undefined
       }
@@ -303,7 +305,8 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
                   {m.created_via === 'assistant' && <span className="ml-1 text-xs font-normal text-sky-800">· drafted by Ember</span>}
                 </span>
                 {canEdit && (
-                  <span className="flex gap-3">
+                  // An open edit form takes the full width on its own line.
+                  <span className="flex gap-3 has-[form]:w-full has-[form]:flex-col has-[form]:items-start">
                     <VerificationMethodForm
                       requirementId={r.id}
                       methodId={m.id}
@@ -320,7 +323,7 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
                   </span>
                 )}
               </div>
-              <p className="text-zinc-800">Pass: {m.pass_criteria}</p>
+              <CriteriaList passCriteria={m.pass_criteria} />
               {m.threshold && (
                 <p className="text-zinc-700">
                   Threshold: {m.threshold} · measured {m.measure_window}
@@ -359,7 +362,11 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
                 {rec.performed_on} · {ENVIRONMENT_LABELS[rec.environment]} · {rec.solution_reference}
                 {rec.configuration_reference && ` · config ${rec.configuration_reference}`}
               </p>
-              <p className="text-xs text-zinc-500">Judged against: {rec.pass_criteria}</p>
+              {rec.criteria_checks && rec.criteria_checks.length > 0 ? (
+                <CriteriaChecks checks={rec.criteria_checks} />
+              ) : (
+                <p className="whitespace-pre-wrap text-xs text-zinc-500">Judged against: {rec.pass_criteria}</p>
+              )}
               {rec.measured_value && <p className="text-zinc-700">Measured: {rec.measured_value}</p>}
               {rec.conditions && <p className="text-amber-800">Conditions: {rec.conditions}</p>}
               {rec.rationale && <p className="text-zinc-700">Rationale: {rec.rationale}</p>}
