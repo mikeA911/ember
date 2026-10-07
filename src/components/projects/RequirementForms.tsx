@@ -23,6 +23,7 @@ import type {
   VerificationMethodKind,
   VerificationPerformer,
 } from '@/types/database'
+import { criterionText, parseCriteria } from '@/lib/projects/criteria'
 import {
   APPLIES_FROM_LABELS,
   CATEGORY_LABELS,
@@ -465,6 +466,20 @@ export interface MethodState {
 
 const emptyMethod = (): MethodState => ({ method: 'test', procedure: '', passCriteria: '', threshold: '', measureWindow: '', performedBy: 'integrator' })
 
+// Several criteria drafted as one paragraph ("AC1: ... AC2: ...") open one
+// per line, so each is easy to find and edit.
+function criteriaOnePerLine(passCriteria: string): string {
+  if (passCriteria.includes('\n')) return passCriteria
+  const items = parseCriteria(passCriteria)
+  return items.length > 1 ? items.map(criterionText).join('\n') : passCriteria
+}
+
+// Tall enough to show long criteria without scrolling a three-line box.
+function rowsFor(text: string): number {
+  const lines = text.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(line.length / 80)), 0)
+  return Math.min(16, Math.max(3, lines))
+}
+
 export function VerificationMethodForm({ requirementId, methodId, initial }: { requirementId: string; methodId?: string; initial?: MethodState }) {
   const [open, setOpen] = useState(false)
   const [value, setValue] = useState<MethodState>(initial ?? emptyMethod())
@@ -472,7 +487,14 @@ export function VerificationMethodForm({ requirementId, methodId, initial }: { r
   const set = <K extends keyof MethodState>(key: K, v: MethodState[K]) => setValue({ ...value, [key]: v })
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className={methodId ? 'text-xs underline' : 'self-start text-sm text-blue-700 underline'}>
+      <button
+        type="button"
+        onClick={() => {
+          setValue({ ...value, passCriteria: criteriaOnePerLine(value.passCriteria) })
+          setOpen(true)
+        }}
+        className={methodId ? 'text-xs underline' : 'self-start text-sm text-blue-700 underline'}
+      >
         {methodId ? 'Edit' : '+ Add a verification method'}
       </button>
     )
@@ -489,7 +511,7 @@ export function VerificationMethodForm({ requirementId, methodId, initial }: { r
           }
         )
       }}
-      className="flex flex-col gap-2 rounded border border-zinc-200 bg-zinc-50 p-3"
+      className="flex w-full flex-col gap-2 rounded border border-zinc-200 bg-zinc-50 p-3"
     >
       <div className="grid gap-2 sm:grid-cols-2">
         <select value={value.method} onChange={(e) => set('method', e.target.value as VerificationMethodKind)} className={input} aria-label="Method">
@@ -509,7 +531,7 @@ export function VerificationMethodForm({ requirementId, methodId, initial }: { r
       </div>
       <textarea
         required
-        rows={3}
+        rows={rowsFor(value.passCriteria)}
         value={value.passCriteria}
         onChange={(e) => set('passCriteria', e.target.value)}
         placeholder="Pass criteria — explicit and checkable (e.g. location shown in K-Dispatch within 2 s for 20 of 20 test calls). Several criteria: one per line; each gets its own checkbox when a result is recorded."

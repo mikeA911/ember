@@ -305,7 +305,8 @@ export default async function RequirementPage({ params }: { params: Promise<{ id
                   {m.created_via === 'assistant' && <span className="ml-1 text-xs font-normal text-sky-800">· drafted by Ember</span>}
                 </span>
                 {canEdit && (
-                  <span className="flex gap-3">
+                  // An open edit form takes the full width on its own line.
+                  <span className="flex gap-3 has-[form]:w-full has-[form]:flex-col has-[form]:items-start">
                     <VerificationMethodForm
                       requirementId={r.id}
                       methodId={m.id}
