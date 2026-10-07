@@ -7,6 +7,7 @@
 // and points its default chat provider at the stand-in model.
 import { createRequire } from 'node:module'
 import pg from 'pg'
+import { applyNetwork, contextOptions, network, device } from './network.mjs'
 const require = createRequire(`${process.env.PLAYWRIGHT_DIR ?? process.cwd()}/`)
 const { chromium } = require('playwright-core')
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3100'
@@ -80,8 +81,10 @@ const step = async (label, fn) => {
 }
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
 async function signIn(email) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1000 } })
+  // E2E_NETWORK / E2E_DEVICE (network.mjs): a simulated network or screen.
+  const ctx = await browser.newContext(network || device ? contextOptions() : { viewport: { width: 1280, height: 1000 } })
   const page = await ctx.newPage()
+  await applyNetwork(page)
   await page.goto(`${BASE}/login`)
   await page.locator('input').nth(0).fill(email)
   await page.locator('input').nth(1).fill('local-only')

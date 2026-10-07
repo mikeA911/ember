@@ -13,7 +13,7 @@ export function AdminTabs({ tabs }: { tabs: Tab[] }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex gap-1 border-b border-zinc-200">
+      <div className="flex flex-wrap gap-1 border-b border-zinc-200">
         {tabs.map((tab) => (
           <button
             key={tab.id}

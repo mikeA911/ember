@@ -4,6 +4,7 @@
 // any failure. Resets only the collaboration tables of the LOCAL database.
 import { createRequire } from 'node:module'
 import pg from 'pg'
+import { applyNetwork, contextOptions, network, device } from './network.mjs'
 const require = createRequire(`${process.env.PLAYWRIGHT_DIR ?? process.cwd()}/`)
 const { chromium } = require('playwright-core')
 const BASE = process.env.E2E_BASE_URL ?? 'http://localhost:3100'
@@ -32,8 +33,10 @@ const step = async (label, fn) => {
 }
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
 async function signIn(email) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  // E2E_NETWORK / E2E_DEVICE (network.mjs): a simulated network or screen.
+  const ctx = await browser.newContext(network || device ? contextOptions() : { viewport: { width: 1280, height: 900 } })
   const page = await ctx.newPage()
+  await applyNetwork(page)
   await page.goto(`${BASE}/login`)
   await page.locator('input').nth(0).fill(email)
   await page.locator('input').nth(1).fill('local-only')
@@ -271,6 +274,7 @@ await step('a page that is not shared is never mirrored', async () => {
 
 await step('a second tab for Gil must take over explicitly; the old tab then stands down', async () => {
   gil2 = await gil.ctx.newPage()
+  await applyNetwork(gil2)
   await gil2.goto(`${BASE}/projects/${P}`)
   await bar(gil2).getByText('open in another of your tabs').waitFor({ timeout: 20000 })
   await bar(gil2).getByRole('button', { name: 'Use this tab instead' }).click()
@@ -292,6 +296,7 @@ await step('when Gil closes his tab, Hana sees "not connected" at once; a new ta
   await bar(hana.page).getByText('Gil Guest isn’t connected right now').waitFor({ timeout: 10000 })
   const shown = Date.now() - t0
   gil2 = await gil.ctx.newPage()
+  await applyNetwork(gil2)
   await gil2.goto(`${BASE}/dashboard`)
   await waitPath(gil2, `/projects/${P}`, 20000)
   await bar(gil2).getByRole('button', { name: 'Ask for control' }).waitFor({ timeout: 10000 })

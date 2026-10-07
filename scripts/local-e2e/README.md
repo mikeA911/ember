@@ -61,5 +61,13 @@ npx next start -p 3100 &                          # with the step 4 variables to
 node scripts/local-e2e/collaboration-shared-chat.mjs
 ```
 
+For Phase 4, `collaboration-network.mjs` takes people offline (30 s and
+over 90 s, including the person in control) and has an administrator end a
+session from Admin → Live collaboration. Any of the scripts runs on a
+simulated network or screen with `E2E_NETWORK=slow` (400 ms latency, about
+1.5 Mbit/s), `E2E_NETWORK=lossy` (slow, and a quarter of polls fail) or
+`E2E_DEVICE=phone` (390 x 844 touch screen) -- see `network.mjs`
+(Chromium only).
+
 Sign-in is `hana@e2e.local` / `gil@e2e.local` / `vera@e2e.local` with any password. The
 script resets only the collaboration tables before it runs.

@@ -51,7 +51,7 @@ export interface SessionSnapshot {
   projectId: string
   projectName: string
   status: 'active' | 'ended'
-  endReason: 'ended_by_host' | 'everyone_left' | 'inactive' | 'participant_inactive' | 'expired' | 'access_revoked' | null
+  endReason: 'ended_by_host' | 'everyone_left' | 'inactive' | 'participant_inactive' | 'expired' | 'access_revoked' | 'ended_by_admin' | null
   myRole: 'host' | 'guest'
   host: CollaborationPerson
   guest: CollaborationPerson

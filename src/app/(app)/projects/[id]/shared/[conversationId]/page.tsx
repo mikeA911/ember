@@ -19,6 +19,7 @@ import { SharedChat } from '@/components/collaboration/SharedChat'
 
 const END_REASONS: Record<string, string> = {
   ended_by_host: 'ended by the host',
+  ended_by_admin: 'ended by an administrator',
   everyone_left: 'everyone left',
   inactive: 'ended after 30 minutes with nobody active',
   participant_inactive: 'ended after one of you was inactive for an hour',

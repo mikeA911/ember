@@ -17,6 +17,7 @@ import { SharedChat } from './SharedChat'
 
 const END_REASONS: Record<NonNullable<SessionSnapshot['endReason']>, string> = {
   ended_by_host: 'The host ended the live session.',
+  ended_by_admin: 'An administrator ended the live session.',
   everyone_left: 'Everyone left, so the live session ended.',
   inactive: 'The live session ended after 30 minutes with nobody active.',
   participant_inactive: 'The live session ended because one of you was inactive for an hour.',
@@ -172,6 +173,11 @@ export function SessionBar() {
         </div>
       )}
       <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-2">
+        {collab.reconnecting && (
+          <div className="text-xs font-medium text-red-700" role="status">
+            Connection lost — reconnecting… What you see may be out of date.
+          </div>
+        )}
         {notices}
         {error && (
           <div className="flex items-center gap-2 text-xs text-red-700" role="alert">

@@ -49,6 +49,9 @@ interface CollaborationContextValue {
   watchable: WatchableSession[]
   endedWatch: WatchSnapshot | null
   following: boolean
+  // Phase 4: polls have failed twice running while in a session or
+  // watching -- what's shown may be out of date until they succeed.
+  reconnecting: boolean
   busy: boolean
   error: string | null
   invite: (projectId: string, inviteeId: string, conversationId?: string | null) => Promise<CollaborationInvitation | null>
@@ -133,6 +136,7 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
   // The live session this tab last saw, so a poll after it ends can say why.
   const lastSessionRef = useRef<string | null>(null)
   const failuresRef = useRef(0)
+  const [reconnecting, setReconnecting] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollRef = useRef<() => void>(() => {})
   const joiningRef = useRef<string | null>(null)
@@ -236,6 +240,7 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
         if (!watching) failuresRef.current += 1
       }
     }
+    setReconnecting((inSession || watching) && failuresRef.current >= 2)
     if (inSession || watching) accessTokenRef.current = (await supabase.auth.getSession()).data.session?.access_token ?? null
     const delay = nextPollDelay({
       inSession: inSession || watching,
@@ -280,13 +285,20 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
         ...target,
       })
     }
+    // Back online: don't wait out the failure backoff (up to 30 s).
+    const onOnline = () => {
+      failuresRef.current = 0
+      poll()
+    }
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', poll)
+    window.addEventListener('online', onOnline)
     window.addEventListener('pageshow', onShow)
     window.addEventListener('pagehide', onHide)
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', poll)
+      window.removeEventListener('online', onOnline)
       window.removeEventListener('pageshow', onShow)
       window.removeEventListener('pagehide', onHide)
       if (timerRef.current) clearTimeout(timerRef.current)
@@ -487,6 +499,7 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     watchable: status.watchable,
     endedWatch,
     following,
+    reconnecting,
     busy,
     error,
     invite: (projectId, inviteeId, conversationId) =>
