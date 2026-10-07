@@ -3,7 +3,7 @@
 **Purpose:** Living product-navigation knowledge for Ember, release documentation, future application discovery, and a possible KB Sandbox MCP interface  
 **Status:** Initial baseline — expand as workflows are verified  
 **Application version:** 0.1.0  
-**Last code verification:** 2026-09-04  
+**Last code verification:** 2026-10-07  
 
 ## How this document is used
 
@@ -71,6 +71,9 @@ Do not copy the entire workflow into every release note. Update the workflow her
 | Explore: Graphs | `/graphs` | Inspect agent and Method flow visualizations | Signed-in users |
 | Explore: Agents | `/agents` | View and use available agents, including Ember | Signed-in users |
 | Explore: Agent Registry | `/agent-registry` | Register and inspect externally implemented agents | Signed-in non-anonymous users |
+| Builder's Journey | `/builders` | Learn how builders go from proposal to paid client project | Public |
+| Request builder access | `/register` | Ask the platform owner for a builder account, with a reason | Public entry point |
+| Agency dashboard | `/agency` | Oversee builders: promotions, fees and rates, AI budgets, knowledge bases, workstream limits | Platform admin (all builders); an agency curator (their own builders) |
 | Live collaboration (when enabled) | `/projects/[id]` → **Collaborate**; shared conversations at `/projects/[id]/shared/[conversationId]` | Work through a Project's pages together with one other member | Active members of that Project, only where the deployment enables it |
 
 The application logo links to `/about`. The signed-in profile and journal begin at `/profile`.
@@ -91,6 +94,19 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Boundaries:** Authentication does not grant access to every project. Project membership and content visibility continue to apply after sign-in.
 - **Exposure:** UI guidance only; prohibited from agent credential handling.
 - **Verification:** Login form redirects successful authentication to `/dashboard`; code verified 2026-08-28.
+
+### Request a builder account
+
+- **Intent:** Someone who wants to build with Ember asks the platform owner for an account.
+- **Users and authority:** Anyone, signed out. Accepting is the platform owner's decision; an admin then creates the account.
+- **Prerequisites:** The deployment sets `EMBER_ACCESS_REQUEST_EMAIL`; without it the page only says to ask an administrator.
+- **Start:** `/register` (linked from the sign-in form as **Want to build? Request access**, and from the Builder's Journey page).
+- **Navigation:** Enter name, email and a reason → **Email my request** → the visitor's email app opens with the request addressed to the platform owner.
+- **Outcome:** An email to the platform owner. Nothing is created in Ember until the owner replies and creates the account from `/admin` (User Management). A new builder account gets a workspace Project and is placed under the creating admin's agency.
+- **Ember guidance:** Direct people who ask how to join as a builder to `/register`, and explain that the owner replies to say whether they're accepted. Ember cannot create accounts.
+- **Boundaries:** Self-registration is off; there is no sign-up form that creates an account.
+- **Exposure:** UI only.
+- **Verification:** `src/app/(auth)/register/page.tsx`, `src/components/auth/{AccessRequestForm.tsx,access-request.ts}`, `src/app/actions/admin.ts` (`createUserAction`); code verified 2026-10-07.
 
 ## 2. Workbench
 
@@ -577,6 +593,114 @@ The application logo links to `/about`. The signed-in profile and journal begin 
 - **Ember guidance:** Clarify that registration or visualization does not mean the external agent is hosted by, trusted by, or executable through KB Sandbox.
 - **Exposure:** Registry metadata is a candidate for controlled read access; external invocation is separately designed and authorized.
 - **Verification:** Header and registry routes; code verified 2026-08-28. Detailed workflows remain to be catalogued.
+
+## 8. Builders and the agency
+
+In the Builder edition the platform owner (admin) is every builder's agency. A builder's workspace is their sales funnel: each client proposal is a Workstream, and an accepted one becomes a paid client Project. The public overview is the Builder's Journey page, `/builders`.
+
+### Read the Builder's Journey
+
+- **Intent:** Understand how builders work with Ember and get paid, before or after joining.
+- **Users and authority:** Anyone; no sign-in.
+- **Prerequisites:** None.
+- **Start:** `/builders` (header **Builder's Journey**; also linked from the landing page and `/register`).
+- **Navigation:** Open the page; **Request builder access** leads to `/register`.
+- **Outcome:** The stages, how promotion works, how fees are split, and what Ember gives at each stage.
+- **Ember guidance:** Link to `/builders` for questions about the builder programme in general; use the entries below for how to do a specific step.
+- **Boundaries:** Describes the programme; contract-value commission is negotiated with Ember case by case and is not recorded in the app.
+- **Exposure:** Public page.
+- **Verification:** `src/app/(public)/builders/page.tsx`; code verified 2026-10-07.
+
+### Request promotion of a workstream to a client project
+
+- **Intent:** Turn an accepted client proposal (a Workstream) into its own client Project.
+- **Users and authority:** On a builder's Project (their workspace, or a client Project they built), only its **builder of record**; the platform admin on any Project. On other Projects, any active member submits as before.
+- **Prerequisites:** The Workstream is completed, has at least one approved artifact, and has no pending or approved promotion. The builder must confirm **My client has agreed to this project**.
+- **Start:** `/projects/[id]/workstreams/[workstreamId]`
+- **Navigation:** Workstream page → **Proposal accepted? Request a client project** → optional client emails and maintenance fee → tick **My client has agreed to this project** → **Request client project**. The platform admin sees **Create client project** instead.
+- **Outcome:** A pending request for the agency, or, for the platform admin's own work, a client Project created at once. The new Project is owned by the builder, its builder of record, with the agency as curator and the client people as viewers; only approved artifacts are copied. It records who found the client: the platform admin's own work is Ember-found, a builder's proposal builder-found, and more work on an existing client Project keeps that Project's source.
+- **Ember guidance:** Ember has no tool for this; direct the builder to the Workstream page. Explain that the client must have agreed first and that the agency approves it.
+- **Boundaries:** A builder invited onto someone else's Project cannot request promotion of that builder's work. Only the builder of record is paid for the new Project; sharing with invited builders is up to them.
+- **Exposure:** UI only.
+- **Verification:** `src/lib/workbench/workstream-promotions.ts`, `src/components/projects/WorkstreamPromotionForm.tsx`, `supabase/migrations/20261028100001_builder_edition_agency_rules.sql`; code verified 2026-10-07.
+
+### Decide a builder's promotion
+
+- **Intent:** The agency approves or rejects a builder's request for a client Project.
+- **Users and authority:** The builder's agency or the platform admin. Never the submitter, and never another curator on the builder's Project (for example a builder they invited).
+- **Prerequisites:** A pending promotion.
+- **Start:** `/agency` (the builder's card, **Waiting for a client project**), or the Project page's pending promotions.
+- **Navigation:** Builder card → review the request → **Approve** or **Reject** (with an optional reason).
+- **Outcome:** Approval creates the client Project and records its maintenance fee, split for who found the client. Rejection leaves the Workstream where it was.
+- **Ember guidance:** UI only; tell builders their request waits on the agency.
+- **Boundaries:** The database enforces who may decide.
+- **Exposure:** UI only.
+- **Verification:** `src/lib/workbench/workstream-promotions.ts` (`requirePromotionDecider`), `supabase/migrations/20261028100001_builder_edition_agency_rules.sql`; code verified 2026-10-07.
+
+### Set how a client's maintenance fee is split
+
+- **Intent:** Decide what Ember and the builder each receive from a client's maintenance fee.
+- **Users and authority:** The platform admin sets the defaults and each builder's own rates; the builder's agency or the admin adjusts a single Project's fee. Builders see their own shares on their profile.
+- **Prerequisites:** Only a Project created by an approved promotion can have a fee.
+- **Start:** `/agency`
+- **Navigation:** Top of the page: **Ember's cut when the builder found the client** and **Builder's share when Ember found the client** (defaults) → **Save**. Each builder card: the same two figures for that builder (blank uses the default). Each client Project row: edit the fee and the builder's share.
+- **Outcome:** Ember's share and the builder's share add up to 100%. Builder-found: Ember takes its cut and the builder keeps the rest. Ember-found: the builder gets their share and Ember keeps the rest. A fee records its split when created; later rate changes apply to new paid Projects only.
+- **Ember guidance:** Ember cannot change fees; direct the admin to `/agency`.
+- **Boundaries:** Ember records figures for invoicing and never charges anyone. Contract-value commission is negotiated outside the app.
+- **Exposure:** UI only.
+- **Verification:** `src/lib/workbench/client-billing.ts`, `src/components/agency/{PlatformRateForm,BuilderRatesForm,ClientFeeEditor}.tsx`, `supabase/migrations/20261029100001_client_source_and_workstream_limits.sql`; code verified 2026-10-07.
+
+### Assign a builder to a project Ember found
+
+- **Intent:** Choose who builds and maintains a client Project whose client Ember found.
+- **Users and authority:** Platform admin only.
+- **Prerequisites:** The Project records the client as Ember-found (the admin promoted it from their own work).
+- **Start:** `/projects/[id]/members`
+- **Navigation:** Members page → **Builder for this Ember-found client** → choose a builder → **Assign**.
+- **Outcome:** The builder becomes the Project's builder of record and a curator, the Project follows the builder rules, and its fee is re-split at that builder's share for Ember-found clients.
+- **Ember guidance:** UI only.
+- **Boundaries:** Not offered on builder-found Projects.
+- **Exposure:** UI only.
+- **Verification:** `src/lib/workbench/project-builder.ts`, `src/components/projects/AssignProjectBuilderForm.tsx`; code verified 2026-10-07.
+
+### Ask for more workstreams
+
+- **Intent:** A builder whose workspace is full asks for room for more proposals.
+- **Users and authority:** The builder asks; the platform admin approves or declines.
+- **Prerequisites:** The builder's own workspace holds 20 workstreams by default. Workstreams in client Projects created by promotion don't count, and admins aren't limited.
+- **Start:** `/projects/[id]/workstreams/new` on the workspace; the admin decides on `/agency`.
+- **Navigation:** New Workstream page shows how many are used; at the limit → enter the total needed and a reason → **Request more workstreams**. Admin: `/agency` → **Workstream limit requests** → **Approve** or **Decline**, with an optional note.
+- **Outcome:** Approval raises that builder's limit to the number they asked for. One open request per builder at a time.
+- **Ember guidance:** If creating a workstream fails with "Workstream limit reached", explain the limit and direct the builder to the New Workstream page to ask for more.
+- **Boundaries:** A database trigger enforces the limit on every way a workstream is created (form, Ember, wizard, cloning, Methods).
+- **Exposure:** UI only; Ember's `create_workstream` is subject to the same limit.
+- **Verification:** `src/lib/workbench/workstream-limits.ts`, `src/components/projects/WorkstreamAllowanceNotice.tsx`, `src/components/agency/WorkstreamLimitRequestsReview.tsx`, `supabase/migrations/20261029100001_client_source_and_workstream_limits.sql`; code verified 2026-10-07.
+
+### Choose which knowledge bases a builder can see
+
+- **Intent:** Give a builder access to knowledge bases curated for their work, including project-only ones they could not attach themselves.
+- **Users and authority:** Platform admin only.
+- **Prerequisites:** An active knowledge base; the user is a builder (platform role `consultant`).
+- **Start:** `/agency` (or the **Assigned KBs** checkboxes on `/admin`, which do the same for builders).
+- **Navigation:** Builder card → **Knowledge bases this builder can see** → tick or untick → **Save**.
+- **Outcome:** Each ticked knowledge base is attached to the builder's workspace, labelled **Assigned by Ember** on the Project page, so the builder and Ember in that workspace can use its sources and articles. Unticking removes only assigned attachments, never ones the builder added.
+- **Ember guidance:** If a builder asks for access to a knowledge base, tell them the platform owner assigns it from `/agency`.
+- **Boundaries:** The builder cannot detach an assigned knowledge base; the database allows only the admin to add or remove one. Anyone else the builder invited to their workspace also sees it.
+- **Exposure:** UI only.
+- **Verification:** `src/lib/workbench/builder-knowledge-bases.ts`, `src/components/agency/BuilderKnowledgeBasesForm.tsx`, `supabase/migrations/20261030100001_builder_assigned_knowledge_bases.sql`; code verified 2026-10-07.
+
+### Export a project's knowledge
+
+- **Intent:** Take a Project's own knowledge out of Ember as files.
+- **Users and authority:** The Project's owner or curators, its builder of record, or a platform admin.
+- **Prerequisites:** None beyond that access; an empty export still has a README.
+- **Start:** `/projects/[id]`
+- **Navigation:** Project page → Knowledge section → **Export knowledge**.
+- **Outcome:** A zip with every knowledge base the Project owns (each current source's original file and its approved text as Markdown), the Project's approved wiki articles, and a README listing what's inside.
+- **Ember guidance:** Ember cannot produce the zip; direct the user to the button.
+- **Boundaries:** Only the Project's own knowledge bases are included, not shared or assigned ones. Sources the person can't read under evidence access stay out. Unapproved text and retired sources are left out. Very large original files may exceed the host's download size limit.
+- **Exposure:** UI only (`/projects/[id]/knowledge-export`).
+- **Verification:** `src/lib/projects/knowledge-export.ts`, `src/app/(app)/projects/[id]/knowledge-export/route.ts`; code verified 2026-10-07.
 
 ## Ember response contract for navigation
 

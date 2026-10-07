@@ -686,7 +686,17 @@ export default async function ProjectPage({
       <ProjectStarterPromptForm projectId={project.id} starterPrompt={project.starter_prompt} canEdit={canCurateWorkstreams} />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Knowledge</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Knowledge</h2>
+          {/* The project's own knowledge bases and wiki articles as a zip
+              (src/lib/projects/knowledge-export.ts) -- a route download, not
+              a page, hence a plain link. */}
+          {(canCurateWorkstreams || (!!user && project.builder_id === user.id)) && (
+            <a href={`/projects/${project.id}/knowledge-export`} download className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-50">
+              Export knowledge
+            </a>
+          )}
+        </div>
         <p className="text-sm text-zinc-600">
           Platform Knowledge: <Link href="/wiki" className="underline">AI Engineering Wiki</Link>
         </p>
@@ -694,6 +704,7 @@ export default async function ProjectPage({
           <ul className="flex flex-col gap-1 text-sm">
             {effectiveKnowledgeBases.map((kb) => {
               const sources = sourcesByKbId.get(kb.id) ?? []
+              const assignedByPlatform = 'assignedByPlatform' in kb && !!kb.assignedByPlatform
               return (
                 <li key={kb.id} className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
@@ -701,8 +712,12 @@ export default async function ProjectPage({
                       Project Knowledge: {kb.name}
                       {kb.status === 'pending' && <PendingReviewBadge />}
                     </span>
-                    {/* Owner/curator/admin -- the same bar as project_knowledge_bases' RLS. */}
-                    {canCurateWorkstreams && <KnowledgeBaseDetachButton projectId={project.id} knowledgeBaseId={kb.id} />}
+                    {/* Owner/curator/admin -- the same bar as project_knowledge_bases' RLS;
+                        one the platform admin assigned is theirs alone to remove. */}
+                    {assignedByPlatform && <span className="text-xs text-zinc-500">Assigned by Ember</span>}
+                    {canCurateWorkstreams && (!assignedByPlatform || viewerProfile?.role === 'admin') && (
+                      <KnowledgeBaseDetachButton projectId={project.id} knowledgeBaseId={kb.id} />
+                    )}
                   </div>
                   {sources.length > 0 && (
                     <ul className="ml-4 flex flex-col gap-0.5 text-xs text-zinc-600">

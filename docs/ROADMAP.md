@@ -1,7 +1,7 @@
 # KB Sandbox Roadmap
 
 **Status:** Living internal roadmap; the public About page no longer mirrors it verbatim (see note below)  
-**Last updated:** 6 October 2026
+**Last updated:** 7 October 2026
 
 ## How to read this roadmap
 
@@ -14,6 +14,8 @@ This document is the durable internal source of truth for the M1–M10 milestone
 **2026-10-05:** Added two proposed dev requests: Ember Readiness and knowledge gaps (M3) and solution conformance and acceptance evaluation (M7). They separate *AI evaluation* (does Ember understand a Project well enough to be trusted?) from *solution evaluation* (does the Project's delivered solution meet its standards and contract?). Both are Next items; neither is built.
 
 **2026-10-06:** Added shared workspace collaboration (below): two Project members working through the same Project live from separate browsers. Phase 1 is built behind a feature flag; editing, shared Ember chat and voice follow.
+
+**2026-10-07:** Builder edition rules: the platform owner is every builder's agency; builders request accounts by email with a reason; a builder requests promotion once their client agrees and the agency approves; maintenance fees are split by who found the client; builder workspaces hold 20 workstreams unless the admin raises it; the admin chooses which knowledge bases each builder can see; builders can export a Project's knowledge. A public Builder's Journey page (`/builders`) explains the programme. See M5.
 
 Each milestone can continue to gain capabilities after its core is live. Internal work is placed under the public milestone whose product outcome it advances, even when the work spans several technical layers.
 
@@ -215,6 +217,7 @@ Status terms used below:
 - **Ember chat.** Attach any text file, several files or a zip; save attachments as findings; choose which messages to save as a Project note (29 Sep–2 Oct).
 - **External agents.** The External Agent Registry (27 Aug) was generalized into a Builder Registry with certification, capability evidence, capability evaluations and per-Project availability (31 Aug–6 Sep).
 - **Builders and agencies.** Originally a second deployment mode (`KB_SANDBOX_PRODUCT_MODE=builder`), merged into the single product configuration on 4 Oct so an enterprise deployment acts as the agency. Each builder gets a workspace Project (and may work on others), and each client proposal is a Workstream (6 Sep). Agencies (curators) supervise their own builders through a metadata-only dashboard with completion tracking (1–3 Oct). Builders share progress updates by choice (6 Sep). Accepted proposals become client Projects through agency approval, with clients added as viewers (1 Oct). Client maintenance fees and the platform's share are recorded for invoicing (1 Oct). AI usage is metered against allowances, and builders can bring their own LLM (25 Sep).
+- **Builder edition rules (7 Oct).** The platform owner is every builder's agency, and new builder accounts join its roster. Would-be builders ask for an account at `/register`, which emails the owner their reason. On a builder's Project only the builder of record requests promotion, after confirming the client agreed; only the agency or admin decides, and the admin's own work is approved at once. Builders keep maintaining a Live Project as curator and can promote further Workstreams from it. Each client Project records who found the client: builder-found, Ember takes 5–10% and the builder keeps the rest; Ember-found, the builder earns 5–10%. Each builder can have their own rates, each fee can be adjusted, and the admin assigns the builder for an Ember-found Project. A builder's workspace holds 20 workstreams, and they can ask the admin for more with a reason. The admin chooses which knowledge bases each builder can see. Project owners, curators and builders can export the Project's own knowledge as a zip. A public Builder's Journey page (`/builders`) describes the programme.
 
 ### Validate
 
@@ -223,6 +226,8 @@ Status terms used below:
 
 ### Next
 
+- **Builder-only knowledge bases:** a knowledge base visible to one builder, not everyone in their workspace (assigned knowledge bases are currently attached to the whole workspace).
+- **Large knowledge exports:** stream the zip or link to original files, so a Project with large files isn't cut off by the host's response size limit.
 - Implement project-level **Requirement Status** for method prerequisites, using at least: Available, Needed, Optional, and Can Be Produced Elsewhere.
 - Decide whether the first Wizard experience remains conversation-led or gains a thin visual setup/review surface. Any UI should be metadata-driven rather than 18 bespoke flows.
 - Select the first 2–4 methods for deeper guided support based on value and observed demand.

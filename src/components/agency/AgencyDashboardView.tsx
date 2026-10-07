@@ -20,6 +20,7 @@ import { PROJECT_STATUS_LABELS, PROJECT_STATUS_STYLES } from '@/lib/projects/sta
 import { ClientFeeEditor } from './ClientFeeEditor'
 import { PlatformRateForm } from './PlatformRateForm'
 import { BuilderRatesForm } from './BuilderRatesForm'
+import { BuilderKnowledgeBasesForm } from './BuilderKnowledgeBasesForm'
 import { CATEGORY_LABELS } from '@/lib/projects/portfolio-categories'
 import { formatMoney, monthlyTotals } from './money'
 import {
@@ -224,11 +225,13 @@ function BuilderCard({
   viewerIsAdmin,
   agencyOptions,
   defaultRates,
+  knowledgeBaseOptions,
 }: {
   builder: AgencyBuilderRow
   viewerIsAdmin: boolean
   agencyOptions: { id: string; label: string }[]
   defaultRates: { platformRatePct: number; builderSharePct: number }
+  knowledgeBaseOptions: AgencyDashboard['assignableKnowledgeBases']
 }) {
   return (
     <li className="rounded border border-zinc-200 bg-white p-3 text-sm">
@@ -250,6 +253,9 @@ function BuilderCard({
         {builder.clientProjects.length === 1 ? '' : 's'} · last activity {formatDate(builder.lastActivityAt)}
       </p>
       {viewerIsAdmin && <BuilderRatesForm builderId={builder.builderId} rates={builder.rates} defaults={defaultRates} />}
+      {viewerIsAdmin && (
+        <BuilderKnowledgeBasesForm builderId={builder.builderId} assignedIds={builder.assignedKnowledgeBaseIds} options={knowledgeBaseOptions} />
+      )}
 
       {builder.spend && (
         <>
@@ -461,7 +467,7 @@ export function AgencyDashboardView({ dashboard }: { dashboard: AgencyDashboard 
             ) : (
               <ul className="flex flex-col gap-2">
                 {builders.map((b) => (
-                  <BuilderCard key={b.builderId} builder={b} viewerIsAdmin={viewerIsAdmin} agencyOptions={agencyOptions} defaultRates={{ platformRatePct, builderSharePct }} />
+                  <BuilderCard key={b.builderId} builder={b} viewerIsAdmin={viewerIsAdmin} agencyOptions={agencyOptions} defaultRates={{ platformRatePct, builderSharePct }} knowledgeBaseOptions={dashboard.assignableKnowledgeBases} />
                 ))}
               </ul>
             )}

@@ -108,6 +108,7 @@ const TOOLS = [
       'Requirements register: requirements traced to standards, regulations, contract terms and vendor claims, each with a verification method and pass criteria. Ember drafts them from your project knowledge and cites the clauses.',
       'Verification records: append-only pass/fail results backed by evidence, so the client can see what was tested and when.',
       'Curated knowledge: upload sources, review and approve them, and build a project wiki. Ember answers from approved project knowledge.',
+      'Knowledge from Ember: Ember can give you knowledge bases suited to your work, including ones you could not attach yourself. They appear in your workspace, marked Assigned by Ember.',
       'Your tools, your model: bring your own LLM, hosted or local (e.g. Ollama), or connect your own AI assistant to Ember through MCP.',
     ],
   },
@@ -132,7 +133,7 @@ const TOOLS = [
     stage: 'Reuse: start ahead next time',
     items: [
       'Methods: promote a workstream that worked into a reusable Method. Once published, you and other builders can start new workstreams from it.',
-      'Your knowledge, portable: export your knowledge base to your own files at any time.',
+      'Your knowledge, portable: export a project’s knowledge bases at any time from its page, as a zip of each source’s original file and approved text plus the project’s wiki articles.',
     ],
   },
 ]
@@ -145,7 +146,7 @@ const COMMUNITY = [
 const TRUST = [
   'Your projects are private by default: only the members you add can open them.',
   'Your conversations with Ember are yours alone, and your private notebooks and drafts never move into a client project.',
-  'Your knowledge base is yours: share it with your projects or export it whenever you like. Builder-only knowledge bases are coming next.',
+  'Your project knowledge is yours: export it whenever you like. Builder-only knowledge bases are coming next.',
   'Per-resource access groups, AI sensitivity levels that decide which models may see what, approval policies, and an audit log of every access change.',
 ]
 
