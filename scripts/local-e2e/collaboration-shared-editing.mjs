@@ -23,7 +23,7 @@ const sql = async (q, params = []) => {
   return rows.length ? Object.values(rows[0])[0] : null
 }
 await db.query(
-  'truncate collaboration_turns, collaboration_messages, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations'
+  'truncate collaboration_proposal_uses, collaboration_summaries, collaboration_turns, collaboration_messages, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions, collaboration_conversations'
 )
 await db.query('update projects set goal = null, objective = $2, starter_prompt = null where id = $1', [P, 'Replace the CAD system at the harbour dispatch centre'])
 await db.query(`update project_workstreams set summary = null, deliverables = '[{"label":"Call flow","completed":false},{"label":"Staffing plan","completed":false}]' where id = $1`, [W1])

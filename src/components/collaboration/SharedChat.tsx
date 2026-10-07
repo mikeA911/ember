@@ -7,6 +7,7 @@ import { CollaborationError } from '@/lib/collaboration/errors'
 import { orderForDisplay } from '@/lib/collaboration/format'
 import type { SharedChat as SharedChatData, SharedChatMessage, SharedEvidence } from '@/lib/collaboration/types'
 import { useCollaboration } from './CollaborationProvider'
+import { Proposals, SummaryPanel } from './SharedChatExtras'
 
 // Shared workspace sessions, Phase 3: a shared conversation's Ember chat.
 // One of the pair asks Ember from their session tab; answers come one at a
@@ -125,6 +126,8 @@ export function SharedChat({ conversationId, compact = false }: { conversationId
         )}
       </div>
 
+      <SummaryPanel chat={chat} onChanged={() => void reload()} />
+
       <ol className={`flex flex-col gap-3 ${compact ? 'max-h-[55vh] overflow-y-auto pr-1' : ''}`}>
         {chat.messages.length === 0 && (
           <li className="text-sm text-zinc-500">
@@ -132,7 +135,15 @@ export function SharedChat({ conversationId, compact = false }: { conversationId
           </li>
         )}
         {orderForDisplay(chat.messages).map((m) => (
-          <ChatItem key={m.id} message={m} prompt={m.promptId ? byId.get(m.promptId) : undefined} canAct={canAsk} onQueue={queue} />
+          <ChatItem
+            key={m.id}
+            message={m}
+            prompt={m.promptId ? byId.get(m.promptId) : undefined}
+            canAct={canAsk}
+            onQueue={queue}
+            chat={chat}
+            onChanged={() => void reload()}
+          />
         ))}
       </ol>
       <div ref={bottom} />
@@ -188,11 +199,15 @@ function ChatItem({
   prompt,
   canAct,
   onQueue,
+  chat,
+  onChanged,
 }: {
   message: SharedChatMessage
   prompt: SharedChatMessage | undefined
   canAct: boolean
   onQueue: (messageId: string) => void
+  chat: SharedChatData
+  onChanged: () => void
 }) {
   if (m.kind === 'reply') {
     const passedOn = prompt?.kind === 'comment' && prompt.turn ? ` · answering ${prompt.authorName}’s comment, passed on by ${prompt.turn.requestedByName}` : ''
@@ -221,6 +236,7 @@ function ChatItem({
                   ))}
               </p>
             )}
+            <Proposals message={m} chat={chat} onChanged={onChanged} />
           </>
         )}
       </li>

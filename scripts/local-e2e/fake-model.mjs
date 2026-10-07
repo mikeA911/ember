@@ -14,6 +14,11 @@
 // - contains "slow": answers after 4 seconds;
 // - contains "fail once": the first attempt fails (HTTP 500 to the SDK's
 //   first request and its two automatic retries), the next one answers;
+// - contains "propose a note" / "propose a goal": first calls
+//   propose_project_note (to the project team) / propose_field_edit
+//   (the Project goal), then answers;
+// - a summary request (a single message starting "There is no summary
+//   yet." or "Summary so far"): "Test summary of N earlier messages.";
 // - otherwise answers at once: Test answer to "<first line of the question>".
 // Every answer says how many earlier answers it was shown (to check what
 // reached the model), and GET /log lists the requests received.
@@ -66,6 +71,13 @@ const server = createServer(async (req, res) => {
   if (!req.url?.endsWith('/chat/completions')) return send(404, { error: { message: 'not found' } })
 
   const messages = body.messages ?? []
+  const conversation = messages.filter((m) => m.role !== 'system')
+  const first = String(conversation[0]?.content ?? '')
+  if (conversation.length === 1 && /^(There is no summary yet\.|Summary so far)/.test(first)) {
+    log.push({ at: new Date().toISOString(), question: '(summary)', messages: [{ role: 'user', content: first.slice(0, 4000) }], tools: [] })
+    const count = (first.split('Messages since then:')[1] ?? '').split('\n\n').filter((l) => l.trim()).length
+    return send(200, completion(body.model, { role: 'assistant', content: `Test summary of ${count} earlier messages.` }))
+  }
   const { index, text } = lastUser(messages)
   const q = question(text)
   const toolResults = messages.slice(index + 1).filter((m) => m.role === 'tool')
@@ -77,6 +89,15 @@ const server = createServer(async (req, res) => {
     return send(500, { error: { message: 'fake model failure', type: 'server_error' } })
   }
   if (/slow/i.test(q)) await new Promise((r) => setTimeout(r, 4000))
+  const offered = (body.tools ?? []).map((t) => t.function?.name)
+  const call = (name, args) =>
+    send(200, completion(body.model, { role: 'assistant', content: null, tool_calls: [{ id: `call-${Date.now()}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }] }))
+  if (/propose a note/i.test(q) && toolResults.length === 0 && offered.includes('propose_project_note')) {
+    return call('propose_project_note', { toProjectTeam: true, subject: 'Call flow update', body: 'The call flow is mapped; staffing is next.' })
+  }
+  if (/propose a goal/i.test(q) && toolResults.length === 0 && offered.includes('propose_field_edit')) {
+    return call('propose_field_edit', { field: 'project_goal', text: 'Replace the CAD by March' })
+  }
   if (/search/i.test(q) && toolResults.length === 0 && (body.tools ?? []).some((t) => t.function?.name === 'search_project_knowledge')) {
     return send(
       200,
@@ -87,7 +108,8 @@ const server = createServer(async (req, res) => {
       })
     )
   }
-  const searched = toolResults.length ? ` (searched: ${JSON.parse(toolResults[0].content).results?.length ?? 0} results)` : ''
+  const firstResult = toolResults.length ? JSON.parse(toolResults[0].content) : null
+  const searched = firstResult?.results ? ` (searched: ${firstResult.results.length} results)` : firstResult?.proposed ? ' (proposed)' : ''
   return send(200, completion(body.model, { role: 'assistant', content: `Test answer to "${q}"${searched}. Earlier answers shown: ${earlierAnswers}.` }))
 })
 

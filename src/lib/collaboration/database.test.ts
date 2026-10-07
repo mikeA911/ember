@@ -10,6 +10,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261023100001_collaboration_sessions.sql',
   'supabase/migrations/20261024100001_collaboration_shared_editing.sql',
   'supabase/migrations/20261025100001_collaboration_shared_chat.sql',
+  'supabase/migrations/20261027100001_collaboration_shared_chat_tools.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const host = id(1), guest = id(2), outsider = id(3), third = id(4)
@@ -65,7 +66,8 @@ beforeAll(async () => {
         nullif(current_setting('test.actor', true), ''))::uuid $$;
     create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('test.jwt', true), ''), '{}')::jsonb $$;
     create table profiles(id uuid primary key, email text not null, full_name text, is_active boolean not null default true, role text not null default 'member');
-    create table projects(id uuid primary key, name text not null, goal text, objective text, starter_prompt text);
+    create table projects(id uuid primary key, name text not null, goal text, objective text, starter_prompt text, visibility text not null default 'private');
+    create table project_notes(id uuid primary key, project_id uuid references projects(id), author_id uuid references profiles(id));
     create table project_members(project_id uuid references projects(id), user_id uuid references profiles(id), role text not null default 'viewer', status text not null default 'active');
     create table project_workstreams(id uuid primary key, project_id uuid references projects(id), name text not null, summary text, deliverables jsonb not null default '[]');
     -- The app's permission helpers, as defined in 20260808190009 / 20260810120001.
@@ -97,7 +99,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await db.exec(`
     reset role;
-    truncate collaboration_turns, collaboration_messages, knowledge_sources, wiki_articles, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
+    truncate collaboration_proposal_uses, collaboration_summaries, collaboration_turns, collaboration_messages, project_notes, knowledge_sources, wiki_articles, collaboration_saves, collaboration_drafts, collaboration_events, collaboration_watchers, collaboration_viewers, collaboration_participants, collaboration_invitations, collaboration_sessions,
       collaboration_conversations, conversations, project_members, project_workstreams, projects, profiles cascade;
     insert into profiles values ('${host}', 'host@example.test', 'Hana Host', true), ('${guest}', 'guest@example.test', 'Gil Guest', true),
       ('${outsider}', 'out@example.test', 'Olu Outsider', true), ('${third}', 'third@example.test', null, true);
@@ -1024,5 +1026,137 @@ describe('shared chat (Phase 3)', () => {
     expect((await errorOf(call('collaboration_common_evidence', conversationId, '[]'))).code).toBe('42501')
     await as(third, { client_id: 'chatbot' })
     expect((await errorOf(call('collaboration_post_comment', conversationId, 'From MCP', request()))).code).toBe('42501')
+  })
+})
+
+describe('shared chat summary and proposals (Phase 3 completed)', () => {
+  const ks = (n: number) => ({ type: 'knowledge_source', id: id(n) })
+  async function service<T = Json>(fn: string, ...args: unknown[]): Promise<T> {
+    await db.exec('reset role; set role service_role')
+    try {
+      return await call<T>(fn, ...args)
+    } finally {
+      await db.exec('reset role; set role authenticated')
+    }
+  }
+  // A live session with third as viewer and one answered question; the
+  // answer drew on `evidence` and carries `proposals`.
+  async function answered(evidence: Json[] = [], proposals: Json[] = []) {
+    const live = await liveSession()
+    const [conversation] = await call<Json[]>('collaboration_history')
+    await call('collaboration_add_viewer', conversation.id, third)
+    await call('collaboration_ask_ember', live.sessionId, hostTab, 'Draft a note', crypto.randomUUID())
+    const claim = await service('collaboration_claim_turn', conversation.id, host)
+    const done = await service('collaboration_complete_turn', claim.turnId, claim.leaseId, 'Here is a draft.', JSON.stringify(evidence), 'p', 'm')
+    if (proposals.length) await service('collaboration_set_reply_proposals', claim.turnId, claim.leaseId, JSON.stringify(proposals))
+    return { ...live, conversationId: conversation.id as string, claim, replyId: done.replyId as string }
+  }
+  const note = { kind: 'note', recipientType: 'project_team', recipientUserId: null, recipientName: 'the project team', subject: 'S', body: 'B' }
+  const fieldText = { kind: 'field', field: 'project_goal', targetId: project, targetName: null, text: 'New goal' }
+  const sources = () =>
+    asAdmin(`insert into knowledge_sources values ('${id(70)}', 'Everyone', '{${host},${guest},${third}}'), ('${id(71)}', 'Pair only', '{${host},${guest}}')`)
+
+  it('proposals are stored on the answer once, and shown only where the answer is', async () => {
+    await sources()
+    const { conversationId, claim, replyId } = await answered([ks(71)], [note, fieldText])
+    await service('collaboration_set_reply_proposals', claim.turnId, claim.leaseId, JSON.stringify([note]))
+    const reply = async () => (await call('collaboration_chat', conversationId)).messages.find((m: Json) => m.id === replyId)
+    expect((await reply()).proposals).toEqual([note, fieldText])
+    await as(third)
+    expect(await reply()).toMatchObject({ hidden: true })
+    expect((await reply()).proposals).toBeUndefined()
+    expect((await errorOf(service('collaboration_set_reply_proposals', claim.turnId, id(99), '[]'))).code).toBe('EC003')
+    expect((await errorOf(service('collaboration_set_reply_proposals', claim.turnId, claim.leaseId, JSON.stringify([note, note, note, note])))).message).toMatch(/Malformed/)
+  })
+
+  it('a note proposal is sent once: sending, then sent; nobody else can take it over; viewers do nothing', async () => {
+    const { conversationId, replyId } = await answered([], [note, fieldText])
+    const versionBefore = (await call('collaboration_chat', conversationId)).state.version
+    expect((await errorOf(call('collaboration_update_proposal', replyId, 0, 'sent', '{}'))).message).toMatch(/Start sending/)
+    await call('collaboration_update_proposal', replyId, 0, 'sending', '{}')
+    await as(guest)
+    expect((await errorOf(call('collaboration_update_proposal', replyId, 0, 'sending', '{}'))).code).toBe('EC004')
+    await as(host)
+    await call('collaboration_update_proposal', replyId, 0, 'sent', JSON.stringify({ noteId: id(80) }))
+    expect((await errorOf(call('collaboration_update_proposal', replyId, 0, 'sending', '{}'))).message).toMatch(/already sent/)
+    expect((await errorOf(call('collaboration_update_proposal', replyId, 1, 'sending', '{}'))).code).toBe('EC001')
+    await call('collaboration_update_proposal', replyId, 1, 'applied', '{}')
+    const chat = await call('collaboration_chat', conversationId)
+    expect(chat.proposalUses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ index: 0, status: 'sent', byName: 'Hana Host', result: { noteId: id(80) } }),
+        expect.objectContaining({ index: 1, status: 'applied' }),
+      ])
+    )
+    expect(chat.state.version).not.toBe(versionBefore)
+    await as(third)
+    expect((await errorOf(call('collaboration_update_proposal', replyId, 1, 'dismissed', '{}'))).code).toBe('42501')
+    await as(host, { client_id: 'chatbot' })
+    expect((await errorOf(call('collaboration_update_proposal', replyId, 1, 'dismissed', '{}'))).code).toBe('42501')
+  })
+
+  it('a wider audience: every active Project member must be able to open the evidence; a non-private Project takes field text only without evidence', async () => {
+    await sources()
+    const { conversationId } = await answered()
+    const visible = (evidence: Json[], requirePrivate = false) => call<boolean>('collaboration_evidence_project_visible', conversationId, JSON.stringify(evidence), requirePrivate)
+    expect(await visible([])).toBe(true)
+    expect(await visible([ks(70)])).toBe(true)
+    // Pair only: third is a Project member who can't open it.
+    expect(await visible([ks(71)])).toBe(false)
+    await asAdmin(`update projects set visibility = 'internal' where id = '${project}'`)
+    expect(await visible([ks(70)], true)).toBe(false)
+    expect(await visible([], true)).toBe(true)
+    expect(await visible([ks(70)], false)).toBe(true)
+    await as(third)
+    expect((await errorOf(visible([]))).code).toBe('42501')
+  })
+
+  it('summaries: written by the service role, newer only, read under the evidence rule, and offered to the next turn', async () => {
+    await sources()
+    const { sessionId, conversationId } = await answered()
+    expect(await service('collaboration_record_summary', conversationId, 4, 'Hana asked for a draft.', JSON.stringify([ks(71)]), 'p', 'm')).toBeTruthy()
+    expect(await service('collaboration_record_summary', conversationId, 3, 'Older', '[]', 'p', 'm')).toBeNull()
+    expect((await errorOf(call('collaboration_record_summary', conversationId, 9, 'x', '[]', 'p', 'm'))).code).toBe('42501')
+    expect((await call('collaboration_chat', conversationId)).summary).toMatchObject({ content: 'Hana asked for a draft.', uptoOrd: 4 })
+    await as(third)
+    const viewerChat = await call('collaboration_chat', conversationId)
+    expect(viewerChat.summary).toBeNull()
+    expect(viewerChat.summaryHidden).toBe(true)
+    await as(host)
+    await call('collaboration_ask_ember', sessionId, hostTab, 'Next', crypto.randomUUID())
+    const claim = await service('collaboration_claim_turn', conversationId, host)
+    const context = await service('collaboration_turn_context', claim.turnId, claim.leaseId)
+    expect(context.summary).toMatchObject({ uptoOrd: 4, evidence: [ks(71)] })
+    expect(context.unsummarized).toEqual([])
+  })
+
+  it('messages beyond the latest 30 that the summary does not cover are handed over for summarizing', async () => {
+    const { sessionId, conversationId } = await answered()
+    for (let i = 0; i < 20; i++) {
+      await call('collaboration_ask_ember', sessionId, hostTab, `Q${i}`, crypto.randomUUID())
+      const c = await service('collaboration_claim_turn', conversationId, host)
+      await service('collaboration_complete_turn', c.turnId, c.leaseId, `A${i}`, '[]', 'p', 'm')
+    }
+    // 2 + 40 messages; the next question sees the latest 30.
+    await call('collaboration_ask_ember', sessionId, hostTab, 'Last', crypto.randomUUID())
+    const claim = await service('collaboration_claim_turn', conversationId, host)
+    const context = await service('collaboration_turn_context', claim.turnId, claim.leaseId)
+    expect(claim.history).toHaveLength(30)
+    expect(context.unsummarized).toHaveLength(12)
+    expect(context.unsummarized[0]).toMatchObject({ kind: 'message', content: 'Draft a note', authorName: 'Hana Host' })
+    expect(context.unsummarized.at(-1)).toMatchObject({ kind: 'reply', content: 'A4' })
+    await service('collaboration_record_summary', conversationId, context.unsummarized.at(-1).ord, 'Summary', '[]', 'p', 'm')
+    expect((await service('collaboration_turn_context', claim.turnId, claim.leaseId)).unsummarized).toEqual([])
+  })
+
+  it('publishing a summary records the note, only for one of the pair and their own note', async () => {
+    const { conversationId } = await answered()
+    const summaryId = await service<string>('collaboration_record_summary', conversationId, 2, 'Summary', '[]', 'p', 'm')
+    await asAdmin(`insert into project_notes values ('${id(81)}', '${project}', '${guest}'), ('${id(82)}', '${project}', '${host}')`)
+    expect((await errorOf(call('collaboration_mark_summary_published', summaryId, id(81)))).message).toMatch(/isn't yours/)
+    await call('collaboration_mark_summary_published', summaryId, id(82))
+    expect((await call('collaboration_chat', conversationId)).summary).toMatchObject({ publishedNoteId: id(82) })
+    await as(third)
+    expect((await errorOf(call('collaboration_mark_summary_published', summaryId, id(82)))).code).toBe('42501')
   })
 })
