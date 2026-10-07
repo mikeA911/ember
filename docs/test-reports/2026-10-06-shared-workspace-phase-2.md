@@ -2,7 +2,7 @@
 
 Date: 6 October 2026. Plan: [shared workspace sessions](../dev-request-shared-workspace-sessions.md#phase-2-as-built-6-october-2026). Phase 1: [test report](2026-10-06-shared-workspace-phase-1.md).
 
-Everything below ran in a cloud development container against **local, disposable** databases. The Phase 2 migration (`20261024100001_collaboration_shared_editing.sql`) is **not** on the live backend yet; applying it needs the owner's go-ahead (see the end).
+Everything below ran in a cloud development container against **local, disposable** databases. The Phase 2 migration (`20261024100001_collaboration_shared_editing.sql`) was then applied to the live backend by the owner on 6 October 2026 and verified (see the end).
 
 ## What was tested
 
@@ -35,13 +35,17 @@ The first runs found only test-timing issues (the other browser shows a draft's 
 
 ## Not verified
 
-- **The live backend.** The Phase 2 migration isn't applied there.
+- **The live backend, beyond the migration.** The migration is applied and verified (below), but no session has run there.
 - **Remote locations.** Latencies are local; a typed draft reaches the other browser after the 400 ms pause plus up to one 2-second poll.
 - **Two people typing.** By design only the person in control types; there's no simultaneous editing of one field, so no merge.
 - **Ordinary edits during a session.** Detected at save time as a conflict, as tested; an ordinary edit made *after* a shared save still overwrites without warning, as it always has (no version column was added).
 - **The host reclaiming control mid-sentence.** The controller's last ~0.4 s of typing can be lost then (it is sent before a normal handover or leave).
 
-## Applying to the live backend (needs the owner's go-ahead)
+## Applied to the live backend (6 October 2026)
+
+The owner pasted the file into the Supabase SQL Editor. Only its first 20,054 characters ran -- the editor stops at about 20,000 and still reports success when the cut falls between statements -- which left out `collaboration_save_field`, `collaboration_set_deliverable`, the grant/revoke lines and the read-only policy step (check: `9 | 55 | 23 | 21 | 0`). Reproduced exactly on a local copy. The owner then ran the rest of the file (from `collaboration_save_field` to the end, about 6,300 characters; re-runnable), after which the check returned `9 | 57 | 25 | 27 | 0`, matching a local full build. Locally, the same sequence also leaves no collaboration function callable by signed-out visitors. **Paste-in SQL files must stay under 20,000 characters; split longer ones into parts.**
+
+### What the file does
 
 One file: `supabase/migrations/20261024100001_collaboration_shared_editing.sql`. It adds two `collaboration_*` tables (RLS on, no client grants) and `collaboration_*` functions, replaces three Phase 1 collaboration functions (the two snapshots and session ending) with versions that also carry the shared fields, and calls `apply_oauth_read_only_policies()`, which only adds missing read-only policies. It changes no other table, policy or function and deletes nothing; re-running it is harmless. It needs Phase 1's migration, which is already applied.
 

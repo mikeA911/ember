@@ -3705,6 +3705,19 @@ interface DatabaseDefinition {
         Args: { p_session: string; p_connection: string; p_generation: number; p_workstream: string; p_index: number; p_label: string; p_completed: boolean; p_request: string }
         Returns: unknown
       }
+      // Phase 3 (20261025100001).
+      collaboration_chat: { Args: { p_conversation: string }; Returns: unknown }
+      collaboration_ask_ember: { Args: { p_session: string; p_connection: string; p_content: string; p_request: string }; Returns: unknown }
+      collaboration_post_comment: { Args: { p_conversation: string; p_content: string; p_request: string }; Returns: unknown }
+      collaboration_queue_turn: { Args: { p_session: string; p_connection: string; p_message: string }; Returns: unknown }
+      collaboration_common_evidence: { Args: { p_conversation: string; p_evidence: unknown }; Returns: unknown }
+      // Service role only (the turn runner).
+      collaboration_claim_turn: { Args: { p_conversation: string; p_actor: string }; Returns: unknown }
+      collaboration_complete_turn: {
+        Args: { p_turn: string; p_lease: string; p_content: string; p_evidence: unknown; p_provider: string; p_model: string }
+        Returns: unknown
+      }
+      collaboration_fail_turn: { Args: { p_turn: string; p_lease: string; p_error: string }; Returns: unknown }
       collaboration_candidates: { Args: { p_project: string }; Returns: unknown }
       collaboration_history: { Args: Record<string, never>; Returns: unknown }
       collaboration_conversation: { Args: { p_conversation: string }; Returns: unknown }

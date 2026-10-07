@@ -75,6 +75,8 @@ export interface SessionSnapshot {
   // The shared fields on the page being shown, and every unsaved draft.
   fields: SharedFieldState[]
   openDrafts: OpenDraft[]
+  // Phase 3: the shared chat's state.
+  chat: SharedChatState
 }
 
 // A live session on a conversation the caller views, which they may watch.
@@ -102,6 +104,7 @@ export interface WatchSnapshot {
   location: { workstreamId: string | null; workstreamName: string | null }
   thisTabWatching: boolean
   fields: SharedFieldState[]
+  chat: SharedChatState
 }
 
 export interface CollaborationInvitation {
@@ -165,4 +168,58 @@ export interface SharedConversationShell {
     startedAt: string
     endedAt: string | null
   }[]
+}
+
+// Phase 3: the shared Ember chat.
+
+// Polled with the session (no content): reload the chat when version
+// changes; start the turn runner when needsRunner.
+export interface SharedChatState {
+  version: string
+  waiting: number
+  answering: boolean
+  needsRunner: boolean
+}
+
+export type SharedTurnStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
+
+export interface SharedEvidence {
+  type: 'knowledge_source' | 'wiki_article'
+  // A knowledge source's id, or a wiki article's slug.
+  id: string
+  title?: string
+}
+
+export interface SharedChatMessage {
+  id: string
+  seq: number
+  // message: one of the pair asking Ember; comment: a viewer's; reply: Ember's.
+  kind: 'message' | 'comment' | 'reply'
+  authorId: string | null
+  authorName: string | null
+  createdAt: string
+  // A reply: the question or comment it answers.
+  promptId: string | null
+  // A question or comment: its turn, if it has one.
+  turn: {
+    id: string
+    status: SharedTurnStatus
+    requestedById: string
+    requestedByName: string
+    replyId: string | null
+    error: string | null
+  } | null
+  // Absent when hidden: the caller can't open everything a reply drew on.
+  content?: string
+  evidence?: SharedEvidence[]
+  hidden?: true
+}
+
+export interface SharedChat {
+  conversationId: string
+  projectId: string
+  myRole: 'participant' | 'viewer'
+  liveSessionId: string | null
+  state: SharedChatState
+  messages: SharedChatMessage[]
 }

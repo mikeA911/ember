@@ -3,13 +3,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/browser'
-import { collaborationApi, sendDisconnectBeacon } from '@/lib/collaboration/api'
+import { collaborationApi, sendDisconnectBeacon, startSharedTurnRunner } from '@/lib/collaboration/api'
 import { getTabConnectionId } from '@/lib/collaboration/connection'
 import { CollaborationError } from '@/lib/collaboration/errors'
 import { decideFollow, followTarget } from '@/lib/collaboration/follow'
 import { sharedPath } from '@/lib/collaboration/locations'
 import { nextPollDelay, POLL } from '@/lib/collaboration/transport'
-import type { CollaborationInvitation, CollaborationStatus, SessionSnapshot, SharedTextFieldName, WatchableSession, WatchSnapshot } from '@/lib/collaboration/types'
+import type {
+  CollaborationInvitation,
+  CollaborationStatus,
+  SessionSnapshot,
+  SharedChat,
+  SharedTextFieldName,
+  WatchableSession,
+  WatchSnapshot,
+} from '@/lib/collaboration/types'
 
 // Shared workspace sessions, Phase 1 (docs/dev-request-shared-workspace-
 // sessions.md). Mounted by the signed-in layout only when the feature flag
@@ -67,6 +75,14 @@ interface CollaborationContextValue {
   // A field with typing not yet sent registers how to send it, so it goes
   // out before control is handed over or the person leaves.
   registerPendingDraft: (key: string, flush: () => Promise<void>) => () => void
+  // Phase 3: the shared Ember chat. These throw a CollaborationError for
+  // the chat to show (not the bar).
+  chatOpen: boolean
+  setChatOpen: (open: boolean) => void
+  loadChat: (conversationId: string) => Promise<SharedChat>
+  askEmber: (content: string, request: string) => Promise<void>
+  postComment: (conversationId: string, content: string, request: string) => Promise<void>
+  queueTurn: (messageId: string) => Promise<void>
   dismissEnded: () => void
   dismissError: () => void
 }
@@ -410,6 +426,21 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
 
+  // Phase 3: shared chat. Work waiting with nobody running it (after a
+  // reload, a closed tab, or a run that stopped): start the runner from
+  // this joined tab, at most every 15 seconds. Both of the pair may do so;
+  // the database runs one turn at a time.
+  const [chatOpen, setChatOpen] = useState(false)
+  const loadChat = useCallback((conversationId: string) => collaborationApi.chat(supabase, conversationId), [supabase])
+  const runnerKickedRef = useRef(0)
+  const needsRunner = !!session && session.status === 'active' && session.thisTabJoined && session.chat?.needsRunner
+  useEffect(() => {
+    if (!needsRunner || !session) return
+    if (Date.now() - runnerKickedRef.current < 15_000) return
+    runnerKickedRef.current = Date.now()
+    void startSharedTurnRunner(session.conversationId)
+  }, [needsRunner, session])
+
   const pendingDraftsRef = useRef(new Map<string, () => Promise<void>>())
   const flushPendingDrafts = useCallback(async () => {
     await Promise.allSettled([...pendingDraftsRef.current.values()].map((flush) => flush()))
@@ -519,6 +550,27 @@ export function CollaborationProvider({ userId, children }: { userId: string; ch
       const id = sessionRef.current?.thisTabJoined ? sessionRef.current.id : watchRef.current?.id
       if (id) writeAway(id, false)
       setFollowing(true)
+    },
+    chatOpen,
+    setChatOpen,
+    loadChat,
+    askEmber: async (content, request) => {
+      const s = sessionRef.current
+      if (!s || !connection || !s.thisTabJoined) throw new CollaborationError('This tab isn’t in the live session.', 'stale')
+      await collaborationApi.askEmber(supabase, s.id, connection, content, request)
+      void startSharedTurnRunner(s.conversationId)
+      pollRef.current()
+    },
+    postComment: async (conversationId, content, request) => {
+      await collaborationApi.postComment(supabase, conversationId, content, request)
+      pollRef.current()
+    },
+    queueTurn: async (messageId) => {
+      const s = sessionRef.current
+      if (!s || !connection || !s.thisTabJoined) throw new CollaborationError('This tab isn’t in the live session.', 'stale')
+      await collaborationApi.queueTurn(supabase, s.id, connection, messageId)
+      void startSharedTurnRunner(s.conversationId)
+      pollRef.current()
     },
     dismissEnded: () => setEndedSession(null),
     dismissError: () => setError(null),

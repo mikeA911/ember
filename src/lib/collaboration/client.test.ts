@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { toCollaborationError } from './errors'
-import { minutesLabel } from './format'
+import { minutesLabel, orderForDisplay } from './format'
 import { decideFollow } from './follow'
 import { parseSharedLocation, sharedPath } from './locations'
 import { nextPollDelay, POLL } from './transport'
@@ -38,6 +38,7 @@ function session(over: Partial<SessionSnapshot> = {}): SessionSnapshot {
     watching: [],
     fields: [],
     openDrafts: [],
+    chat: { version: '0:0', waiting: 0, answering: false, needsRunner: false },
     ...over,
   }
 }
@@ -132,5 +133,14 @@ describe('labels', () => {
     expect(minutesLabel(12 * 60 + 59)).toBe('12 min')
     expect(minutesLabel(60 * 60)).toBe('1 h')
     expect(minutesLabel(65 * 60)).toBe('1 h 5 min')
+  })
+})
+
+describe('shared chat order', () => {
+  it('shows each answer directly under its question, even when it arrived after later questions', () => {
+    const msg = (id: string, seq: number, kind: 'message' | 'comment' | 'reply', promptId: string | null = null) =>
+      ({ id, seq, kind, promptId, authorId: null, authorName: null, createdAt: '', turn: null }) as const
+    const ordered = orderForDisplay([msg('q1', 1, 'message'), msg('q2', 2, 'message'), msg('a1', 3, 'reply', 'q1'), msg('c', 4, 'comment'), msg('a2', 5, 'reply', 'q2')])
+    expect(ordered.map((m) => m.id)).toEqual(['q1', 'a1', 'q2', 'a2', 'c'])
   })
 })
