@@ -2,7 +2,7 @@
 
 Date: 7 October 2026. Plan: [shared workspace sessions](../dev-request-shared-workspace-sessions.md#phase-3-completed-7-october-2026). Earlier: [Phase 3](2026-10-06-shared-workspace-phase-3.md).
 
-Everything below ran in a cloud development container against **local, disposable** databases, with a stand-in AI model. The migration (`20261027100001_collaboration_shared_chat_tools.sql`) is **not applied** to the live backend.
+Everything below ran in a cloud development container against **local, disposable** databases, with a stand-in AI model. The migration (`20261027100001_collaboration_shared_chat_tools.sql`) was then applied to the live backend by the owner on 7 October 2026 and verified (see the end).
 
 ## What was tested
 
@@ -28,10 +28,14 @@ New browser steps:
 ## Not verified
 
 - **A real model**: whether it proposes at the right moments, and summary quality.
-- **The live backend**: the migration isn't applied.
+- **The live backend, beyond the migration**: applied and verified (below), but not yet used there.
 - **Typing over a proposal**: if the person in control has typed into the same field in the same control turn, their typed text stays on their screen instead of the proposed text until they reload the field; the shared draft itself holds the proposal.
 
-## Applying to the live backend (needs the owner's go-ahead)
+## Applied to the live backend (7 October 2026)
+
+The owner ran the two paste-in parts in the Supabase SQL Editor; the verification query below returned `13 | 89 | 42 | 41 | 2`, matching a local full build.
+
+### What the file does
 
 One migration: `supabase/migrations/20261027100001_collaboration_shared_chat_tools.sql`. It adds a `proposals` column to `collaboration_messages` (Phase 3's own table), two `collaboration_*` tables (RLS on; signed-in users may SELECT summaries only through their read policy), `collaboration_*` functions (three callable only by the service role), replaces `collaboration_chat` and `collaboration_chat_state_json` with versions that also carry proposals and summaries, and calls `apply_oauth_read_only_policies()`, which only adds missing read-only policies. It changes no other table and deletes nothing; re-running it is harmless. It needs `20261025100001` (applied).
 
