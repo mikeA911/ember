@@ -127,7 +127,7 @@ Not yet recorded:
 
 The guide says prompts and documents "never leave our infrastructure". With Ember on Vercel, that is not yet true:
 
-1. **Every prompt passes through Vercel** (region `hkg1`) on its way to the model. That already applies to all Ember data, including Project content.
+1. **Every prompt passes through Vercel** (region `sin1`) on its way to the model. That already applies to all Ember data, including Project content.
 2. **Other AI calls besides chat** use the platform's default models, which are cloud providers today. Ember splits them in two:
    - **Content calls** (presentation generation and Wiki AI drafts) now check sensitivity, so Confidential or Restricted material is **blocked** from cloud models instead of sent.
    - **Foundational calls** (document enrichment on upload and all embeddings) may use **any model** by Sandz policy. Document text from a Restricted Project still goes to the default enrichment and embedding models. To keep it on Zadara, either make the local models those defaults, or set `EMBER_GATE_FOUNDATIONAL_AI=true` on the deployment so these calls are checked too.
