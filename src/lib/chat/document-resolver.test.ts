@@ -19,7 +19,7 @@ describe('resolveDocumentArtifact', () => {
     expect(result).toEqual({
       title: 'OpenAPI Discovery Plan',
       artifactType: 'design_note',
-      route: '/projects/p1/workstreams/w1',
+      route: '/projects/p1/workstreams/w1#art-1',
       workstreamId: 'w1',
       projectId: 'p1',
     })

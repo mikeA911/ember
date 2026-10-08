@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from 'react'
 import {
   sendChatMessageAction,
@@ -163,6 +163,7 @@ export function ChatSession({
   className?: string
 }) {
   const pathname = usePathname()
+  const router = useRouter()
   // Owner Roadmap and Ember Feedback Board, Phase 1. showFeedbackChooser is
   // the three-choice screen; feedbackCategory non-null means an actual
   // feedback conversation is active (always a fresh conversation, never
@@ -915,28 +916,40 @@ export function ChatSession({
   const currentPageProjectName = currentPageProjectId ? projects.find((p) => p.id === currentPageProjectId)?.name : undefined
   const showScopeMismatchNudge = Boolean(currentPageProjectId && currentPageProjectId !== projectId && currentPageProjectName)
 
-  // A link inside the floating panel (an answer's "Label →" links, a
-  // Documents "Open →", a citation) navigates the page BEHIND the panel. On
-  // a phone, or with the panel enlarged, that page is almost entirely
-  // covered, so the click looked like it did nothing. Close the panel on an
-  // in-app link click there; reopening Ember resumes the same conversation
-  // (see the auto-resume effect above). Left open on a desktop-sized
-  // compact panel, where the new page is visible beside it.
-  function closeIfLinkHidesPage(e: MouseEvent<HTMLDivElement>) {
-    if (!isFloating || !onClose) return
+  // Clicks on in-app links inside the panel (an answer's "Label →" links, a
+  // Documents "Open →", a citation). Two ways those looked like they did
+  // nothing:
+  // - The link pointed at the page already open behind the panel (e.g. a
+  //   document Ember just added to the workstream being viewed). The page
+  //   was rendered before Ember created it, so refresh it, and announce the
+  //   #fragment so the target (see WorkstreamArtifactList) opens itself.
+  // - The new page loads BEHIND the panel, which on a phone, or with the
+  //   panel enlarged, covers almost all of it. Close the panel there;
+  //   reopening Ember resumes the same conversation (see the auto-resume
+  //   effect above). Left open on a compact panel on a larger screen,
+  //   where the page is visible beside it.
+  function handleLinkClick(e: MouseEvent<HTMLDivElement>) {
     // next/link calls preventDefault when it takes over the navigation, so
-    // this only fires for a click that actually moved the app to a new page.
+    // this only fires for a click that actually navigates within the app.
     if (!e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
     const anchor = (e.target as Element).closest('a[href]')
     const href = anchor?.getAttribute('href')
     if (!href?.startsWith('/') || href.startsWith('//') || anchor?.getAttribute('target') === '_blank') return
-    if (panelLarge || !window.matchMedia('(min-width: 640px)').matches) onClose()
+    if (href.split(/[?#]/)[0] === pathname) {
+      router.refresh()
+      if (href.includes('#')) {
+        const newURL = new URL(href, window.location.origin).href
+        // After next/link has applied the URL change.
+        setTimeout(() => window.dispatchEvent(new HashChangeEvent('hashchange', { newURL })), 0)
+      }
+    }
+    if (isFloating && onClose && (panelLarge || !window.matchMedia('(min-width: 640px)').matches)) onClose()
   }
 
   return (
     <div
       ref={ref}
-      onClick={closeIfLinkHidesPage}
+      onClick={handleLinkClick}
       className={
         className ??
         // Never wider/taller than the viewport, so the bubble's panel fits a
