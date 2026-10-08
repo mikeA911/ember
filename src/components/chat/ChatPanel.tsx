@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from 'react'
 import {
   sendChatMessageAction,
   saveConversationAsNoteAction,
@@ -915,9 +915,28 @@ export function ChatSession({
   const currentPageProjectName = currentPageProjectId ? projects.find((p) => p.id === currentPageProjectId)?.name : undefined
   const showScopeMismatchNudge = Boolean(currentPageProjectId && currentPageProjectId !== projectId && currentPageProjectName)
 
+  // A link inside the floating panel (an answer's "Label →" links, a
+  // Documents "Open →", a citation) navigates the page BEHIND the panel. On
+  // a phone, or with the panel enlarged, that page is almost entirely
+  // covered, so the click looked like it did nothing. Close the panel on an
+  // in-app link click there; reopening Ember resumes the same conversation
+  // (see the auto-resume effect above). Left open on a desktop-sized
+  // compact panel, where the new page is visible beside it.
+  function closeIfLinkHidesPage(e: MouseEvent<HTMLDivElement>) {
+    if (!isFloating || !onClose) return
+    // next/link calls preventDefault when it takes over the navigation, so
+    // this only fires for a click that actually moved the app to a new page.
+    if (!e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    const anchor = (e.target as Element).closest('a[href]')
+    const href = anchor?.getAttribute('href')
+    if (!href?.startsWith('/') || href.startsWith('//') || anchor?.getAttribute('target') === '_blank') return
+    if (panelLarge || !window.matchMedia('(min-width: 640px)').matches) onClose()
+  }
+
   return (
     <div
       ref={ref}
+      onClick={closeIfLinkHidesPage}
       className={
         className ??
         // Never wider/taller than the viewport, so the bubble's panel fits a

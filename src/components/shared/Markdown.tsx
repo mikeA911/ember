@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
@@ -33,11 +34,27 @@ export function Markdown({ text }: { text: string }) {
           ol: ({ children }) => <ol className="mb-3 list-decimal pl-5 last:mb-0">{children}</ol>,
           li: ({ children }) => <li className="mb-1">{children}</li>,
           strong: ({ children }) => <strong className="font-semibold text-zinc-900">{children}</strong>,
-          a: ({ children, href }) => (
-            <a href={href} target="_blank" rel="noreferrer" className="text-blue-700 underline">
-              {children}
-            </a>
-          ),
+          a: ({ children, href }) => {
+            // The sanitizer drops an href whose scheme it doesn't allow --
+            // e.g. a model-written `[Project](project:abc)` in an Ember
+            // answer -- leaving a link-styled element a click does nothing
+            // on. Show the text plainly instead.
+            if (!href) return <>{children}</>
+            // In-app paths navigate in this tab like any other app link,
+            // rather than opening a second copy of the app.
+            if (href.startsWith('/') && !href.startsWith('//')) {
+              return (
+                <Link href={href} className="text-blue-700 underline">
+                  {children}
+                </Link>
+              )
+            }
+            return (
+              <a href={href} target="_blank" rel="noreferrer" className="text-blue-700 underline">
+                {children}
+              </a>
+            )
+          },
           hr: () => <hr className="my-4 border-zinc-200" />,
           // Source is arbitrary Markdown content (a Supabase Storage public
           // URL for Blog images), not a static/known-dimension asset
