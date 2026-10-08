@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { WorkstreamArtifactStatus } from '@/types/database'
 
 type Filter = 'all' | 'ready_for_review' | 'approved'
@@ -21,6 +21,44 @@ export function WorkstreamArtifactList({ items }: { items: { id: string; status:
   const countFor = (f: Filter) => (f === 'all' ? items.length : items.filter((i) => i.status === f).length)
   const showFilters = items.length >= MIN_ARTIFACTS_FOR_FILTERS
   const visible = filter === 'all' || !showFilters ? items : items.filter((i) => i.status === filter)
+
+  // A link to one artifact (#<artifact id>, e.g. Ember's Documents "Open →")
+  // lands on a collapsed row, possibly hidden by a filter. Show it, open it
+  // and bring it into view. Held until the artifact is actually listed: one
+  // Ember just created only appears once the page's refresh comes back.
+  const pendingRevealRef = useRef<string | null>(null)
+  const checkedInitialHashRef = useRef(false)
+  const itemIds = items.map((i) => i.id).join(',')
+  useEffect(() => {
+    function reveal() {
+      const id = pendingRevealRef.current
+      const el = id ? document.getElementById(id) : null
+      if (!(el instanceof HTMLDetailsElement)) return
+      pendingRevealRef.current = null
+      el.open = true
+      el.scrollIntoView({ block: 'start' })
+    }
+    function onHash(url: string) {
+      const id = decodeURIComponent(new URL(url).hash.slice(1))
+      if (!id || !itemIds.split(',').includes(id)) {
+        // Not (yet) listed -- remember it for when a refresh adds it.
+        if (id) pendingRevealRef.current = id
+        return
+      }
+      pendingRevealRef.current = id
+      setFilter('all')
+      // After the filter change has rendered the row.
+      requestAnimationFrame(reveal)
+    }
+    // The page's own #fragment only on first load -- not again on every
+    // later list change (an approval re-sorting it) while it's still there.
+    if (pendingRevealRef.current) onHash(`${window.location.origin}/#${pendingRevealRef.current}`)
+    else if (!checkedInitialHashRef.current) onHash(window.location.href)
+    checkedInitialHashRef.current = true
+    const onHashChange = (e: HashChangeEvent) => onHash(e.newURL || window.location.href)
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [itemIds])
 
   return (
     <div className="flex flex-col gap-3">

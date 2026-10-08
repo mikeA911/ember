@@ -5,9 +5,11 @@ export interface ResolvedDocumentArtifact {
   title: string
   artifactType: string
   // No dedicated single-artifact route exists in this app -- route points
-  // at the parent workstream page (which lists the artifact inline), not a
-  // per-artifact deep link. null only if the parent workstream itself
-  // can't be resolved (an orphaned/inaccessible artifact row).
+  // at the parent workstream page (which lists the artifact inline), with
+  // the artifact's id as the fragment: its <details id> there, which
+  // WorkstreamArtifactList opens and scrolls to. null only if the parent
+  // workstream itself can't be resolved (an orphaned/inaccessible artifact
+  // row).
   route: string | null
   workstreamId: string
   projectId: string
@@ -38,7 +40,7 @@ export async function resolveDocumentArtifact(ctx: WorkbenchCallerContext, artif
     return {
       title: artifact.title,
       artifactType: artifact.artifact_type,
-      route: `/projects/${workstream.project_id}/workstreams/${workstream.id}`,
+      route: `/projects/${workstream.project_id}/workstreams/${workstream.id}#${artifact.id}`,
       workstreamId: workstream.id,
       projectId: workstream.project_id,
     }
