@@ -42,6 +42,37 @@ export interface ProjectKnowledgeHit {
   documentVersionId: string | null
 }
 
+export interface ProjectKnowledgeBaseAttachment {
+  knowledgeBaseId: string
+  // null: attached to the Project itself; otherwise the workstream it's
+  // attached to.
+  workstreamId: string | null
+  purpose: string | null
+}
+
+// Every knowledge base attachment that makes up a Project's own knowledge:
+// attached to the Project (project_knowledge_bases) or to one of its
+// workstreams (workstream_knowledge_bases). A knowledge base attached in
+// both places appears once per attachment.
+export async function listProjectKnowledgeBaseAttachments(
+  supabase: WorkbenchCallerContext['supabase'],
+  projectId: string
+): Promise<ProjectKnowledgeBaseAttachment[]> {
+  const [{ data: kbLinks, error: kbError }, { data: workstreamKbLinks, error: workstreamKbError }] = await Promise.all([
+    supabase.from('project_knowledge_bases').select('knowledge_base_id, purpose').eq('project_id', projectId),
+    supabase
+      .from('workstream_knowledge_bases')
+      .select('knowledge_base_id, workstream_id, purpose, workstream:project_workstreams!inner(project_id)')
+      .eq('workstream.project_id', projectId),
+  ])
+  if (kbError) throw kbError
+  if (workstreamKbError) throw workstreamKbError
+  return [
+    ...(kbLinks ?? []).map((l) => ({ knowledgeBaseId: l.knowledge_base_id, workstreamId: null, purpose: l.purpose ?? null })),
+    ...(workstreamKbLinks ?? []).map((l) => ({ knowledgeBaseId: l.knowledge_base_id, workstreamId: l.workstream_id, purpose: l.purpose ?? null })),
+  ]
+}
+
 // Shared between this tool and eval's project-scoped retrieval
 // (src/lib/eval/retrieval.ts) so both use the exact same "what does this
 // project actually have attached" membership logic rather than two
@@ -55,16 +86,12 @@ export async function getProjectKnowledgeScopeIds(
   supabase: WorkbenchCallerContext['supabase'],
   projectId: string
 ): Promise<{ kbIds: Set<string>; articleIds: Set<string> }> {
-  const [{ data: kbLinks }, { data: workstreamKbLinks }, { data: articleLinks }] = await Promise.all([
-    supabase.from('project_knowledge_bases').select('knowledge_base_id').eq('project_id', projectId),
-    supabase
-      .from('workstream_knowledge_bases')
-      .select('knowledge_base_id, workstream:project_workstreams!inner(project_id)')
-      .eq('workstream.project_id', projectId),
+  const [attachments, { data: articleLinks }] = await Promise.all([
+    listProjectKnowledgeBaseAttachments(supabase, projectId),
     supabase.from('project_wiki_articles').select('wiki_article_id').eq('project_id', projectId),
   ])
   return {
-    kbIds: new Set([...(kbLinks ?? []), ...(workstreamKbLinks ?? [])].map((l) => l.knowledge_base_id)),
+    kbIds: new Set(attachments.map((a) => a.knowledgeBaseId)),
     articleIds: new Set((articleLinks ?? []).map((l) => l.wiki_article_id)),
   }
 }
@@ -81,12 +108,14 @@ export async function getProjectKnowledgeScopeIds(
 // the backstop for whatever this doesn't prevent.
 const MAX_CONTENT_CHARS = 1500
 
-export async function runSearchProjectKnowledge(
-  ctx: WorkbenchCallerContext,
-  projectId: string,
-  rawInput: unknown
-): Promise<{ results: ProjectKnowledgeHit[] }> {
-  const input = InputSchema.parse(rawInput)
+type DocRow = Database['public']['Functions']['match_documents']['Returns'][number]
+type WikiRow = Database['public']['Functions']['match_wiki_vectors']['Returns'][number]
+
+function capContent(content: string): string {
+  return content.length > MAX_CONTENT_CHARS ? `${content.slice(0, MAX_CONTENT_CHARS)}…` : content
+}
+
+async function embedQuery(ctx: WorkbenchCallerContext, projectId: string, query: string): Promise<number[]> {
   // Foundational (search indexing): ungated unless EMBER_GATE_FOUNDATIONAL_AI
   // is on, in which case the question carries the Project's classification.
   const embeddingProvider = await gateProvider(
@@ -95,25 +124,14 @@ export async function runSearchProjectKnowledge(
     () => manifestForProject(projectId),
     'foundational'
   )
-  const { embedding } = await embeddingProvider.embed({ text: input.query })
+  const { embedding } = await embeddingProvider.embed({ text: query })
+  return embedding
+}
 
-  const { kbIds: projectKbIds, articleIds: projectArticleIds } = await getProjectKnowledgeScopeIds(ctx.supabase, projectId)
-
-  const [{ data: docHits, error: docError }, { data: wikiHits, error: wikiError }] = await Promise.all([
-    ctx.supabase.rpc('match_documents', { query_embedding: embedding, match_threshold: 0, match_count: input.limit * 2 }),
-    ctx.supabase.rpc('match_wiki_vectors', { query_embedding: embedding, match_threshold: 0, match_count: input.limit * 2 }),
-  ])
-  if (docError) throw docError
-  if (wikiError) throw wikiError
-
-  type DocRow = Database['public']['Functions']['match_documents']['Returns'][number]
-  type WikiRow = Database['public']['Functions']['match_wiki_vectors']['Returns'][number]
-  const docRows: DocRow[] = docHits ?? []
-  const wikiRows: WikiRow[] = wikiHits ?? []
-
-  // match_documents doesn't return knowledge_source_id -- enrich via
-  // kb_vectors -> documents -> knowledge_sources, same "RPC stays generic,
-  // enrich with a follow-up query" pattern search_wiki uses for category.
+// match_documents doesn't return knowledge_source_id -- enrich via
+// kb_vectors -> documents -> knowledge_sources, same "RPC stays generic,
+// enrich with a follow-up query" pattern search_wiki uses for category.
+async function toKnowledgeSourceHits(ctx: WorkbenchCallerContext, docRows: DocRow[], projectKbIds: Set<string>): Promise<ProjectKnowledgeHit[]> {
   const vectorIds = docRows.map((r) => r.id)
   const { data: vectorRows } = vectorIds.length
     ? await ctx.supabase.from('kb_vectors').select('id, document_id').in('id', vectorIds)
@@ -132,7 +150,7 @@ export async function runSearchProjectKnowledge(
     : { data: [] as { id: string; title: string; knowledge_base_id: string }[] }
   const sourceById = new Map((sourceRows ?? []).map((s) => [s.id, s]))
 
-  const docResults: ProjectKnowledgeHit[] = docRows
+  return docRows
     .map((row): ProjectKnowledgeHit | null => {
       const documentId = documentIdByVectorId.get(row.id)
       const source = documentId ? sourceById.get(sourceIdByDocumentId.get(documentId) ?? '') : undefined
@@ -144,11 +162,34 @@ export async function runSearchProjectKnowledge(
         title: source.title,
         route: `/sources/${source.id}`,
         similarity: row.similarity,
-        content: row.content.length > MAX_CONTENT_CHARS ? `${row.content.slice(0, MAX_CONTENT_CHARS)}…` : row.content,
+        content: capContent(row.content),
         documentVersionId: documentId ?? null,
       }
     })
     .filter((r): r is ProjectKnowledgeHit => r !== null)
+}
+
+export async function runSearchProjectKnowledge(
+  ctx: WorkbenchCallerContext,
+  projectId: string,
+  rawInput: unknown
+): Promise<{ results: ProjectKnowledgeHit[] }> {
+  const input = InputSchema.parse(rawInput)
+  const embedding = await embedQuery(ctx, projectId, input.query)
+
+  const { kbIds: projectKbIds, articleIds: projectArticleIds } = await getProjectKnowledgeScopeIds(ctx.supabase, projectId)
+
+  const [{ data: docHits, error: docError }, { data: wikiHits, error: wikiError }] = await Promise.all([
+    ctx.supabase.rpc('match_documents', { query_embedding: embedding, match_threshold: 0, match_count: input.limit * 2 }),
+    ctx.supabase.rpc('match_wiki_vectors', { query_embedding: embedding, match_threshold: 0, match_count: input.limit * 2 }),
+  ])
+  if (docError) throw docError
+  if (wikiError) throw wikiError
+
+  const docRows: DocRow[] = docHits ?? []
+  const wikiRows: WikiRow[] = wikiHits ?? []
+
+  const docResults = await toKnowledgeSourceHits(ctx, docRows, projectKbIds)
 
   const wikiResults: ProjectKnowledgeHit[] = wikiRows.map((row) => ({
     layer: projectArticleIds.has(row.wiki_article_id) ? 'project' : 'platform',
@@ -157,7 +198,7 @@ export async function runSearchProjectKnowledge(
     title: row.article_title,
     route: `/wiki/${row.article_slug}`,
     similarity: row.similarity,
-    content: row.content.length > MAX_CONTENT_CHARS ? `${row.content.slice(0, MAX_CONTENT_CHARS)}…` : row.content,
+    content: capContent(row.content),
     documentVersionId: null,
   }))
 
@@ -167,4 +208,38 @@ export async function runSearchProjectKnowledge(
   const merged = [...docResults, ...wikiResults].sort((a, b) => (a.layer === b.layer ? 0 : a.layer === 'project' ? -1 : 1))
 
   return { results: merged.slice(0, input.limit) }
+}
+
+// Search limited to the given knowledge bases (e.g. one workstream's, or a
+// single one) -- source documents only: no Wiki articles and no platform
+// fallback. The caller decides which knowledge bases are in scope and must
+// have checked they belong to the Project. Queried per knowledge base
+// through match_documents' own filter (a chunk's doc_type is its knowledge
+// base id), rather than filtering the global top hits afterwards, which
+// would miss a small knowledge base whose chunks never rank there.
+export async function runScopedProjectKnowledgeSearch(
+  ctx: WorkbenchCallerContext,
+  projectId: string,
+  knowledgeBaseIds: string[],
+  rawInput: unknown
+): Promise<{ results: ProjectKnowledgeHit[] }> {
+  const input = InputSchema.parse(rawInput)
+  const kbIds = [...new Set(knowledgeBaseIds)]
+  if (kbIds.length === 0) return { results: [] }
+  const embedding = await embedQuery(ctx, projectId, input.query)
+
+  const perKb = await Promise.all(
+    kbIds.map((kbId) =>
+      ctx.supabase.rpc('match_documents', { query_embedding: embedding, match_threshold: 0, match_count: input.limit, filter_doc_type: kbId })
+    )
+  )
+  const docRows: DocRow[] = []
+  for (const { data, error } of perKb) {
+    if (error) throw error
+    docRows.push(...(data ?? []))
+  }
+  docRows.sort((a, b) => b.similarity - a.similarity)
+
+  const results = await toKnowledgeSourceHits(ctx, docRows.slice(0, input.limit), new Set(kbIds))
+  return { results }
 }

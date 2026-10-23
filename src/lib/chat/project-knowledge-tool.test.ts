@@ -13,7 +13,7 @@ vi.mock('@/lib/ai', () => ({
   getActiveEmbeddingProvider: async () => ({ embed: embedMock }),
 }))
 
-const { runSearchProjectKnowledge } = await import('./project-knowledge-tool')
+const { runSearchProjectKnowledge, runScopedProjectKnowledgeSearch, listProjectKnowledgeBaseAttachments } = await import('./project-knowledge-tool')
 
 beforeEach(() => {
   embedMock.mockReset()
@@ -156,5 +156,61 @@ describe('runSearchProjectKnowledge', () => {
 
     expect(result.results.map((r) => r.layer)).toEqual(['project', 'platform'])
     expect(result.results[0].sourceId).toBe('project-article')
+  })
+})
+
+describe('listProjectKnowledgeBaseAttachments', () => {
+  it('returns project attachments (workstreamId null) and workstream attachments, with purpose', async () => {
+    const supabase = createFakeSupabase({
+      project_knowledge_bases: [{ data: [{ knowledge_base_id: 'kb-project', purpose: 'Client docs' }], error: null }],
+      workstream_knowledge_bases: [{ data: [{ knowledge_base_id: 'kb-ws', workstream_id: 'ws-1', purpose: null }], error: null }],
+    })
+    expect(await listProjectKnowledgeBaseAttachments(supabase as never, 'proj-1')).toEqual([
+      { knowledgeBaseId: 'kb-project', workstreamId: null, purpose: 'Client docs' },
+      { knowledgeBaseId: 'kb-ws', workstreamId: 'ws-1', purpose: null },
+    ])
+  })
+})
+
+describe('runScopedProjectKnowledgeSearch', () => {
+  it('queries match_documents once per knowledge base with filter_doc_type, ranks across them, and never searches the Wiki', async () => {
+    const supabase = createFakeSupabase({
+      kb_vectors: [{ data: [{ id: 'vec-b', document_id: 'doc-b' }, { id: 'vec-a', document_id: 'doc-a' }], error: null }],
+      documents: [{ data: [{ id: 'doc-a', knowledge_source_id: 'source-a' }, { id: 'doc-b', knowledge_source_id: 'source-b' }], error: null }],
+      knowledge_sources: [
+        {
+          data: [
+            { id: 'source-a', title: 'A guide', knowledge_base_id: 'kb-a' },
+            { id: 'source-b', title: 'B guide', knowledge_base_id: 'kb-b' },
+          ],
+          error: null,
+        },
+      ],
+    })
+    const rpc = vi.fn(async (_name: string, args: { filter_doc_type?: string }) => {
+      const rows: Record<string, unknown[]> = {
+        'kb-a': [{ id: 'vec-a', chunk_id: 'c-a', content: 'from a', similarity: 0.4, metadata: {} }],
+        'kb-b': [{ id: 'vec-b', chunk_id: 'c-b', content: 'from b', similarity: 0.7, metadata: {} }],
+      }
+      return { data: rows[args.filter_doc_type ?? ''] ?? [], error: null }
+    })
+    supabase.rpc = rpc as never
+
+    const result = await runScopedProjectKnowledgeSearch(fakeCtx(supabase), 'proj-1', ['kb-a', 'kb-b', 'kb-a'], { query: 'guide', limit: 5 })
+
+    expect(rpc.mock.calls.map(([name, args]) => [name, args.filter_doc_type])).toEqual([
+      ['match_documents', 'kb-a'],
+      ['match_documents', 'kb-b'],
+    ])
+    expect(result.results.map((r) => [r.sourceId, r.layer])).toEqual([
+      ['source-b', 'project'],
+      ['source-a', 'project'],
+    ])
+  })
+
+  it('returns nothing without embedding the query when no knowledge bases are in scope', async () => {
+    const supabase = createFakeSupabase({})
+    expect(await runScopedProjectKnowledgeSearch(fakeCtx(supabase), 'proj-1', [], { query: 'guide' })).toEqual({ results: [] })
+    expect(embedMock).not.toHaveBeenCalled()
   })
 })
