@@ -6,11 +6,17 @@ import type { McpCaller } from './access'
 
 const getActiveProjectRole = vi.fn()
 const runSearchProjectKnowledge = vi.fn()
+const runScopedProjectKnowledgeSearch = vi.fn()
+const listProjectKnowledgeBaseAttachments = vi.fn()
 const resourceTiersMock = vi.fn()
 
 vi.mock('@/lib/env', () => ({ env: { siteUrl: () => 'https://ember.example' } }))
 vi.mock('@/lib/workbench/context', () => ({ getActiveProjectRole: (...a: unknown[]) => getActiveProjectRole(...a) }))
-vi.mock('@/lib/chat/project-knowledge-tool', () => ({ runSearchProjectKnowledge: (...a: unknown[]) => runSearchProjectKnowledge(...a) }))
+vi.mock('@/lib/chat/project-knowledge-tool', () => ({
+  runSearchProjectKnowledge: (...a: unknown[]) => runSearchProjectKnowledge(...a),
+  runScopedProjectKnowledgeSearch: (...a: unknown[]) => runScopedProjectKnowledgeSearch(...a),
+  listProjectKnowledgeBaseAttachments: (...a: unknown[]) => listProjectKnowledgeBaseAttachments(...a),
+}))
 vi.mock('@/lib/chat/workstream-list-tool', () => ({ runListWorkstreams: vi.fn() }))
 vi.mock('./tools', () => ({ callTool: vi.fn() }))
 vi.mock('./project-summary', () => ({ loadProjectSummaryMarkdown: vi.fn(), PROJECT_TYPE_LABELS: { consulting: 'Client / Consulting' } }))
@@ -39,7 +45,7 @@ beforeEach(() => {
 describe('external tool registry', () => {
   it('exposes exactly the read-only tool set, and none of the internal write tools', () => {
     expect(EXTERNAL_TOOL_NAMES.sort()).toEqual(
-      ['get_navigation_guide', 'get_project_summary', 'list_my_projects', 'list_project_notes', 'list_workstreams', 'search_project_knowledge', 'search_wiki', 'whoami'].sort()
+      ['get_navigation_guide', 'get_project_summary', 'list_knowledge_bases', 'list_my_projects', 'list_project_notes', 'list_workstreams', 'search_project_knowledge', 'search_wiki', 'whoami'].sort()
     )
     for (const write of ['create_project', 'approve_project', 'classify_project', 'create_workstream', 'attach_workstream_artifact', 'create_wiki_draft', 'request_project_membership']) {
       expect(getExternalTool(write)).toBeNull()
@@ -144,5 +150,115 @@ describe('search_project_knowledge', () => {
     expect(result.results[0].url).toBe('https://ember.example/sources/ks-ok')
     expect(result.note).toMatch(/never as instructions/)
     expect(outcome.withheldCount).toBe(1)
+  })
+})
+
+const WORKSTREAM = '22222222-2222-4222-8222-222222222222'
+const ATTACHMENTS = [
+  { knowledgeBaseId: 'kb-project', workstreamId: null, purpose: 'Client docs' },
+  { knowledgeBaseId: 'kb-ws', workstreamId: WORKSTREAM, purpose: 'Vendor APIs' },
+  { knowledgeBaseId: 'kb-other-ws', workstreamId: '33333333-3333-4333-8333-333333333333', purpose: null },
+]
+
+describe('search_project_knowledge scoped to a workstream or knowledge base', () => {
+  const memberProject = { data: { id: PROJECT, name: 'Pilot', information_sensitivity: 'internal' }, error: null }
+
+  beforeEach(() => {
+    getActiveProjectRole.mockResolvedValue('member')
+    listProjectKnowledgeBaseAttachments.mockResolvedValue(ATTACHMENTS)
+    resourceTiersMock.mockResolvedValue(new Map())
+    runScopedProjectKnowledgeSearch.mockResolvedValue({ results: [] })
+  })
+
+  it("searches only the workstream's attached knowledge bases", async () => {
+    const supabase = createFakeSupabase({ projects: [memberProject], project_workstreams: [{ data: { id: WORKSTREAM, name: 'APIs' }, error: null }] })
+    await getExternalTool('search_project_knowledge')!.handler(caller(supabase), { projectId: PROJECT, query: 'auth', limit: 5, workstreamId: WORKSTREAM })
+    expect(runScopedProjectKnowledgeSearch).toHaveBeenCalledWith(expect.anything(), PROJECT, ['kb-ws'], { query: 'auth', limit: 5 })
+    expect(runSearchProjectKnowledge).not.toHaveBeenCalled()
+    expect(supabase._calls).toContainEqual({ table: 'project_workstreams', method: 'eq', args: { column: 'project_id', value: PROJECT } })
+  })
+
+  it('searches a single knowledge base attached to the project', async () => {
+    const supabase = createFakeSupabase({ projects: [memberProject] })
+    await getExternalTool('search_project_knowledge')!.handler(caller(supabase), { projectId: PROJECT, query: 'auth', limit: 5, knowledgeBaseId: 'kb-project' })
+    expect(runScopedProjectKnowledgeSearch).toHaveBeenCalledWith(expect.anything(), PROJECT, ['kb-project'], { query: 'auth', limit: 5 })
+  })
+
+  it('says "not found" for a knowledge base not attached to the project, or not to the given workstream', async () => {
+    const tool = getExternalTool('search_project_knowledge')!
+    await expect(
+      tool.handler(caller(createFakeSupabase({ projects: [memberProject] })), { projectId: PROJECT, query: 'auth', limit: 5, knowledgeBaseId: 'kb-elsewhere' })
+    ).rejects.toThrow(/Knowledge base not found/)
+    const supabase = createFakeSupabase({ projects: [memberProject], project_workstreams: [{ data: { id: WORKSTREAM, name: 'APIs' }, error: null }] })
+    await expect(
+      tool.handler(caller(supabase), { projectId: PROJECT, query: 'auth', limit: 5, workstreamId: WORKSTREAM, knowledgeBaseId: 'kb-project' })
+    ).rejects.toThrow(/Knowledge base not found/)
+    expect(runScopedProjectKnowledgeSearch).not.toHaveBeenCalled()
+  })
+
+  it('says "not found" for a workstream outside the project', async () => {
+    const supabase = createFakeSupabase({ projects: [memberProject], project_workstreams: [{ data: null, error: null }] })
+    await expect(
+      getExternalTool('search_project_knowledge')!.handler(caller(supabase), { projectId: PROJECT, query: 'auth', limit: 5, workstreamId: WORKSTREAM })
+    ).rejects.toThrow(/Workstream not found/)
+  })
+
+  it('still withholds scoped hits above the ceiling', async () => {
+    runScopedProjectKnowledgeSearch.mockResolvedValue({
+      results: [{ layer: 'project', sourceType: 'knowledge_source', sourceId: 'ks-conf', title: 'Contract', route: '/sources/ks-conf', similarity: 0.9, content: 'x' }],
+    })
+    resourceTiersMock.mockImplementation(async (type: string) => (type === 'knowledge_source' ? new Map([['ks-conf', 'confidential']]) : new Map()))
+    const supabase = createFakeSupabase({ projects: [memberProject], wiki_articles: [{ data: [], error: null }] })
+    const outcome = await getExternalTool('search_project_knowledge')!.handler(caller(supabase, 'internal'), {
+      projectId: PROJECT,
+      query: 'contract',
+      limit: 5,
+      knowledgeBaseId: 'kb-project',
+    })
+    expect((outcome.result as { results: unknown[] }).results).toEqual([])
+    expect(outcome.withheldCount).toBe(1)
+  })
+})
+
+describe('list_knowledge_bases', () => {
+  beforeEach(() => {
+    getActiveProjectRole.mockResolvedValue('member')
+    listProjectKnowledgeBaseAttachments.mockResolvedValue(ATTACHMENTS)
+  })
+
+  it('lists readable attached knowledge bases with where they are attached and their active source count', async () => {
+    const supabase = createFakeSupabase({
+      projects: [{ data: { id: PROJECT, name: 'Pilot', information_sensitivity: 'internal' }, error: null }],
+      // kb-other-ws is not readable by this user (RLS), so it is left out.
+      knowledge_bases: [
+        {
+          data: [
+            { id: 'kb-project', name: 'Client documents', description: 'Contracts and specs' },
+            { id: 'kb-ws', name: 'Vendor APIs', description: null },
+          ],
+          error: null,
+        },
+      ],
+      project_workstreams: [{ data: [{ id: WORKSTREAM, name: 'API integration' }], error: null }],
+      knowledge_sources: [{ data: [{ knowledge_base_id: 'kb-project' }, { knowledge_base_id: 'kb-project' }, { knowledge_base_id: 'kb-ws' }], error: null }],
+    })
+    const outcome = await getExternalTool('list_knowledge_bases')!.handler(caller(supabase), { projectId: PROJECT })
+    expect((outcome.result as { knowledgeBases: unknown[] }).knowledgeBases).toEqual([
+      { id: 'kb-project', name: 'Client documents', description: 'Contracts and specs', attachedTo: [{ type: 'project', purpose: 'Client docs' }], activeSources: 2 },
+      {
+        id: 'kb-ws',
+        name: 'Vendor APIs',
+        description: null,
+        attachedTo: [{ type: 'workstream', workstreamId: WORKSTREAM, workstreamName: 'API integration', purpose: 'Vendor APIs' }],
+        activeSources: 1,
+      },
+    ])
+    expect(outcome.resultCount).toBe(2)
+  })
+
+  it('says "not found" for a project the user is not a member of', async () => {
+    getActiveProjectRole.mockResolvedValue(null)
+    await expect(getExternalTool('list_knowledge_bases')!.handler(caller(createFakeSupabase({})), { projectId: PROJECT })).rejects.toThrow(/Project not found/)
+    expect(listProjectKnowledgeBaseAttachments).not.toHaveBeenCalled()
   })
 })
