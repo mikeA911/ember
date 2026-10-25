@@ -139,7 +139,7 @@ Each Sandz user has one or more department memberships, each with a role: `membe
 
 ### 4.4 Mapping to existing platform roles
 
-Sandz staff accounts could all be `member` at platform level, with Sandz rights coming from department membership. Knowledge curators keep the platform `curator` role, which Ember uses for knowledge base review. The builder-programme meaning of `curator` (agency) and `consultant` (builder) does not apply on a Sandz instance; confirm that Sandz never enables builder workspace provisioning.
+Sandz staff accounts could all be `member` at platform level, with Sandz rights coming from department membership. Knowledge curators keep the platform `curator` role, which Ember uses for knowledge base review. The builder-programme meaning of `curator` (agency) and `consultant` (builder) does not apply on the SLI instance. It applies on the separate Sandz Builders instance (ADR-0002), which runs the builder programme for internal and external builders.
 
 ## 5. Open decisions for S2
 
@@ -170,6 +170,6 @@ Carried from the concept paper §11, with what the codebase adds:
 |---|---|
 | Building a second requirements system for Presales | Link `sli_solutions` to existing solution requirements from S2. |
 | RLS defects expose restricted commercial records | Behavioural RLS tests per matrix row; restricted-by-grant default for sensitive accounts. |
-| Builder-programme behaviour leaks into the Sandz instance (workspace provisioning, metering, fees) | Confirm configuration in S2; add a check that account creation on a Sandz instance does not provision `builder_lab` workspaces. |
+| Builder-programme behaviour appears on the SLI instance (workspace provisioning, metering, fees) | The builder programme runs on the separate Sandz Builders instance (ADR-0002). On SLI, switch it off and test that account creation does not provision `builder_lab` workspaces. |
 | Operational chatter pollutes approved knowledge | Keep operational records out of retrieval until promoted through curator review. |
 | Shared migrations affect other Ember deployments | Sandz tables are additive and inert when the module is off; no changes to Core RLS without review. |

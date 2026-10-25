@@ -4,7 +4,7 @@
 **Decision date:** 23 October 2026  
 **Owners:** Ember product and architecture  
 **Scope:** Code organisation, deployment and data boundaries for Ember Sandz (Solution Lifecycle Intelligence)  
-**Related:** [ADR-0001](ADR-0001-dedicated-instance-first-deployment.md), [Ember Sandz concept paper v0.1](../ember-sandz/Ember_Sandz_Development_Concept_v0.1.md), [S1 codebase assessment](../ember-sandz/S1-EMBER-CODEBASE-ASSESSMENT.md)
+**Related:** [ADR-0001](ADR-0001-dedicated-instance-first-deployment.md), [ADR-0004](ADR-0004-sandz-builder-platform.md), [Ember Sandz concept paper v0.1](../ember-sandz/Ember_Sandz_Development_Concept_v0.1.md), [S1 codebase assessment](../ember-sandz/S1-EMBER-CODEBASE-ASSESSMENT.md)
 
 ## Decision
 
@@ -17,6 +17,19 @@ This decision can be summarized as:
 > One codebase, one schema history; Sandz is an edition enabled by configuration and deployed as its own instance.
 
 This resolves the concept paper's first open decision ("Separate Ember Sandz instance or initially shared deployment?"): separate instance, shared codebase.
+
+### Two Sandz instances: SLI and Builders
+
+Sandz will run **two instances** of the same codebase, each with its own Supabase stack and its own user pool:
+
+| Instance | Users | Modules on | Order |
+|---|---|---|---|
+| **Sandz SLI** | Sandz staff | SLI, knowledge, assistant | First |
+| **Sandz Builders** | Agencies and builders: Sandz staff, partners, schools | Ember's builder programme (agencies, approval, promotion, metering, fees) | Later |
+
+They are not combined in one instance because SLI holds Sandz customer and commercial records, and Builders admits external users. In a shared instance, row-level security would be the only barrier between a partner or student account and Sandz's sales pipeline. Separate instances make that boundary infrastructure, not a policy bug away. Sandz staff who also build apps hold an account on each until single sign-on is added.
+
+The Builders instance is the starting point for the Sandz builder platform described in [ADR-0004](ADR-0004-sandz-builder-platform.md).
 
 ## Context
 
@@ -94,6 +107,26 @@ Selected.
 - Routes in their own segment under `src/app/(app)/` (for example `customers/`, `marketing/`), hidden from navigation when the module is off.
 - Ember Core code must not import from `src/lib/sli/`. Sandz may call Core services. Where Sandz needs Core to know about Sandz records (for example, a knowledge reference pointing at a lead), Core exposes a generic reference type rather than importing Sandz types.
 
+### Assistant and MCP tools: framework in Core, tools in modules
+
+Ember has three MCP-related parts. Each splits differently:
+
+| Part | Today | Stays in Core | Moves to modules |
+|---|---|---|---|
+| **External MCP server** (`/api/mcp`, `src/lib/mcp/server.ts`, `access.ts`, `consent.ts`, `sensitivity.ts`) | One server, one static read-only allowlist in `external-tools.ts`, instructions describing "an AI engineering workbench" | OAuth, allowlists, rate limits, call logging, the database-level read-only policies, sensitivity ceilings | The tool list and the server instructions. Each module contributes its own read-only tools (for example `get_customer_summary` from SLI), registered only when the module is on. Core keeps its knowledge and Project tools. |
+| **Internal tool registry** (`src/lib/mcp/tools.ts`, plus tools intercepted in `src/lib/chat/loop.ts`) | One file mixing Project, Workstream, Wiki and builder tools | The registry, dispatch and the rule "one authorization model, enforced once" | Module tools, in the same way |
+| **MCP gateway** (`src/lib/mcp-gateway/`: outbound calls to registered external MCP servers, propose-confirm-execute, risk, spending, credentials) | Core | All of it, except demo-specific code: `orderlunch-confirmation.ts` belongs with its demo, not in Core | — |
+
+So the answer to "should MCP move to the modules?" is: the **server and gateway machinery stays in Core**, because every instance needs the same authentication, audit and read-only guarantees. The **tools move to the modules that own the data**. A module's external tools still live in their own allowlist file, so a write tool can never become externally reachable by accident, which is the reason `external-tools.ts` is separate from `tools.ts` today.
+
+For the builder platform, the MCP gateway and Tavily web search are also candidates for the shared-services gateway in ADR-0004, where apps other than Ember would call them.
+
+### Web search (Tavily)
+
+Ember's `search_web` tool already uses Tavily (`src/lib/chat/web-search-tool.ts`, `TAVILY_API_KEY`). It is outside the sensitivity gate, so the tool restricts queries to public names and topics (`WEB_QUERY_RULE`), and results are never citable evidence until a curator approves a research dossier.
+
+For Sandz SLI, enabling it is a configuration decision. Before enabling it, Marketing and Sales should agree whether prospect and customer **company names** may appear in queries (the current rule allows company names), since those queries leave Sandz for Tavily. Contact names and deal details are already excluded by the rule.
+
 ### Configuration
 
 - An environment switch in `src/lib/env.ts` alongside existing ones such as `mcpEnabled()` (for example `EMBER_SLI_ENABLED`) controls routes, navigation, assistant tools and MCP tools.
@@ -135,6 +168,8 @@ Selected.
 - Should module boundaries be enforced mechanically (an ESLint `no-restricted-imports` rule from Core to `src/lib/sli/`)?
 - Is a single environment switch enough, or should individual departments (Marketing, Sales, Presales, Delivery, Maintenance) be switchable per instance?
 - Where does the Organization Home Project fit for Sandz staff accounts?
+- The builder programme is on in every deployment today ("one product configuration", `docs/CURRENT-ARCHITECTURE.md`). The SLI instance needs it off: no `builder_lab` workspace provisioning, metering or fees. Does that become a module switch like SLI's?
+- Single sign-on between the SLI and Builders instances: which identity provider, and when?
 
 ## Review triggers
 
