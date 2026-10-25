@@ -2,7 +2,7 @@ import 'server-only'
 import { z } from 'zod'
 import { env } from '@/lib/env'
 import { runListWorkstreams } from '@/lib/chat/workstream-list-tool'
-import { runSearchProjectKnowledge } from '@/lib/chat/project-knowledge-tool'
+import { listProjectKnowledgeBaseAttachments, runScopedProjectKnowledgeSearch, runSearchProjectKnowledge } from '@/lib/chat/project-knowledge-tool'
 import { countArtifacts, artifactCountLabel } from '@/lib/projects/artifact-summary'
 import { getActiveProjectRole } from '@/lib/workbench/context'
 import type { InformationSensitivity, WorkstreamArtifactStatus } from '@/types/database'
@@ -67,6 +67,22 @@ async function requireProject(caller: McpCaller, projectId: string) {
   if (error) throw error
   if (!project || !withinCeiling(project.information_sensitivity, caller.maxSensitivity)) throw new McpToolError(NOT_FOUND)
   return { project, role }
+}
+
+const KB_NOT_FOUND = 'Knowledge base not found in this project. Use list_knowledge_bases to see the ones you can search.'
+
+// A workstreamId must be a workstream of this Project (read under the
+// user's own RLS); anything else reads as "not found".
+async function requireWorkstream(caller: McpCaller, projectId: string, workstreamId: string) {
+  const { data: workstream, error } = await caller.ctx.supabase
+    .from('project_workstreams')
+    .select('id, name')
+    .eq('id', workstreamId)
+    .eq('project_id', projectId)
+    .maybeSingle()
+  if (error) throw error
+  if (!workstream) throw new McpToolError('Workstream not found in this project. Use list_workstreams to get a workstreamId.')
+  return workstream
 }
 
 function withheldNote(count: number, caller: McpCaller): string | undefined {
@@ -209,12 +225,47 @@ const tools: Record<string, ExternalTool<any>> = {
   search_project_knowledge: {
     title: 'Search project knowledge',
     description:
-      "Semantic search over a project's approved knowledge -- its knowledge base documents and attached Wiki articles, with shared platform knowledge after. Returns short excerpts with source titles and Ember links to cite.",
-    inputSchema: z.object({ projectId: UUID, query: z.string().min(2).max(500), limit: z.number().int().min(1).max(8).default(5) }),
-    summarizeArgs: (input: { projectId: string; query: string }) => `${input.projectId} ${input.query}`,
-    handler: async (caller, input: { projectId: string; query: string; limit: number }) => {
+      "Semantic search over a project's approved knowledge. By default: its knowledge base documents (including those attached to its workstreams) and attached Wiki articles, with shared platform knowledge after. Pass workstreamId to search only the knowledge bases attached to that workstream, or knowledgeBaseId (from list_knowledge_bases) to search only that one -- scoped searches return that knowledge only, with no Wiki or platform results. Returns short excerpts with source titles and Ember links to cite.",
+    inputSchema: z.object({
+      projectId: UUID,
+      query: z.string().min(2).max(500),
+      limit: z.number().int().min(1).max(8).default(5),
+      workstreamId: z.string().uuid('workstreamId must be a workstream id from list_workstreams').optional(),
+      knowledgeBaseId: z.string().min(1).max(200).optional(),
+    }),
+    summarizeArgs: (input: { projectId: string; query: string; workstreamId?: string; knowledgeBaseId?: string }) =>
+      [input.projectId, input.workstreamId && `workstream:${input.workstreamId}`, input.knowledgeBaseId && `kb:${input.knowledgeBaseId}`, input.query]
+        .filter(Boolean)
+        .join(' '),
+    handler: async (caller, input: { projectId: string; query: string; limit: number; workstreamId?: string; knowledgeBaseId?: string }) => {
       await requireProject(caller, input.projectId)
-      const { results } = await runSearchProjectKnowledge(caller.ctx, input.projectId, { query: input.query, limit: input.limit })
+
+      // Scoped: only knowledge bases actually attached to this Project (or
+      // to the given workstream of it) -- never an arbitrary one by id.
+      let scopeKbIds: string[] | null = null
+      if (input.workstreamId || input.knowledgeBaseId) {
+        if (input.workstreamId) await requireWorkstream(caller, input.projectId, input.workstreamId)
+        const attachments = (await listProjectKnowledgeBaseAttachments(caller.ctx.supabase, input.projectId)).filter(
+          (a) => !input.workstreamId || a.workstreamId === input.workstreamId
+        )
+        scopeKbIds = [...new Set(attachments.map((a) => a.knowledgeBaseId))]
+        if (input.knowledgeBaseId) {
+          if (!scopeKbIds.includes(input.knowledgeBaseId)) throw new McpToolError(KB_NOT_FOUND)
+          scopeKbIds = [input.knowledgeBaseId]
+        }
+        if (scopeKbIds.length === 0) {
+          return {
+            result: { note: 'This workstream has no knowledge bases attached, so there is nothing to search. Search the whole project instead.', results: [] },
+            projectId: input.projectId,
+            resultCount: 0,
+          }
+        }
+      }
+
+      const searchInput = { query: input.query, limit: input.limit }
+      const { results } = scopeKbIds
+        ? await runScopedProjectKnowledgeSearch(caller.ctx, input.projectId, scopeKbIds, searchInput)
+        : await runSearchProjectKnowledge(caller.ctx, input.projectId, searchInput)
 
       const slugs = results.filter((r) => r.sourceType === 'wiki_article').map((r) => r.sourceId)
       const { data: articles } = slugs.length
@@ -247,6 +298,67 @@ const tools: Record<string, ExternalTool<any>> = {
         projectId: input.projectId,
         resultCount: allowed.length,
         withheldCount: withheld,
+      }
+    },
+  },
+
+  list_knowledge_bases: {
+    title: 'List knowledge bases',
+    description:
+      "List the knowledge bases that make up a project's own knowledge -- attached to the project or to one of its workstreams -- with what each is for, where it is attached and how many sources it holds. Pass workstreamId to list only that workstream's. Use a knowledgeBaseId or workstreamId from here to narrow search_project_knowledge.",
+    inputSchema: z.object({ projectId: UUID, workstreamId: z.string().uuid('workstreamId must be a workstream id from list_workstreams').optional() }),
+    summarizeArgs: (input: { projectId: string; workstreamId?: string }) => [input.projectId, input.workstreamId].filter(Boolean).join(' '),
+    handler: async (caller, input: { projectId: string; workstreamId?: string }) => {
+      await requireProject(caller, input.projectId)
+      if (input.workstreamId) await requireWorkstream(caller, input.projectId, input.workstreamId)
+
+      const attachments = (await listProjectKnowledgeBaseAttachments(caller.ctx.supabase, input.projectId)).filter(
+        (a) => !input.workstreamId || a.workstreamId === input.workstreamId
+      )
+      const kbIds = [...new Set(attachments.map((a) => a.knowledgeBaseId))]
+      const workstreamIds = [...new Set(attachments.map((a) => a.workstreamId).filter((id): id is string => id !== null))]
+
+      const [{ data: kbs, error: kbError }, { data: workstreams, error: wsError }, { data: sources, error: sourceError }] = await Promise.all([
+        kbIds.length
+          ? caller.ctx.supabase.from('knowledge_bases').select('id, name, description').in('id', kbIds).order('name')
+          : Promise.resolve({ data: [] as { id: string; name: string; description: string | null }[], error: null }),
+        workstreamIds.length
+          ? caller.ctx.supabase.from('project_workstreams').select('id, name').in('id', workstreamIds)
+          : Promise.resolve({ data: [] as { id: string; name: string }[], error: null }),
+        kbIds.length
+          ? caller.ctx.supabase.from('knowledge_sources').select('knowledge_base_id').in('knowledge_base_id', kbIds).eq('lifecycle_status', 'active')
+          : Promise.resolve({ data: [] as { knowledge_base_id: string }[], error: null }),
+      ])
+      if (kbError) throw kbError
+      if (wsError) throw wsError
+      if (sourceError) throw sourceError
+
+      const workstreamName = new Map((workstreams ?? []).map((w) => [w.id, w.name]))
+      const sourceCount = new Map<string, number>()
+      for (const s of sources ?? []) sourceCount.set(s.knowledge_base_id, (sourceCount.get(s.knowledge_base_id) ?? 0) + 1)
+
+      // Only knowledge bases the user can read (RLS) -- the same ones a
+      // search could return anything from.
+      const knowledgeBases = (kbs ?? []).map((kb) => ({
+        id: kb.id,
+        name: kb.name,
+        description: kb.description,
+        attachedTo: attachments
+          .filter((a) => a.knowledgeBaseId === kb.id)
+          .map((a) =>
+            a.workstreamId
+              ? { type: 'workstream', workstreamId: a.workstreamId, workstreamName: workstreamName.get(a.workstreamId) ?? null, purpose: a.purpose }
+              : { type: 'project', purpose: a.purpose }
+          ),
+        activeSources: sourceCount.get(kb.id) ?? 0,
+      }))
+      return {
+        result: {
+          knowledgeBases,
+          note: knowledgeBases.length === 0 ? (input.workstreamId ? 'No knowledge bases are attached to this workstream.' : 'No knowledge bases are attached to this project or its workstreams.') : undefined,
+        },
+        projectId: input.projectId,
+        resultCount: knowledgeBases.length,
       }
     },
   },

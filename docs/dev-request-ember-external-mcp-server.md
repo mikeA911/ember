@@ -108,7 +108,8 @@ Designed around phone-sized questions: short, summarised answers that link back 
 | `list_my_projects` | id, name, type, status, objective for the user's active projects, above-ceiling ones hidden | `project_members` via RLS |
 | `get_project_summary` | The Project summary Markdown (newcomer brief + builder status) | `buildProjectSummaryMarkdown` with its loader lifted out of `src/app/(app)/projects/[id]/page.tsx` |
 | `list_workstreams` | Name, status, goal, deliverable progress, artifact counts | `runListWorkstreams` + workstream fields |
-| `search_project_knowledge` | Top approved chunks (1,500-character cap) with source title and Ember link | `runSearchProjectKnowledge` |
+| `list_knowledge_bases` | Knowledge bases attached to the Project or its workstreams (optionally one workstream's): name, description, where attached and purpose, active source count | `listProjectKnowledgeBaseAttachments` + `knowledge_bases` via RLS |
+| `search_project_knowledge` | Top approved chunks (1,500-character cap) with source title and Ember link. Optional `workstreamId` or `knowledgeBaseId` narrows it to that knowledge only | `runSearchProjectKnowledge`; scoped: `runScopedProjectKnowledgeSearch` |
 | `search_wiki` | Approved platform Wiki articles, capped | existing `search_wiki` handler |
 | `list_project_notes` | Open or resolved notes | `listProjectNotes` |
 | `get_navigation_guide` | How to do something in Ember's UI | existing handler |
