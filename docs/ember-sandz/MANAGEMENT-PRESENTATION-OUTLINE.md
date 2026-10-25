@@ -13,6 +13,7 @@
 - [ADR-0004: Sandz builder platform](../architecture-decisions/ADR-0004-sandz-builder-platform.md)
 - [Zadara resource request](../Deployment/zadara-resource-request.md)
 - [Moving guide](../guides/moving-to-gitlab-and-zadara.md)
+- [Dial whitepaper: The Agent Channel Exchange Standard (ACES)](partners/Dial-ACES-Whitepaper.md)
 
 ---
 
@@ -232,7 +233,7 @@ Three ways to bring a service in: self-host open source on Zadara, license a com
 | Builder tooling | GlitchTip (error tracking, Sentry-compatible); Umami (analytics); Metabase (dashboards); Meilisearch (search) | Open source | Every app needs these; operated once for all |
 | Payments | Philippine payment gateways (for example PayMongo, Xendit) | Partner | Apps that charge end users |
 
-The Dial description is based on Dial's whitepaper, *The Agent Channel Exchange Standard (ACES)* (2026). The Talk BPO description is based on Sandz's own information. Confirm both with each partner.
+The Dial description is based on Dial's whitepaper, [*The Agent Channel Exchange Standard (ACES)*](partners/Dial-ACES-Whitepaper.md) (2026, CC BY 4.0). The Talk BPO description is based on Sandz's own information. Confirm both with each partner.
 
 ## Appendix: training apps
 
