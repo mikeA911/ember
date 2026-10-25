@@ -133,7 +133,8 @@ For the SLI phase, Ember calls its AI providers and Tavily directly, as today. T
 ### Phase 1: Supabase on Zadara (clean install)
 
 - Follow `docs/guides/ember-on-self-hosted-supabase.md` and the per-client stack runbook for the stacks, Storage, SMTP and backups. Skip that guide's §5 data move.
-- Apply `supabase/combined_migration.sql`, then create the first admin account (`scripts/create-mike-admin.mjs` or an equivalent). Do not run the demonstration and test seed scripts.
+- Apply the migrations in order on lab first, then create the first admin account (`scripts/create-mike-admin.mjs` or an equivalent). Do not run the demonstration and test seed scripts.
+- The migrations have never been applied in order to an empty database (the cloud project was built by hand). Expect some to fail; fix each as a corrected migration in the repository, never by editing the database by hand. Promote to `sli-prod` only once lab applies cleanly from empty.
 - Review the migrations that insert rows (39 at the time of writing; most are backfills) for demonstration content before the first apply.
 - Point Vercel's Preview environment at `sli-lab` and Production at `sli-prod`.
 

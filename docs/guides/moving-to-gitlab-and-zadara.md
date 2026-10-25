@@ -53,7 +53,14 @@ The self-hosted guide's §5 (moving existing data) is **skipped**. Sandz starts 
    ```
 
    Expected reference data: knowledge base definitions (`20260809100001`), AI provider entries (`20260810110002`, `20260820120001`, `20260821090001`) and handbook release notes (`20260828150001`). Most of the other matches are backfills, which do nothing on an empty database. Note anything that looks like demonstration content for a decision before applying.
-2. ☐ Apply `supabase/combined_migration.sql` in the stack's SQL editor, then run `supabase/migration_status_check.sql` to confirm every migration's objects exist.
+2. ☐ Apply the migrations **on lab first**, in filename order, following `ember-on-self-hosted-supabase.md` §4 (for example `supabase db push --db-url <session-mode connection string>` through an SSH tunnel). Then run `supabase/migration_status_check.sql` to confirm every migration's objects exist.
+
+   > **Warning: Ember's migrations have never been applied in order to an empty database.** The current cloud project was built by hand in the SQL editor and with `scripts/run-migrations.mjs`. Expect some files to fail on a clean apply, for example a non-idempotent `create policy`, or a "fix" migration that assumes an earlier hand-applied state.
+   >
+   > - Fix each failure as a **corrected migration in the repository**, through a reviewed pull request. **Never edit the database by hand** to get past a failure.
+   > - Prefer applying file by file over pasting `supabase/combined_migration.sql`. The combined file runs as one transaction, so the first failure rolls back everything, and it hides which file failed.
+   > - Repeat on a fresh lab stack until the apply runs cleanly from empty. Only then use the same command for `sli-prod`.
+   > - After any data is loaded, rebuild the vector index: `reindex index kb_vectors_embedding_idx;` (self-hosted guide §4, step 6).
 3. ☐ Create the first admin account with `scripts/create-mike-admin.mjs` (or an equivalent), using the stack's URL and secret key in a local `.env.local`.
 4. ☐ **Do not run** the demonstration and test seed scripts: `seed-test-users`, `seed-codex-test-users`, `seed-showcase-*`, `seed-carecall-*`, `seed-cebu-*`, `seed-food-outlet-*`, `seed-zadara-pilot-eval`, `seed-lunch-agent-registration` and similar.
 5. ☐ In the app: **Admin → AI Config**, enable the providers Sandz will use and set each one's maximum sensitivity. Add AI provider keys and `TAVILY_API_KEY` to the Vercel environment if web search will be on (ADR-0002, "Web search").
