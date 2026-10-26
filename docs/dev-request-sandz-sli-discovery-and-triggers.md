@@ -110,7 +110,7 @@ Every stage change is recorded in an append-only history (who, when, from, to, r
 ## 6. Management review and decisions (S3)
 
 - **Review:** the sponsor submits the Trigger with its evidence (concept paper, feasibility assessment, key sources). The review can use Ember's **presentation** flow (slides generated from the Workstream, comments, revision).
-- **Who contributes:** the Country Manager, the CTO and the Head of Digital Solutions research, develop and assess Triggers, and each records a **recommendation** (approve, revise, defer or reject, with comments) before the decision.
+- **Who contributes:** the Country Manager, the CTO and the Head of Engineering research, develop and assess Triggers, and each records a **recommendation** (approve, revise, defer or reject, with comments) before the decision.
 - **Who decides:** the **Managing Director** makes the final decision, as holder of the `discovery_decision` authority (Ember's approval policies and authority assignments: `project_approval_policies`, `holds_project_authority()`). The authority is configuration, so another organisation could name a committee instead. Because the MD is the sole authority, the policy allows the MD to decide Triggers they sponsored; the contributors' recommendations are recorded alongside the decision.
 - **Delegate:** when the MD is unavailable, the **Country Manager** decides as delegate. The delegation is a dated authority assignment (from and to dates), so each decision records whether it was made by the MD or by the delegate, and the Country Manager's own recommendation on that Trigger stays visible. The delegate cannot decide a Trigger they sponsor; it waits for the MD.
 - **What is recorded:** outcome, rationale, conditions (for example "prototype must reach 95% detection accuracy"), the evidence relied on, the destination if approved, and who decided under which authority.
@@ -184,7 +184,7 @@ The same `sli_handoffs` table is reused, with other subject types, for the Marke
 | Raise a Trigger | Any active member of any SLI department (a short form: title, type, summary, evidence) |
 | See your own submitted Triggers, their stage and outcome | The person who raised them, always |
 | See other people's Triggers (title, type, stage, outcome) | Configurable per instance (`trigger_visibility`: `own` or `all_members`). Sandz: **all SLI members**. Research, financial assumptions and decision rationale stay with the Discovery team unless the MD shares the rationale with the raiser |
-| See all Triggers and their research | Discovery team: the Managing Director, Country Manager, CTO and Head of Digital Solutions (members of the Discovery Project), plus anyone they appoint |
+| See all Triggers and their research | Discovery team: the Managing Director, Country Manager, CTO and Head of Engineering (members of the Discovery Project), plus anyone they appoint |
 | Record a recommendation | Discovery team members other than the decision authority |
 | Contribute to one Trigger | People added to that Trigger's access group |
 | Accept or decline a new Trigger; sponsor its research | Discovery team members with the sponsor role |
@@ -206,7 +206,7 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 2. **Researching:** the team uses the assistant and web search on computer-vision vendors and warehouse safety needs, uploads partner material, and records candidate concepts.
 3. **Concept:** the *Concept development* Method produces a concept paper: solution, target market, business model, partners, dependencies.
 4. **Feasibility:** the *Feasibility assessment* Method produces technical, commercial, cost and risk findings, including GPU capacity on Zadara.
-5. **Recommendations and decision:** the Country Manager, CTO and Head of Digital Solutions record recommendations. The MD decides: *Approve* with destination **Digital Solutions**: "limited technical prototype before marketing launch", with a condition on detection accuracy.
+5. **Recommendations and decision:** the Country Manager, CTO and Head of Engineering record recommendations. The MD decides: *Approve* with destination **Digital Solutions**: "limited technical prototype before marketing launch", with a condition on detection accuracy.
 6. **Promote:** Digital Solutions accepts the handoff. A prototype Workstream is created with the copied package. Presales is consulted on the camera and GPU hardware from Sandz's partners.
 7. **Send back:** the prototype misses the accuracy condition at the lighting levels found in real warehouses. Digital Solutions sends back to *Feasibility* with test results, reason *solution inadequate*, downstream action *pause*. The sponsor accepts, and the first decision is superseded.
 8. **Revise and decide again:** feasibility is updated (different camera placement, a better model). New decision by the MD: *Approve*, Digital Solutions again. The second prototype meets the condition.
@@ -231,10 +231,10 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 
 | Question | Answer |
 |---|---|
-| Who is on the Discovery team? | Management: the Managing Director, the Country Manager, the CTO and the Head of Digital Solutions |
+| Who is on the Discovery team? | Management: the Managing Director, the Country Manager, the CTO and the Head of Engineering |
 | Who decides? | The **Managing Director** makes the final decision. The other three contribute to research, concept and feasibility and record recommendations |
 | Engineering as a destination? | Not a separate department. Engineering is mostly Presales and implementation, and Sandz's work is mainly systems integration: solution design and proofs of concept go to **Presales**, implementation to **Delivery** |
-| Prototypes? | Today only the apps built by the Head of Digital Solutions, so app prototypes go to **Digital Solutions**. Devices such as IoT sensors may follow |
+| Prototypes? | Today only the apps built by the Head of Engineering, so app prototypes go to **Digital Solutions**. Devices such as IoT sensors may follow |
 | Can other employees see Triggers? | Configurable. For Sandz, yes: all SLI members see Triggers' titles, stages and outcomes, and the person who raised one always sees it |
 | Previous initiatives? | Not in SLI yet; they can be entered as Triggers later |
 | Who decides when the MD is unavailable? | The **Country Manager**, as the MD's delegate |
