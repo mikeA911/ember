@@ -233,7 +233,7 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 |---|---|
 | Who is on the Discovery team? | Management: the Managing Director, the Country Manager, the CTO and the Head of Engineering |
 | Who decides? | The **Managing Director** makes the final decision. The other three contribute to research, concept and feasibility and record recommendations |
-| Engineering as a destination? | Not a separate department. Engineering is mostly Presales and implementation, and Sandz's work is mainly systems integration: solution design and proofs of concept go to **Presales**, implementation to **Delivery** |
+| Engineering as a destination? | Yes: **Engineering** is a department led by the Head of Engineering, for app prototypes (later possibly IoT devices). Sandz's work is mainly systems integration, so solution design and proofs of concept go to **Presales** and implementation to **Delivery** |
 | Prototypes? | Today only the apps built by the Head of Engineering, so app prototypes go to **Engineering**, led by the Head of Engineering. Devices such as IoT sensors may follow |
 | Can other employees see Triggers? | Configurable. For Sandz, yes: all SLI members see Triggers' titles, stages and outcomes, and the person who raised one always sees it |
 | Previous initiatives? | Not in SLI yet; they can be entered as Triggers later |
