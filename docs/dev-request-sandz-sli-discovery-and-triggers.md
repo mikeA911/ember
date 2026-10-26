@@ -122,7 +122,7 @@ Promotions happen at several points in the lifecycle: Discovery to Marketing, Ma
 
 ### Promote (forward)
 
-1. After an *Approve* decision, the sponsor proposes a handoff to a destination: **Marketing** (campaign or market validation), **Presales** (solution design, systems integration proof of concept, product and partner sourcing; Sandz's engineering and procurement sit here), **Digital Solutions** (an app prototype; later, devices such as IoT sensors), **Sales** (a customer-specific pursuit), or **Project Delivery** (implementation, or an approved internal initiative). Destinations are configurable departments.
+1. After an *Approve* decision, the sponsor proposes a handoff to a destination: **Marketing** (campaign or market validation), **Presales** (solution design, systems integration proof of concept, product and partner sourcing; Sandz's engineering and procurement sit here), **Engineering** (an app prototype, led by the Head of Engineering; later, devices such as IoT sensors), **Sales** (a customer-specific pursuit), or **Project Delivery** (implementation, or an approved internal initiative). Destinations are configurable departments.
 2. The handoff names the destination owner and attaches a **package**: selected approved artifacts, approved claims, target industries, conditions from the decision. Package artifacts are **copied** into the destination, as Ember's Workstream promotion already does, so the confidential Discovery workspace is never exposed.
 3. The destination department lead **accepts** it. Acceptance creates the destination record or Workstream, links it to the Trigger, and moves the Trigger to *Promoted*.
 
@@ -148,7 +148,7 @@ The destination owner can **return** a proposed handoff instead of accepting it,
 
 A later stage can find that the solution is not adequate. This is the "go back" case.
 
-1. The current owner (for example Digital Solutions, building a prototype app) raises a **send-back** to an earlier stage. It includes a reason category (*solution inadequate*, *insufficient evidence*, *market changed*, *customer feedback*, *cost or risk higher than assessed*), the evidence (test results, customer feedback), and the stage it proposes to return to.
+1. The current owner (for example Engineering, building a prototype app) raises a **send-back** to an earlier stage. It includes a reason category (*solution inadequate*, *insufficient evidence*, *market changed*, *customer feedback*, *cost or risk higher than assessed*), the evidence (test results, customer feedback), and the stage it proposes to return to.
 2. The Trigger's sponsor, or a decision authority, accepts the send-back. The Trigger moves back to the agreed stage (*Researching*, *Concept* or *Feasibility*) and the previous decision is marked **superseded**.
 3. The downstream work is **paused or closed**, as the send-back states. Nothing is deleted. The destination record keeps its link and history.
 4. The Trigger goes through review again and gets a new decision, which may promote it to the same or a different destination.
@@ -206,10 +206,10 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 2. **Researching:** the team uses the assistant and web search on computer-vision vendors and warehouse safety needs, uploads partner material, and records candidate concepts.
 3. **Concept:** the *Concept development* Method produces a concept paper: solution, target market, business model, partners, dependencies.
 4. **Feasibility:** the *Feasibility assessment* Method produces technical, commercial, cost and risk findings, including GPU capacity on Zadara.
-5. **Recommendations and decision:** the Country Manager, CTO and Head of Engineering record recommendations. The MD decides: *Approve* with destination **Digital Solutions**: "limited technical prototype before marketing launch", with a condition on detection accuracy.
-6. **Promote:** Digital Solutions accepts the handoff. A prototype Workstream is created with the copied package. Presales is consulted on the camera and GPU hardware from Sandz's partners.
-7. **Send back:** the prototype misses the accuracy condition at the lighting levels found in real warehouses. Digital Solutions sends back to *Feasibility* with test results, reason *solution inadequate*, downstream action *pause*. The sponsor accepts, and the first decision is superseded.
-8. **Revise and decide again:** feasibility is updated (different camera placement, a better model). New decision by the MD: *Approve*, Digital Solutions again. The second prototype meets the condition.
+5. **Recommendations and decision:** the Country Manager, CTO and Head of Engineering record recommendations. The MD decides: *Approve* with destination **Engineering**: "limited technical prototype before marketing launch", with a condition on detection accuracy.
+6. **Promote:** Engineering accepts the handoff. A prototype Workstream is created with the copied package. Presales is consulted on the camera and GPU hardware from Sandz's partners.
+7. **Send back:** the prototype misses the accuracy condition at the lighting levels found in real warehouses. Engineering sends back to *Feasibility* with test results, reason *solution inadequate*, downstream action *pause*. The sponsor accepts, and the first decision is superseded.
+8. **Revise and decide again:** feasibility is updated (different camera placement, a better model). New decision by the MD: *Approve*, Engineering again. The second prototype meets the condition.
 9. **Promote to Marketing:** the Discovery team has built a list of candidate customers (for example 15 logistics operators and warehouse owners, ordered by Top 1000 rank, each with a fit rationale). Marketing receives that list with the value proposition, target industries, validated capabilities, approved claims, demonstrations and campaign recommendations. The original research, both decisions and the send-back stay linked to the Trigger for traceability.
 
 ## 11. Scope
@@ -234,7 +234,7 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 | Who is on the Discovery team? | Management: the Managing Director, the Country Manager, the CTO and the Head of Engineering |
 | Who decides? | The **Managing Director** makes the final decision. The other three contribute to research, concept and feasibility and record recommendations |
 | Engineering as a destination? | Not a separate department. Engineering is mostly Presales and implementation, and Sandz's work is mainly systems integration: solution design and proofs of concept go to **Presales**, implementation to **Delivery** |
-| Prototypes? | Today only the apps built by the Head of Engineering, so app prototypes go to **Digital Solutions**. Devices such as IoT sensors may follow |
+| Prototypes? | Today only the apps built by the Head of Engineering, so app prototypes go to **Engineering**, led by the Head of Engineering. Devices such as IoT sensors may follow |
 | Can other employees see Triggers? | Configurable. For Sandz, yes: all SLI members see Triggers' titles, stages and outcomes, and the person who raised one always sees it |
 | Previous initiatives? | Not in SLI yet; they can be entered as Triggers later |
 | Who decides when the MD is unavailable? | The **Country Manager**, as the MD's delegate |

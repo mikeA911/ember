@@ -91,7 +91,7 @@ All tables are new, prefixed `sli_`, with RLS on. Each migration ends with `sele
 
 | Table | Key columns |
 |---|---|
-| `sli_departments` | `id`, `code` (unique: `management`, `digital_solutions`, `marketing`, `sales`, `presales`, `delivery`, `maintenance`), `name`, `is_active`, `accepts_handoffs`. Digital Solutions builds app prototypes; Presales includes Sandz's engineering and procurement staff; management is the Discovery team |
+| `sli_departments` | `id`, `code` (unique: `management`, `engineering`, `marketing`, `sales`, `presales`, `delivery`, `maintenance`), `name`, `is_active`, `accepts_handoffs`. Engineering (led by the Head of Engineering) builds app prototypes; Presales includes Sandz's engineering and procurement staff; management is the Discovery team |
 | `sli_department_members` | `department_id`, `user_id`, `role` (`member`/`lead`/`viewer`), `status` (`active`/`inactive`), unique (department, user) |
 
 Department names and codes are seeded per instance as data, not code (ADR-0002).
