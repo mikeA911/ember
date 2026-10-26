@@ -103,7 +103,8 @@ Every stage change is recorded in an append-only history (who, when, from, to, r
 ## 6. Management review and decisions (S3)
 
 - **Review:** the sponsor submits the Trigger with its evidence (concept paper, feasibility assessment, key sources). The review can use Ember's **presentation** flow (slides generated from the Workstream, comments, revision).
-- **Who decides:** holders of a `discovery_decision` authority, using Ember's approval policies and authority assignments (`project_approval_policies`, `holds_project_authority()`). Management is the initial authority. Nobody decides on a Trigger they sponsor unless the policy allows it.
+- **Who contributes:** the Country Manager, the CTO and the Head of Digital Solutions research, develop and assess Triggers, and each records a **recommendation** (approve, revise, defer or reject, with comments) before the decision.
+- **Who decides:** the **Managing Director** makes the final decision, as holder of the `discovery_decision` authority (Ember's approval policies and authority assignments: `project_approval_policies`, `holds_project_authority()`). The authority is configuration, so another organisation could name a committee instead. Because the MD is the sole authority, the policy allows the MD to decide Triggers they sponsored; the contributors' recommendations are recorded alongside the decision.
 - **What is recorded:** outcome, rationale, conditions (for example "prototype must reach 95% detection accuracy"), the evidence relied on, the destination if approved, the review date if deferred, and who decided under which authority.
 - **Revisions do not overwrite:** a new decision supersedes the previous one, and both stay visible.
 
@@ -113,7 +114,7 @@ Promotions happen at several points in the lifecycle: Discovery to Marketing, Ma
 
 ### Promote (forward)
 
-1. After an *Approve* decision, the sponsor proposes a handoff to a destination: **Marketing** (campaign or market validation), **Presales** (prototype, proof of concept, product and partner sourcing; Sandz's engineering and procurement sit here), **Sales** (a customer-specific pursuit), or **Project Delivery** (implementation, or an approved internal initiative).
+1. After an *Approve* decision, the sponsor proposes a handoff to a destination: **Marketing** (campaign or market validation), **Presales** (solution design, systems integration proof of concept, product and partner sourcing; Sandz's engineering and procurement sit here), **Digital Solutions** (an app prototype; later, devices such as IoT sensors), **Sales** (a customer-specific pursuit), or **Project Delivery** (implementation, or an approved internal initiative). Destinations are configurable departments.
 2. The handoff names the destination owner and attaches a **package**: selected approved artifacts, approved claims, target industries, conditions from the decision. Package artifacts are **copied** into the destination, as Ember's Workstream promotion already does, so the confidential Discovery workspace is never exposed.
 3. The destination department lead **accepts** it. Acceptance creates the destination record or Workstream, links it to the Trigger, and moves the Trigger to *Promoted*.
 
@@ -127,7 +128,7 @@ The destination owner can **return** a proposed handoff instead of accepting it,
 
 A later stage can find that the solution is not adequate. This is the "go back" case.
 
-1. The current owner (for example the Presales prototype team) raises a **send-back** to an earlier stage. It includes a reason category (*solution inadequate*, *insufficient evidence*, *market changed*, *customer feedback*, *cost or risk higher than assessed*), the evidence (test results, customer feedback), and the stage it proposes to return to.
+1. The current owner (for example Digital Solutions, building a prototype app) raises a **send-back** to an earlier stage. It includes a reason category (*solution inadequate*, *insufficient evidence*, *market changed*, *customer feedback*, *cost or risk higher than assessed*), the evidence (test results, customer feedback), and the stage it proposes to return to.
 2. The Trigger's sponsor, or a decision authority, accepts the send-back. The Trigger moves back to the agreed stage (*Researching*, *Concept* or *Feasibility*) and the previous decision is marked **superseded**.
 3. The downstream work is **paused or closed**, as the send-back states. Nothing is deleted. The destination record keeps its link and history.
 4. The Trigger goes through review again and gets a new decision, which may promote it to the same or a different destination.
@@ -145,8 +146,9 @@ All tables are prefixed `sli_`, with RLS on and `select apply_oauth_read_only_po
 | `sli_triggers` | `id`, `code` (`TRG-nnn`), `title`, `trigger_type` (`management_idea`/`market_event`/`customer_problem`/`technology`/`partner_offering`/`employee_suggestion`/`downstream_lesson`), `source_department_id`, `raised_by`, `sponsor_id`, `summary`, `event_date`, `event_reference` (link or source for market events), `strategic_objective`, `stage`, `priority`, `information_sensitivity` (default `confidential`), `workstream_id`, `source_trigger_id` (for Triggers raised from another), `review_on` (when deferred), audit columns, `archived_at` |
 | `sli_trigger_stage_history` | Append-only: `trigger_id`, `from_stage`, `to_stage`, `reason`, `changed_by`, `changed_at`, related `decision_id` or `handoff_id` |
 | `sli_trigger_links` | `trigger_id`, `link_type` (`industry`/`customer`/`partner`/`related_trigger`), reference |
-| `sli_decisions` | `id`, `trigger_id`, `outcome` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `return_to_stage` (if revise), `rationale`, `conditions`, `review_on`, `decided_by`, `authority_type`, `decided_at`, `supersedes_id`, `superseded_by_id`, `superseded_reason` |
+| `sli_decisions` | `id`, `trigger_id`, `share_rationale_with_raiser`, `outcome` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `return_to_stage` (if revise), `rationale`, `conditions`, `review_on`, `decided_by`, `authority_type`, `decided_at`, `supersedes_id`, `superseded_by_id`, `superseded_reason` |
 | `sli_decision_evidence` | `decision_id`, artifact or source reference |
+| `sli_recommendations` | `trigger_id`, `recommended_by`, `recommendation` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `comments`, `recorded_at`; the latest per person counts, earlier ones stay in history |
 | `sli_handoffs` | `id`, `trigger_id`, `kind` (`promote`/`send_back`), `from_stage`, `to_stage` or `destination`, `destination_owner_id`, `destination_workstream_id`, `status` (`proposed`/`accepted`/`returned`/`withdrawn`), `reason_category` and `reason` (send-backs and returns), `downstream_action` (`pause`/`close`, send-backs), `proposed_by`, `decided_by`, `decided_at`, `previous_handoff_id` |
 | `sli_handoff_package_items` | `handoff_id`, artifact reference, copied artifact reference, `item_type` (`artifact`/`claim`/`condition`/`target_industry`) |
 
@@ -159,12 +161,14 @@ The same `sli_handoffs` table is reused, with other subject types, for the Marke
 | Action | Who |
 |---|---|
 | Raise a Trigger | Any active member of any SLI department (a short form: title, type, summary, evidence) |
-| See your own submitted Triggers and their stage | The person who raised them |
-| See all Triggers and their research | Discovery team: the Managing Director, Country Manager, CTO and the applications lead (members of the Discovery Project), plus anyone they appoint |
+| See your own submitted Triggers, their stage and outcome | The person who raised them, always |
+| See other people's Triggers (title, type, stage, outcome) | Configurable per instance (`trigger_visibility`: `own` or `all_members`). Sandz: **all SLI members**. Research, financial assumptions and decision rationale stay with the Discovery team unless the MD shares the rationale with the raiser |
+| See all Triggers and their research | Discovery team: the Managing Director, Country Manager, CTO and Head of Digital Solutions (members of the Discovery Project), plus anyone they appoint |
+| Record a recommendation | Discovery team members other than the decision authority |
 | Contribute to one Trigger | People added to that Trigger's access group |
 | Accept or decline a new Trigger; sponsor its research | Discovery team members with the sponsor role |
 | Submit for review; propose a handoff | The Trigger's sponsor |
-| Decide | Holders of the `discovery_decision` authority: the Discovery team |
+| Decide | Holder of the `discovery_decision` authority: the Managing Director |
 | Accept or return a handoff | The destination department's lead |
 | Raise a send-back | The current owner of the downstream work |
 | Accept a send-back | The Trigger's sponsor or a decision authority |
@@ -179,10 +183,10 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 2. **Researching:** the team uses the assistant and web search on computer-vision vendors and warehouse safety needs, uploads partner material, and records candidate concepts.
 3. **Concept:** the *Concept development* Method produces a concept paper: solution, target market, business model, partners, dependencies.
 4. **Feasibility:** the *Feasibility assessment* Method produces technical, commercial, cost and risk findings, including GPU capacity on Zadara.
-5. **Decision:** *Approve* with destination **Presales**: "limited technical prototype before marketing launch", with a condition on detection accuracy.
-6. **Promote:** the Presales lead accepts the handoff. A prototype Workstream is created with the copied package.
-7. **Send back:** the prototype misses the accuracy condition at the lighting levels found in real warehouses. Presales sends back to *Feasibility* with test results, reason *solution inadequate*, downstream action *pause*. The sponsor accepts, and the first decision is superseded.
-8. **Revise and decide again:** feasibility is updated (different camera placement, a better model). New decision: *Approve*, Presales again. The second prototype meets the condition.
+5. **Recommendations and decision:** the Country Manager, CTO and Head of Digital Solutions record recommendations. The MD decides: *Approve* with destination **Digital Solutions**: "limited technical prototype before marketing launch", with a condition on detection accuracy.
+6. **Promote:** Digital Solutions accepts the handoff. A prototype Workstream is created with the copied package. Presales is consulted on the camera and GPU hardware from Sandz's partners.
+7. **Send back:** the prototype misses the accuracy condition at the lighting levels found in real warehouses. Digital Solutions sends back to *Feasibility* with test results, reason *solution inadequate*, downstream action *pause*. The sponsor accepts, and the first decision is superseded.
+8. **Revise and decide again:** feasibility is updated (different camera placement, a better model). New decision by the MD: *Approve*, Digital Solutions again. The second prototype meets the condition.
 9. **Promote to Marketing:** Marketing receives the value proposition, target industries, validated capabilities, approved claims, demonstrations and campaign recommendations. The original research, both decisions and the send-back stay linked to the Trigger for traceability.
 
 ## 11. Scope
@@ -204,18 +208,20 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 
 | Question | Answer |
 |---|---|
-| Who is on the Discovery team and holds the decision authority? | Management: the Managing Director, the Country Manager, the CTO, and the applications lead (title to confirm) |
-| Engineering as a destination? | Not a separate department. Engineering is mostly the Presales and implementation teams, so prototypes go to **Presales** and implementation to **Delivery** |
+| Who is on the Discovery team? | Management: the Managing Director, the Country Manager, the CTO and the Head of Digital Solutions |
+| Who decides? | The **Managing Director** makes the final decision. The other three contribute to research, concept and feasibility and record recommendations |
+| Engineering as a destination? | Not a separate department. Engineering is mostly Presales and implementation, and Sandz's work is mainly systems integration: solution design and proofs of concept go to **Presales**, implementation to **Delivery** |
+| Prototypes? | Today only the apps built by the Head of Digital Solutions, so app prototypes go to **Digital Solutions**. Devices such as IoT sensors may follow |
+| Can other employees see Triggers? | Configurable. For Sandz, yes: all SLI members see Triggers' titles, stages and outcomes, and the person who raised one always sees it |
+| Previous initiatives? | Not in SLI yet; they can be entered as Triggers later |
 | Procurement? | Part of **Presales**, because procurement knows the partner products Sandz sells |
 | Assistant name? | Still **Ember** |
 | Module name? | **Ember Sandz**, with **Solution Lifecycle Intelligence** as the byline. SLI may be sold to other customers later |
 
 **Still open:**
 
-1. Does a decision need one approver from the Discovery team, or more than one (for example the MD plus one other)?
-2. Should employees outside management see Triggers raised by others, or only their own?
-3. What review dates for deferred Triggers: a fixed period, or set per decision?
-4. The applications lead's title, for role labels in the app.
+1. What review dates for deferred Triggers: a fixed period, or set per decision?
+2. Who decides when the MD is unavailable: a named delegate, or wait?
 
 ## 13. Acceptance criteria
 

@@ -15,7 +15,7 @@ Field choices are grounded in Sandz's current Zoho CRM, as seen on 23 October 20
 3. **Contacts.** People, their contact methods and consent, and their links to customers over time.
 4. **Duplicate detection and merge.** Checks on create, a merge with history, and no hard deletes.
 5. **Restricted customers.** Sensitivity, explicit grants, access audit.
-6. **Zoho import.** Dry run, field mapping, external IDs, duplicate report. Depends on the migration decision (§13).
+6. **Zoho import.** Dry run, field mapping, external IDs, duplicate report. **Later:** Sandz will migrate after the pilot (§13).
 7. **Ember and MCP read tools.** Customer summary and search through the sensitivity gate.
 
 Stages 1–5 complete the registry milestone ("authorized users can create, search and maintain shared records"). Stages 6–7 can follow alongside S5 (Marketing workflows).
@@ -63,8 +63,8 @@ Under the CRM Team space: My Jobs, Leads, **Campaigns**, **Contacts**, **Company
 | Company Industry | Manufacturing | `industry` | Controlled list |
 | Sub-Industry | Semicon | `sub_industry` | Controlled list, per industry |
 | Conglomerate | — | `parent_customer_id` | A group or parent company, modelled as a link to another customer |
-| Top 1000 Rank | a number | `top1000_rank` | Source to confirm (§13) |
-| BSP Rank | — | `bsp_rank` | Meaning to confirm (§13) |
+| Top 1000 Rank | a number | ranking `top1000` | Maintained by the Discovery team from industry publications and web research (§4, rankings) |
+| BSP Rank | — | ranking `bsp` | BSP is Bangko Sentral ng Pilipinas, the central bank; maintained by the Discovery team |
 | Status | Leads | `lifecycle_status` | Values to confirm (§13) |
 | Company Owner | a person | assignment `account_owner` | Dated |
 | ISR Owner | a person | assignment `isr_owner` | Inside sales representative; dated |
@@ -89,7 +89,7 @@ All tables are new, prefixed `sli_`, with RLS on. Each migration ends with `sele
 
 | Table | Key columns |
 |---|---|
-| `sli_departments` | `id`, `code` (unique: `management`, `marketing`, `sales`, `presales`, `delivery`, `maintenance`), `name`, `is_active`. Presales includes Sandz's engineering and procurement staff; management is the Discovery team |
+| `sli_departments` | `id`, `code` (unique: `management`, `digital_solutions`, `marketing`, `sales`, `presales`, `delivery`, `maintenance`), `name`, `is_active`, `accepts_handoffs`. Digital Solutions builds app prototypes; Presales includes Sandz's engineering and procurement staff; management is the Discovery team |
 | `sli_department_members` | `department_id`, `user_id`, `role` (`member`/`lead`/`viewer`), `status` (`active`/`inactive`), unique (department, user) |
 
 Department names and codes are seeded per instance as data, not code (ADR-0002).
@@ -98,14 +98,21 @@ Department names and codes are seeded per instance as data, not code (ADR-0002).
 
 | Table | Key columns |
 |---|---|
-| `sli_customers` | `id`, `name`, `legal_name`, `normalized_name`, `website`, `domain`, `main_phone`, `main_phone_normalized`, `industry`, `sub_industry`, `country_of_origin`, `parent_customer_id`, `lifecycle_status`, `priority` (`low`/`medium`/`high`), `top1000_rank`, `bsp_rank`, `call_status`, `infra_profile_status`, `information_sensitivity` (`public`/`internal`/`confidential`/`restricted`, default `internal`), `source` (`manual`/`zoho_import`), `merged_into_id`, `archived_at`, `created_by`, `created_at`, `updated_by`, `updated_at` |
+| `sli_customers` | `id`, `name`, `legal_name`, `normalized_name`, `website`, `domain`, `main_phone`, `main_phone_normalized`, `industry`, `sub_industry`, `country_of_origin`, `parent_customer_id`, `lifecycle_status`, `priority` (`low`/`medium`/`high`), `call_status`, `infra_profile_status`, `information_sensitivity` (`public`/`internal`/`confidential`/`restricted`, default `internal`), `source` (`manual`/`zoho_import`), `merged_into_id`, `archived_at`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `sli_customer_assignments` | `customer_id`, `role` (`account_owner`/`isr_owner`/`account_rep`), `user_id`, `valid_from`, `valid_to`, `assigned_by`; at most one current (`valid_to is null`) per customer and role |
-| `sli_tags` | `id`, `name` (unique), `category` (optional), `is_active` |
-| `sli_customer_tags` | `customer_id`, `tag_id` |
+| `sli_tag_categories` | `id`, `name` (for example *Interest*, *Programme*, *Stage*, *Country*), `allow_multiple`, `show_as_badge`, `sort_order`, `is_active` |
+| `sli_tags` | `id`, `category_id` (optional), `name`, `colour`, `is_active`; unique (category, name) |
+| `sli_customer_tags` | `customer_id`, `tag_id`, `tagged_by`, `tagged_at` |
+| `sli_ranking_types` | `code` (`top1000`, `bsp`, and any added later), `name`, `description`, `lower_is_better` |
+| `sli_customer_rankings` | `customer_id`, `ranking_type`, `rank_value`, `as_of`, `source` (`tavily`/`bsp`/`industry_publication`/`other`), `source_reference` (publication, link), `recorded_by`, `accepted_by` (when drafted by Ember); history kept, the latest accepted value shown |
 | `sli_reference_values` | `list` (`industry`, `sub_industry`, `lifecycle_status`, `call_status`, `infra_profile_status`), `code`, `label`, `parent_code` (sub-industry under industry), `sort_order`, `is_active` |
 | `sli_notes` | `id`, `subject_type` (`customer`/`contact`), `subject_id`, `body`, `created_by`, `created_at`, `edited_at` |
 
 Controlled lists live in `sli_reference_values` so Sandz can maintain them without a release.
+
+**Customisable tags.** Platform admins (and Marketing and Sales leads, if Sandz agrees) create tag categories and tags, choose colours and which categories show as badges on the customer header, like Zoho's tag strip. Until Sandz confirms what its Zoho tags mean (§13), they are kept as tags; any with a consistent meaning can later become fields.
+
+**Rankings.** Rankings such as Top 1000 and BSP (Bangko Sentral ng Pilipinas) are maintained by the Discovery team, with their source and date. Ember can research a ranking with Tavily or from uploaded industry publications and draft it with `awaiting_acceptance`; a Discovery team member accepts it. New ranking types are added as data.
 
 ### Contacts (Stage 3)
 
@@ -248,14 +255,14 @@ This is a Sandz decision (concept paper §11, "Which functions remain in externa
 
 ## 13. Open questions for Sandz
 
-1. **Tags:** what do "Staller", "Global-Sol. & Procurement", "With Lead", "Demand Gen" and "OpentoCloud" mean? Is the country tag the parent company's home country?
-2. **Rankings:** what is the source of "Top 1000 Rank" (for example a published list of top corporations), and what is "BSP Rank"?
+1. **Tags (awaiting feedback):** what do "Staller", "Global-Sol. & Procurement", "With Lead", "Demand Gen" and "OpentoCloud" mean? Is the country tag the parent company's home country? Meanwhile, tags are customisable (§4).
+2. **Rankings (answered):** maintained by the Discovery team using Tavily and other research, BSP (Bangko Sentral ng Pilipinas) and industry publications (§4).
 3. **Value lists:** the possible values of Company Status, Call Status and Infra Status.
 4. **Roles:** how do Company Owner, ISR Owner and Account Rep differ in practice? Who may change each?
 5. **Regions:** what does "Region 1 History" record? Does Sandz assign accounts by territory?
 6. **Conglomerates:** should a group and its member companies be separate customers linked by parent, as proposed?
 7. **Contacts:** do contacts move between companies often enough that history matters?
-8. **Migration:** which Zoho modules and how much history to bring over? What happens to "Old Leads"?
+8. **Migration (later):** Zoho data and previous initiatives are not yet in SLI and will be migrated later. Still to decide: which Zoho modules, how much history, and what happens to "Old Leads".
 9. **Coexistence:** cut-over, parallel run or read-through (§11)?
 10. **Zoho AI:** are Zoho's Agents or MCP features in use today?
 11. **Retention:** how long to keep contacts with no activity or consent?
