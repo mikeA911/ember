@@ -112,6 +112,7 @@ Every stage change is recorded in an append-only history (who, when, from, to, r
 - **Review:** the sponsor submits the Trigger with its evidence (concept paper, feasibility assessment, key sources). The review can use Ember's **presentation** flow (slides generated from the Workstream, comments, revision).
 - **Who contributes:** the Country Manager, the CTO and the Head of Digital Solutions research, develop and assess Triggers, and each records a **recommendation** (approve, revise, defer or reject, with comments) before the decision.
 - **Who decides:** the **Managing Director** makes the final decision, as holder of the `discovery_decision` authority (Ember's approval policies and authority assignments: `project_approval_policies`, `holds_project_authority()`). The authority is configuration, so another organisation could name a committee instead. Because the MD is the sole authority, the policy allows the MD to decide Triggers they sponsored; the contributors' recommendations are recorded alongside the decision.
+- **Delegate:** when the MD is unavailable, the **Country Manager** decides as delegate. The delegation is a dated authority assignment (from and to dates), so each decision records whether it was made by the MD or by the delegate, and the Country Manager's own recommendation on that Trigger stays visible. The delegate cannot decide a Trigger they sponsor; it waits for the MD.
 - **What is recorded:** outcome, rationale, conditions (for example "prototype must reach 95% detection accuracy"), the evidence relied on, the destination if approved, and who decided under which authority.
 - **Revisions do not overwrite:** a new decision supersedes the previous one, and both stay visible.
 
@@ -165,7 +166,7 @@ All tables are prefixed `sli_`, with RLS on and `select apply_oauth_read_only_po
 | `sli_triggers` | `id`, `code` (`TRG-nnn`), `title`, `trigger_type` (`management_idea`/`market_event`/`customer_problem`/`technology`/`partner_offering`/`employee_suggestion`/`downstream_lesson`), `source_department_id`, `raised_by`, `sponsor_id`, `summary`, `event_date`, `event_reference` (link or source for market events), `strategic_objective`, `stage`, `priority`, `information_sensitivity` (default `confidential`), `workstream_id`, `source_trigger_id` (for Triggers raised from another), audit columns, `archived_at`, `archived_by`, `archive_reason` |
 | `sli_trigger_stage_history` | Append-only: `trigger_id`, `from_stage`, `to_stage`, `reason`, `changed_by`, `changed_at`, related `decision_id` or `handoff_id` |
 | `sli_trigger_links` | `trigger_id`, `link_type` (`industry`/`customer`/`partner`/`related_trigger`), reference |
-| `sli_decisions` | `id`, `trigger_id`, `share_rationale_with_raiser`, `outcome` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `return_to_stage` (if revise), `rationale`, `conditions`, `decided_by`, `authority_type`, `decided_at`, `supersedes_id`, `superseded_by_id`, `superseded_reason` |
+| `sli_decisions` | `id`, `trigger_id`, `share_rationale_with_raiser`, `outcome` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `return_to_stage` (if revise), `rationale`, `conditions`, `decided_by`, `authority_type`, `decided_as` (`authority`/`delegate`), `decided_at`, `supersedes_id`, `superseded_by_id`, `superseded_reason` |
 | `sli_decision_evidence` | `decision_id`, artifact or source reference |
 | `sli_recommendations` | `trigger_id`, `recommended_by`, `recommendation` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `comments`, `recorded_at`; the latest per person counts, earlier ones stay in history |
 | `sli_handoffs` | `id`, `trigger_id`, `kind` (`promote`/`send_back`), `from_stage`, `to_stage` or `destination`, `destination_owner_id`, `destination_workstream_id`, `status` (`proposed`/`accepted`/`returned`/`withdrawn`), `reason_category` and `reason` (send-backs and returns), `downstream_action` (`pause`/`close`, send-backs), `proposed_by`, `decided_by`, `decided_at`, `previous_handoff_id` |
@@ -189,7 +190,7 @@ The same `sli_handoffs` table is reused, with other subject types, for the Marke
 | Accept or decline a new Trigger; sponsor its research | Discovery team members with the sponsor role |
 | Revisit a Deferred Trigger; archive or unarchive a Trigger | Discovery team members |
 | Submit for review; propose a handoff | The Trigger's sponsor |
-| Decide | Holder of the `discovery_decision` authority: the Managing Director |
+| Decide | Holder of the `discovery_decision` authority: the Managing Director, or the Country Manager as dated delegate |
 | Add, accept or remove candidate customers | Discovery team members |
 | Accept or return a handoff | The destination department's lead |
 | Raise a send-back | The current owner of the downstream work |
@@ -236,14 +237,13 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 | Prototypes? | Today only the apps built by the Head of Digital Solutions, so app prototypes go to **Digital Solutions**. Devices such as IoT sensors may follow |
 | Can other employees see Triggers? | Configurable. For Sandz, yes: all SLI members see Triggers' titles, stages and outcomes, and the person who raised one always sees it |
 | Previous initiatives? | Not in SLI yet; they can be entered as Triggers later |
+| Who decides when the MD is unavailable? | The **Country Manager**, as the MD's delegate |
 | Review dates for deferred Triggers? | None. Deferred Triggers are shelved and can be revisited at any time. An **Archive** button hides any Trigger from active lists without deleting it |
 | Procurement? | Part of **Presales**, because procurement knows the partner products Sandz sells |
 | Assistant name? | Still **Ember** |
 | Module name? | **Ember Sandz**, with **Solution Lifecycle Intelligence** as the byline. SLI may be sold to other customers later |
 
-**Still open:**
-
-1. Who decides when the MD is unavailable: a named delegate, or wait?
+All Discovery questions are answered. The customer registry's open questions wait for the Marketing team ([registry design](dev-request-sandz-sli-customer-and-contact-registry.md) §13).
 
 ## 13. Acceptance criteria
 
