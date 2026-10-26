@@ -43,8 +43,10 @@
 
 ## 5. Step 1: Sandz SLI
 
-- One shared customer and contact registry for every department
-- Marketing first: campaigns, telemarketing, lead endorsement to Sales
+- **Discovery first:** a place for management to capture Triggers (ideas, market events, customer problems, technology developments), research them with AI, develop concepts, assess feasibility and decide, before anything reaches Marketing
+- Approved work is promoted to Marketing, an Engineering prototype, Sales/Presales or Delivery, and any later stage can **send it back** if the solution proves inadequate
+- Then one shared customer and contact registry for every department
+- Then Marketing: campaigns, telemarketing, lead endorsement to Sales
 - Later: Presales, Delivery and Maintenance. Ember's requirements, verification and re-verification features give these a head start
 - AI drafts and recommends; people approve. No AI-only approvals or lead qualifications
 - Pilot success: a full Marketing → Sales handoff with no lost information, no duplicate records and no unauthorized access
@@ -139,7 +141,7 @@
 
 ## 12. Roadmap
 
-- **B0:** SLI (Marketing pilot) and the move to Zadara
+- **B0:** SLI (Discovery first, then the customer registry and the Marketing pilot) and the move to Zadara
 - **B1:** Builders instance for internal builders
 - **B2:** App hosting and the shared-services gateway (internal builders)
 - **B3:** External builders: partners, then schools
@@ -198,7 +200,7 @@ These are for management to decide. The technical work does not set them.
 
 ## 16. Decisions needed today
 
-- Approve SLI as the first implementation (Marketing pilot)
+- Approve SLI as the first implementation, starting with Discovery, then the Marketing pilot
 - Approve the Zadara resource quota and the move plan
 - Endorse the builder platform direction (detailed design per phase, not yet a build commitment)
 - Name department owners for SLI workflows and permissions

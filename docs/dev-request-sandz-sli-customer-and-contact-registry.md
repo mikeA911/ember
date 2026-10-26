@@ -2,7 +2,7 @@
 
 ## Status
 
-**Proposed, not built.** This is milestone S2 of the [Ember Sandz concept paper](ember-sandz/Ember_Sandz_Development_Concept_v0.1.md). It turns the S2 work package in the [S1 codebase assessment](ember-sandz/S1-EMBER-CODEBASE-ASSESSMENT.md) §6 into a buildable design. It follows [ADR-0002](architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md): SLI is a module in this codebase, switched on per instance.
+**Proposed, not built.** This is milestone **S4** in the revised SLI sequence, which now starts with Discovery ([Discovery design](dev-request-sandz-sli-discovery-and-triggers.md), S2–S3). It was milestone S2 in the original [Ember Sandz concept paper](ember-sandz/Ember_Sandz_Development_Concept_v0.1.md). It turns the S2 work package in the [S1 codebase assessment](ember-sandz/S1-EMBER-CODEBASE-ASSESSMENT.md) §6 into a buildable design. It follows [ADR-0002](architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md): SLI is a module in this codebase, switched on per instance.
 
 Field choices are grounded in Sandz's current Zoho CRM, as seen on 23 October 2026 (§3). The open questions in §13 need Sandz's answers before Stage 2 is finalised.
 
@@ -16,7 +16,9 @@ Field choices are grounded in Sandz's current Zoho CRM, as seen on 23 October 20
 6. **Zoho import.** Dry run, field mapping, external IDs, duplicate report. Depends on the migration decision (§13).
 7. **Ember and MCP read tools.** Customer summary and search through the sensitivity gate.
 
-Stages 1–5 complete S2 ("authorized users can create, search and maintain shared records"). Stages 6–7 can follow alongside S3 (Marketing workflows).
+Stages 1–5 complete the registry milestone ("authorized users can create, search and maintain shared records"). Stages 6–7 can follow alongside S5 (Marketing workflows).
+
+**Shared with Discovery:** stage 1 here (module switch, departments, access helpers, change history) is also the foundation for Discovery. Whichever is built first builds it once. Discovery Triggers link to customers through `sli_trigger_links` once this registry exists.
 
 ## 1. Problem
 
@@ -65,15 +67,15 @@ Under the CRM Team space: My Jobs, Leads, **Campaigns**, **Contacts**, **Company
 | Company Owner | a person | assignment `account_owner` | Dated |
 | ISR Owner | a person | assignment `isr_owner` | Inside sales representative; dated |
 | Account Rep | a person | assignment `account_rep` | Dated |
-| Call Status | Contacted | `call_status` | Kept on the customer for now; becomes derived from S3 telemarketing activities |
+| Call Status | Contacted | `call_status` | Kept on the customer for now; becomes derived from S5 telemarketing activities |
 | Infra Status | Profiled | `infra_profile_status` | How well Sandz knows the customer's infrastructure; values to confirm |
 | Tags | country, interest, programme, priority and stage tags (for example a country, "OpentoCloud", "Demand Gen", "Medium Priority Prospect", "With Lead") | `country_of_origin`, `priority`, tags | Tags with a consistent meaning become fields; the rest stay as tags (§13) |
 | Created By / Modified By | person and date | `created_by`, `updated_by`, timestamps | Plus the change history |
-| Related lists: Notes, Attachments, Emails, Contacts, Leads, Connected Records | | notes, contacts (this design); leads (S3–S4); attachments and email (later) | |
+| Related lists: Notes, Attachments, Emails, Contacts, Leads, Connected Records | | notes, contacts (this design); leads (S5–S6); attachments and email (later) | |
 | Related list: Region 1 History | | assignment history | |
-| Timeline | | change history plus activities | Activities arrive with S3 |
+| Timeline | | change history plus activities | Activities arrive with S5 |
 
-### Campaigns (recorded now for S3)
+### Campaigns (recorded now for S5)
 
 Campaign Name; Type (Email, Conference); Status (Planning, Active); Start Date; Actual Cost; Budgeted Cost; Campaign Owner; Campaign Subject; Connected To. Views by year ("2025 Campaigns", "2026 Campaigns"); 29 records in the 2026 view. Campaign names show recurring solution themes (virtualisation, private AI, data protection, disaster recovery) and industry targeting (supply chain, manufacturing). S3 should model campaign themes and target industries using the same industry list as customers.
 
@@ -182,7 +184,7 @@ Follows the draft permission matrix in the S1 assessment §4, which department h
 Contact details are personal information under the Philippine Data Privacy Act (RA 10173).
 
 - Contacts default to `internal` sensitivity, so the AI sensitivity gate (`src/lib/ai/sensitivity.ts`) blocks providers not approved for internal data.
-- `marketing_consent`, `do_not_contact` and per-method `opted_out_at` are stored now; S3 telemarketing and campaigns must enforce them.
+- `marketing_consent`, `do_not_contact` and per-method `opted_out_at` are stored now; S5 telemarketing and campaigns must enforce them.
 - **Exports** are permission-checked and logged in `sli_access_audit_log`.
 - **Data subject requests:** a platform-admin function anonymises a contact (names and methods replaced, links and history kept with the personal values removed) and records why. Designed now; exact retention rules to confirm (§13).
 - **Lab uses synthetic data only.** Real Zoho exports are imported into production only (moving guide, Phase 1).
@@ -195,7 +197,7 @@ Routes under `src/app/(app)/sli/`, hidden from navigation and returning not-foun
 |---|---|
 | `/sli/customers` | Search by name, domain, phone or contact email. Filters: industry, sub-industry, lifecycle status, priority, owner, ISR owner, account rep, tags, call status, infra status. Saved views later (Zoho users rely on views such as "2026 Campaigns") |
 | `/sli/customers/new` | Form with live duplicate check (§5) |
-| `/sli/customers/[id]` | Header with classification badges (the equivalent of Zoho's tag strip). Tabs: **Overview** (company information, ownership), **Contacts** (current and past), **Notes**, **History** (changes and assignments). Leads and campaigns tabs arrive with S3–S4 |
+| `/sli/customers/[id]` | Header with classification badges (the equivalent of Zoho's tag strip). Tabs: **Overview** (company information, ownership), **Contacts** (current and past), **Notes**, **History** (changes and assignments). Leads and campaigns tabs arrive with S5–S6 |
 | `/sli/contacts`, `/sli/contacts/[id]` | Contact search and detail: methods, consent, customer links over time, notes, history |
 | `/sli/admin` | Departments and members, reference lists, tags (platform admins) |
 
@@ -237,7 +239,7 @@ This is a Sandz decision (concept paper §11, "Which functions remain in externa
 
 ### Out of scope
 
-- Leads, opportunities and campaigns (S3), telemarketing activities (S3), handoff to Sales (S4).
+- Leads, opportunities and campaigns (S5), telemarketing activities (S5), handoff to Sales (S6, using the handoff mechanism from the Discovery design).
 - Email and calendar sync, attachments.
 - Bulk editing.
 - Reports and dashboards beyond list counts.

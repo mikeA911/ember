@@ -107,6 +107,14 @@ Selected.
 - Routes in their own segment under `src/app/(app)/` (for example `customers/`, `marketing/`), hidden from navigation when the module is off.
 - Ember Core code must not import from `src/lib/sli/`. Sandz may call Core services. Where Sandz needs Core to know about Sandz records (for example, a knowledge reference pointing at a lead), Core exposes a generic reference type rather than importing Sandz types.
 
+### Discovery and the SLI shell
+
+Added 26 October 2026, with [the Discovery design](../dev-request-sandz-sli-discovery-and-triggers.md):
+
+- **Discovery is part of the SLI module**, as its first stage. Its records are "Triggers" (a management idea, market event, customer problem and so on), so "opportunity" stays free for Sales.
+- **SLI users see an SLI shell only.** On an SLI instance, users whose access comes through SLI departments get SLI navigation (Home, Discovery, and later Customers, Marketing, Sales). Ember features such as Workstreams, Methods and the assistant are used underneath and presented in SLI terms. Core routes are not linked, and opening one sends an SLI-only user back to SLI Home. Platform admins and knowledge curators keep the full Ember navigation.
+- **One handoff mechanism for the whole lifecycle.** Moving work between stages uses one design with three kinds: promote (forward), return (refused before acceptance) and send back (reopened after acceptance). Discovery builds it first, and later stages reuse it.
+
 ### Assistant and MCP tools: framework in Core, tools in modules
 
 Ember has three MCP-related parts. Each splits differently:
