@@ -73,17 +73,22 @@ The shell itself applies to every SLI stage; what differs per stage is whether i
 New ──► Researching ──► Concept ──► Feasibility ──► Under review ──► Approved ──► Promoted
  │           ▲              ▲             ▲              │                            │
  │           └──────────────┴─────────────┴── Revise ────┤                            │
- │                                                       ├──► Deferred (review date)  │
+ │                                                       ├──► Deferred (shelved)      │
  └──► Declined (not worth researching)                   └──► Rejected                │
              ▲                                                                        │
              └────────────────────── send back (§7) ──────────────────────────────────┘
+
+Deferred ──► revisit any time ──► Researching / Concept / Feasibility
+Any Trigger ──► Archive (hidden from active lists) ◄──► Unarchive
 ```
 
 - **New:** raised and visible to the Discovery team. A sponsor accepts it into research, or declines it with a reason.
 - **Researching, Concept, Feasibility:** work happens in the research workspace (§5). Each stage's output is an artifact: research notes and candidate concepts, a concept paper, a feasibility assessment.
 - **Under review:** the sponsor submits the Trigger for a management decision, with the evidence.
-- **Decision outcomes** (§6): *Approve* (with a destination, for example "prototype first"), *Revise* (back to a named earlier stage), *Defer* (with a review date), *Reject*.
+- **Decision outcomes** (§6): *Approve* (with a destination, for example "prototype first"), *Revise* (back to a named earlier stage), *Defer* (shelved, with no review date), *Reject*.
+- **Deferred:** shelved. There is no review date; a Discovery team member can **revisit** it at any time, moving it back to Researching, Concept or Feasibility with a reason. It then needs a new decision.
 - **Promoted:** a handoff has been accepted by the destination owner (§7).
+- **Archive:** any Trigger, at any stage, can be archived with one button. Archived Triggers disappear from the Discovery board and active lists but stay searchable, keep their history, and can be unarchived. Archiving is separate from the stage: an archived Deferred Trigger is still Deferred when unarchived. A Trigger with an open handoff or send-back cannot be archived until that is settled.
 - **Reopened:** a send-back moves a promoted or approved Trigger back to an earlier stage. The earlier decision is marked superseded, never deleted.
 
 Every stage change is recorded in an append-only history (who, when, from, to, reason). Stage changes go through one database function that checks the allowed transitions. Clients never set the stage directly, following Ember's existing pattern for Project status.
@@ -107,7 +112,7 @@ Every stage change is recorded in an append-only history (who, when, from, to, r
 - **Review:** the sponsor submits the Trigger with its evidence (concept paper, feasibility assessment, key sources). The review can use Ember's **presentation** flow (slides generated from the Workstream, comments, revision).
 - **Who contributes:** the Country Manager, the CTO and the Head of Digital Solutions research, develop and assess Triggers, and each records a **recommendation** (approve, revise, defer or reject, with comments) before the decision.
 - **Who decides:** the **Managing Director** makes the final decision, as holder of the `discovery_decision` authority (Ember's approval policies and authority assignments: `project_approval_policies`, `holds_project_authority()`). The authority is configuration, so another organisation could name a committee instead. Because the MD is the sole authority, the policy allows the MD to decide Triggers they sponsored; the contributors' recommendations are recorded alongside the decision.
-- **What is recorded:** outcome, rationale, conditions (for example "prototype must reach 95% detection accuracy"), the evidence relied on, the destination if approved, the review date if deferred, and who decided under which authority.
+- **What is recorded:** outcome, rationale, conditions (for example "prototype must reach 95% detection accuracy"), the evidence relied on, the destination if approved, and who decided under which authority.
 - **Revisions do not overwrite:** a new decision supersedes the previous one, and both stay visible.
 
 ## 7. Handoffs: forward, return and send back
@@ -157,10 +162,10 @@ All tables are prefixed `sli_`, with RLS on and `select apply_oauth_read_only_po
 
 | Table | Key columns |
 |---|---|
-| `sli_triggers` | `id`, `code` (`TRG-nnn`), `title`, `trigger_type` (`management_idea`/`market_event`/`customer_problem`/`technology`/`partner_offering`/`employee_suggestion`/`downstream_lesson`), `source_department_id`, `raised_by`, `sponsor_id`, `summary`, `event_date`, `event_reference` (link or source for market events), `strategic_objective`, `stage`, `priority`, `information_sensitivity` (default `confidential`), `workstream_id`, `source_trigger_id` (for Triggers raised from another), `review_on` (when deferred), audit columns, `archived_at` |
+| `sli_triggers` | `id`, `code` (`TRG-nnn`), `title`, `trigger_type` (`management_idea`/`market_event`/`customer_problem`/`technology`/`partner_offering`/`employee_suggestion`/`downstream_lesson`), `source_department_id`, `raised_by`, `sponsor_id`, `summary`, `event_date`, `event_reference` (link or source for market events), `strategic_objective`, `stage`, `priority`, `information_sensitivity` (default `confidential`), `workstream_id`, `source_trigger_id` (for Triggers raised from another), audit columns, `archived_at`, `archived_by`, `archive_reason` |
 | `sli_trigger_stage_history` | Append-only: `trigger_id`, `from_stage`, `to_stage`, `reason`, `changed_by`, `changed_at`, related `decision_id` or `handoff_id` |
 | `sli_trigger_links` | `trigger_id`, `link_type` (`industry`/`customer`/`partner`/`related_trigger`), reference |
-| `sli_decisions` | `id`, `trigger_id`, `share_rationale_with_raiser`, `outcome` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `return_to_stage` (if revise), `rationale`, `conditions`, `review_on`, `decided_by`, `authority_type`, `decided_at`, `supersedes_id`, `superseded_by_id`, `superseded_reason` |
+| `sli_decisions` | `id`, `trigger_id`, `share_rationale_with_raiser`, `outcome` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `return_to_stage` (if revise), `rationale`, `conditions`, `decided_by`, `authority_type`, `decided_at`, `supersedes_id`, `superseded_by_id`, `superseded_reason` |
 | `sli_decision_evidence` | `decision_id`, artifact or source reference |
 | `sli_recommendations` | `trigger_id`, `recommended_by`, `recommendation` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `comments`, `recorded_at`; the latest per person counts, earlier ones stay in history |
 | `sli_handoffs` | `id`, `trigger_id`, `kind` (`promote`/`send_back`), `from_stage`, `to_stage` or `destination`, `destination_owner_id`, `destination_workstream_id`, `status` (`proposed`/`accepted`/`returned`/`withdrawn`), `reason_category` and `reason` (send-backs and returns), `downstream_action` (`pause`/`close`, send-backs), `proposed_by`, `decided_by`, `decided_at`, `previous_handoff_id` |
@@ -182,6 +187,7 @@ The same `sli_handoffs` table is reused, with other subject types, for the Marke
 | Record a recommendation | Discovery team members other than the decision authority |
 | Contribute to one Trigger | People added to that Trigger's access group |
 | Accept or decline a new Trigger; sponsor its research | Discovery team members with the sponsor role |
+| Revisit a Deferred Trigger; archive or unarchive a Trigger | Discovery team members |
 | Submit for review; propose a handoff | The Trigger's sponsor |
 | Decide | Holder of the `discovery_decision` authority: the Managing Director |
 | Add, accept or remove candidate customers | Discovery team members |
@@ -230,14 +236,14 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 | Prototypes? | Today only the apps built by the Head of Digital Solutions, so app prototypes go to **Digital Solutions**. Devices such as IoT sensors may follow |
 | Can other employees see Triggers? | Configurable. For Sandz, yes: all SLI members see Triggers' titles, stages and outcomes, and the person who raised one always sees it |
 | Previous initiatives? | Not in SLI yet; they can be entered as Triggers later |
+| Review dates for deferred Triggers? | None. Deferred Triggers are shelved and can be revisited at any time. An **Archive** button hides any Trigger from active lists without deleting it |
 | Procurement? | Part of **Presales**, because procurement knows the partner products Sandz sells |
 | Assistant name? | Still **Ember** |
 | Module name? | **Ember Sandz**, with **Solution Lifecycle Intelligence** as the byline. SLI may be sold to other customers later |
 
 **Still open:**
 
-1. What review dates for deferred Triggers: a fixed period, or set per decision?
-2. Who decides when the MD is unavailable: a named delegate, or wait?
+1. Who decides when the MD is unavailable: a named delegate, or wait?
 
 ## 13. Acceptance criteria
 
@@ -250,5 +256,6 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 7. A handoff to Marketing cannot be proposed without at least one accepted candidate customer. Every candidate is a registry customer (no duplicates created), with a fit rationale. Marketing sees the candidates and rationale but not the Discovery research.
 8. A destination lead can return a proposed handoff with a reason.
 9. A downstream owner can send back. The Trigger reopens at the agreed stage, the earlier decision shows as superseded, the downstream work is paused or closed, and nothing is deleted.
-10. The worked example (§10) runs end to end on lab with synthetic data.
-11. With `EMBER_SLI_ENABLED` off, none of this is visible.
+10. A Deferred Trigger can be revisited at any time and moved back to an earlier stage. Any Trigger can be archived and unarchived; archived Triggers leave active lists but remain searchable with their history.
+11. The worked example (§10) runs end to end on lab with synthetic data.
+12. With `EMBER_SLI_ENABLED` off, none of this is visible.

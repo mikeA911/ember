@@ -69,8 +69,8 @@ Under the CRM Team space: My Jobs, Leads, **Campaigns**, **Contacts**, **Company
 | BSP Rank | — | ranking `bsp` | BSP is Bangko Sentral ng Pilipinas, the central bank; maintained by the Discovery team |
 | Status | Leads | `lifecycle_status` | Values to confirm (§13) |
 | Company Owner | a person | assignment `account_owner` | Dated |
-| ISR Owner | a person | assignment `isr_owner` | Inside sales representative; dated |
-| Account Rep | a person | assignment `account_rep` | Dated |
+| ISR Owner | a person | assignment `isr_owner` | Inside sales representative: a **Marketing** team member; dated |
+| Account Rep | a person | assignment `account_rep` | A **Sales** team member; dated |
 | Call Status | Contacted | `call_status` | Kept on the customer for now; becomes derived from S5 telemarketing activities |
 | Infra Status | Profiled | `infra_profile_status` | How well Sandz knows the customer's infrastructure; values to confirm |
 | Tags | country, interest, programme, priority and stage tags (for example a country, "OpentoCloud", "Demand Gen", "Medium Priority Prospect", "With Lead") | `country_of_origin`, `priority`, tags | Tags with a consistent meaning become fields; the rest stay as tags (§13) |
@@ -101,7 +101,7 @@ Department names and codes are seeded per instance as data, not code (ADR-0002).
 | Table | Key columns |
 |---|---|
 | `sli_customers` | `id`, `name`, `legal_name`, `normalized_name`, `website`, `domain`, `main_phone`, `main_phone_normalized`, `industry`, `sub_industry`, `country_of_origin`, `parent_customer_id`, `lifecycle_status`, `priority` (`low`/`medium`/`high`), `call_status`, `infra_profile_status`, `information_sensitivity` (`public`/`internal`/`confidential`/`restricted`, default `internal`), `source` (`manual`/`zoho_import`), `merged_into_id`, `archived_at`, `created_by`, `created_at`, `updated_by`, `updated_at` |
-| `sli_customer_assignments` | `customer_id`, `role` (`account_owner`/`isr_owner`/`account_rep`), `user_id`, `valid_from`, `valid_to`, `assigned_by`; at most one current (`valid_to is null`) per customer and role |
+| `sli_customer_assignments` | `customer_id`, `role` (`account_owner`/`isr_owner`/`account_rep`), `user_id`, `valid_from`, `valid_to`, `assigned_by`; the assignee must be an active member of the role's department (`isr_owner`: Marketing, `account_rep`: Sales); at most one current (`valid_to is null`) per customer and role |
 | `sli_tag_categories` | `id`, `name` (for example *Interest*, *Programme*, *Stage*, *Country*), `allow_multiple`, `show_as_badge`, `sort_order`, `is_active` |
 | `sli_tags` | `id`, `category_id` (optional), `name`, `colour`, `is_active`; unique (category, name) |
 | `sli_customer_tags` | `customer_id`, `tag_id`, `tagged_by`, `tagged_at` |
@@ -112,7 +112,7 @@ Department names and codes are seeded per instance as data, not code (ADR-0002).
 
 Controlled lists live in `sli_reference_values` so Sandz can maintain them without a release.
 
-**Customisable tags.** Platform admins (and Marketing and Sales leads, if Sandz agrees) create tag categories and tags, choose colours and which categories show as badges on the customer header, like Zoho's tag strip. Until Sandz confirms what its Zoho tags mean (§13), they are kept as tags; any with a consistent meaning can later become fields.
+**User-created tags for filtering.** Anyone who can edit a customer can create a new tag while tagging, so the team can group and filter customers in their own way (for example by programme or interest). Tags appear as list filters and as badges on the customer header, like Zoho's tag strip. Categories and colours are optional. To keep the list tidy, platform admins and department leads can rename, merge or retire tags; merging moves every customer to the kept tag. Until Sandz confirms what its Zoho tags mean (§13), they are kept as tags; any with a consistent meaning can later become fields.
 
 **Rankings.** Rankings such as Top 1000 and BSP (Bangko Sentral ng Pilipinas) are maintained by the Discovery team, with their source and date. Ember can research a ranking with Tavily or from uploaded industry publications and draft it with `awaiting_acceptance`; a Discovery team member accepts it. New ranking types are added as data.
 
@@ -179,7 +179,11 @@ Follows the draft permission matrix in the S1 assessment §4, which department h
 | Read a non-restricted customer | Any active member of any SLI department (including viewers) |
 | Read a restricted customer | Holders of an active grant (user or department); platform admins, with the access logged |
 | Create or update customers and contacts | Marketing and Sales members and leads; other departments read only |
-| Assign owners, ISR owners and account reps | Marketing and Sales leads |
+| Assign ISR owners (Marketing team members) | Marketing leads |
+| Assign account reps (Sales team members) | Sales leads |
+| Assign the company owner | Marketing and Sales leads |
+| Create tags while tagging | Anyone who can edit the customer |
+| Rename, merge or retire tags | Department leads, platform admins |
 | Merge | Department leads, platform admins |
 | Archive | Department leads, platform admins |
 | Grant access to a restricted customer | Marketing and Sales leads; platform admins |
@@ -257,10 +261,10 @@ This is a Sandz decision (concept paper §11, "Which functions remain in externa
 
 ## 13. Open questions for Sandz
 
-1. **Tags (awaiting feedback):** what do "Staller", "Global-Sol. & Procurement", "With Lead", "Demand Gen" and "OpentoCloud" mean? Is the country tag the parent company's home country? Meanwhile, tags are customisable (§4).
+1. **Tags (awaiting feedback):** what do "Staller", "Global-Sol. & Procurement", "With Lead", "Demand Gen" and "OpentoCloud" mean? Is the country tag the parent company's home country? Meanwhile, users can create their own tags for filtering (§4).
 2. **Rankings (answered):** maintained by the Discovery team using Tavily and other research, BSP (Bangko Sentral ng Pilipinas) and industry publications (§4).
 3. **Value lists:** the possible values of Company Status, Call Status and Infra Status.
-4. **Roles:** how do Company Owner, ISR Owner and Account Rep differ in practice? Who may change each?
+4. **Roles (partly answered):** the ISR is a Marketing team member and the account rep is a Sales team member. Still to confirm: who the Company Owner is in practice.
 5. **Regions:** what does "Region 1 History" record? Does Sandz assign accounts by territory?
 6. **Conglomerates:** should a group and its member companies be separate customers linked by parent, as proposed?
 7. **Contacts:** do contacts move between companies often enough that history matters?
