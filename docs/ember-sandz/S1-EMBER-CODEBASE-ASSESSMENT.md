@@ -166,7 +166,7 @@ Carried from the concept paper §11, with what the codebase adds:
 | S2 | Discovery workspace: SLI shell, Triggers, research on Workstreams, concept and feasibility Methods |
 | S3 | Management decisions and handoffs: promote, return, send back; **candidate customers** for the Marketing handoff, on the registry's customer core (customers, duplicate checks, rankings) |
 | S4 | Rest of the customer and contact registry: contacts, merge, restricted customers, Zoho import, Ember tools (the work package below) |
-| S5 | Marketing knowledge foundation and workflows |
+| S5 | Marketing workflows. The Marketing **knowledge foundation** is brought forward to run alongside S2–S3 ([design](../dev-request-sandz-sli-knowledge-foundation.md)) |
 | S6 | Marketing-to-Sales handoff (reusing the S3 handoff mechanism) |
 | S7 onward | Presales, Delivery, Maintenance and continuous learning |
 
