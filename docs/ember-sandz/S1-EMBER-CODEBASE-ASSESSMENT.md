@@ -158,6 +158,8 @@ Carried from the concept paper §11, with what the codebase adds:
 
 ## 6. Proposed S2 work package
 
+Designed in detail in [Sandz SLI — Customer and Contact Registry](../dev-request-sandz-sli-customer-and-contact-registry.md).
+
 1. Migrations: `sli_departments`, `sli_department_members`, `sli_customers`, `sli_contacts`, `sli_contact_methods`, access helpers, sensitivity and grant tables, history tables.
 2. Service layer `src/lib/sli/customers.ts` and `contacts.ts` with duplicate detection (name normalisation, registration number, email domain).
 3. Routes for search, create, view and edit; navigation behind the module switch.
