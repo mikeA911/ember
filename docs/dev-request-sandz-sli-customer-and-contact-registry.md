@@ -22,7 +22,7 @@ Stages 1–5 complete the registry milestone ("authorized users can create, sear
 
 **Shared with Discovery:** stage 1 here (module switch, departments, access helpers, change history) is also the foundation for Discovery. Whichever is built first builds it once.
 
-**Customer core moves to S3.** The handoff from Discovery to Marketing is a list of candidate customers defined by the Discovery team ([Discovery design](dev-request-sandz-sli-discovery-and-triggers.md) §7). So the **customer core** is built in S3: customers (stage 2, without notes), duplicate detection for customers (part of stage 4) and rankings. Contacts, merge, restricted customers, the Zoho import and Ember tools stay in S4.
+**Customer core moves to S3.** The handoff from Discovery to Marketing is a list of candidate customers defined by the Discovery team ([Discovery design](dev-request-sandz-sli-discovery-and-triggers.md) §7). So the **customer core** is built in S3: customers (stage 2, without notes), duplicate detection for customers (part of stage 4), rankings, the technology profile and group relationships. Contacts, merge, restricted customers, the Zoho import and Ember tools stay in S4.
 
 ## 1. Problem
 
@@ -72,7 +72,7 @@ Under the CRM Team space: My Jobs, Leads, **Campaigns**, **Contacts**, **Company
 | ISR Owner | a person | assignment `isr_owner` | Inside sales representative: a **Marketing** team member; dated |
 | Account Rep | a person | assignment `account_rep` | A **Sales** team member; dated |
 | Call Status | Contacted | `call_status` | Kept on the customer for now; becomes derived from S5 telemarketing activities |
-| Infra Status | Profiled | `infra_profile_status` | How well Sandz knows the customer's infrastructure; values to confirm |
+| Infra Status | Profiled | `infra_profile_status` plus the **technology profile** (§4) | How well Sandz knows the customer's infrastructure. "Profiled" means the technology profile is filled in; values to confirm |
 | Tags | country, interest, programme, priority and stage tags (for example a country, "OpentoCloud", "Demand Gen", "Medium Priority Prospect", "With Lead") | `country_of_origin`, `priority`, tags | Tags with a consistent meaning become fields; the rest stay as tags (§13) |
 | Created By / Modified By | person and date | `created_by`, `updated_by`, timestamps | Plus the change history |
 | Related lists: Notes, Attachments, Emails, Contacts, Leads, Connected Records | | notes, contacts (this design); leads (S5–S6); attachments and email (later) | |
@@ -111,6 +111,16 @@ Department names and codes are seeded per instance as data, not code (ADR-0002).
 | `sli_notes` | `id`, `subject_type` (`customer`/`contact`), `subject_id`, `body`, `created_by`, `created_at`, `edited_at` |
 
 Controlled lists live in `sli_reference_values` so Sandz can maintain them without a release.
+
+**Technology profile.** What a customer runs today, so Discovery can target it (for example "uses VMware and Zadara storage"):
+
+| Table | Key columns |
+|---|---|
+| `sli_customer_technologies` | `customer_id`, `category` (`virtualisation`/`storage`/`backup_dr`/`cloud`/`network`/`security`/`database`/`other`), `vendor`, `product`, `status` (`in_use`/`evaluating`/`replacing`/`retired`), `supplied_by_sandz`, `scale` (free text, for example "60 VMs" or "200 TB"), `renewal_date`, `notes`, `source` (`customer_meeting`/`presales_assessment`/`zoho_import`/`research`), `as_of`, `recorded_by` |
+
+Marketing (ISRs profiling accounts) and Presales maintain it. Discovery's Targeting stage queries it, for example "customers with Zadara storage supplied by Sandz and VMware in use".
+
+**Group relationships.** A function `sli_customer_group(customer_id)` returns a customer's parent group and sister companies, and whether each is already a Sandz customer. Discovery uses it to find warm prospects: a group whose parent is not a customer, but one of whose subsidiaries is.
 
 **User-created tags for filtering.** Anyone who can edit a customer can create a new tag while tagging, so the team can group and filter customers in their own way (for example by programme or interest). Tags appear as list filters and as badges on the customer header, like Zoho's tag strip. Categories and colours are optional. To keep the list tidy, platform admins and department leads can rename, merge or retire tags; merging moves every customer to the kept tag. Until Sandz confirms what its Zoho tags mean (§13), they are kept as tags; any with a consistent meaning can later become fields.
 

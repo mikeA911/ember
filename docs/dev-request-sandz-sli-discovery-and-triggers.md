@@ -70,13 +70,13 @@ The shell itself applies to every SLI stage; what differs per stage is whether i
 ## 4. Trigger lifecycle
 
 ```text
-New ──► Researching ──► Concept ──► Feasibility ──► Under review ──► Approved ──► Promoted
- │           ▲              ▲             ▲              │                            │
- │           └──────────────┴─────────────┴── Revise ────┤                            │
- │                                                       ├──► Deferred (shelved)      │
- └──► Declined (not worth researching)                   └──► Rejected                │
-             ▲                                                                        │
-             └────────────────────── send back (§7) ──────────────────────────────────┘
+New ──► Researching ──► Concept ──► Feasibility ──► Under review ──► Approved ──► Targeting ──► Promoted
+ │           ▲              ▲             ▲              │                                         │
+ │           └──────────────┴─────────────┴── Revise ────┤                                         │
+ │                                                       ├──► Deferred (shelved)                   │
+ └──► Declined (not worth researching)                   └──► Rejected                             │
+             ▲                                                                                     │
+             └──────────────────────────── send back (§7) ─────────────────────────────────────────┘
 
 Deferred ──► revisit any time ──► Researching / Concept / Feasibility
 Any Trigger ──► Archive (hidden from active lists) ◄──► Unarchive
@@ -87,6 +87,7 @@ Any Trigger ──► Archive (hidden from active lists) ◄──► Unarchive
 - **Under review:** the sponsor submits the Trigger for a management decision, with the evidence.
 - **Decision outcomes** (§6): *Approve* (with a destination, for example "prototype first"), *Revise* (back to a named earlier stage), *Defer* (shelved, with no review date), *Reject*.
 - **Deferred:** shelved. There is no review date; a Discovery team member can **revisit** it at any time, moving it back to Researching, Concept or Feasibility with a reason. It then needs a new decision.
+- **Targeting:** after a *Go*, the Discovery team chooses the market segments and builds the **candidate customer list** in rounds: existing customers first, then companies related to customers (for example through a conglomerate), then new prospects (§7). A Trigger approved for a destination that needs no candidates (for example an Engineering prototype) skips Targeting.
 - **Promoted:** a handoff has been accepted by the destination owner (§7).
 - **Archive:** any Trigger, at any stage, can be archived with one button. Archived Triggers disappear from the Discovery board and active lists but stay searchable, keep their history, and can be unarchived. Archiving is separate from the stage: an archived Deferred Trigger is still Deferred when unarchived. A Trigger with an open handoff or send-back cannot be archived until that is settled.
 - **Reopened:** a send-back moves a promoted or approved Trigger back to an earlier stage. The earlier decision is marked superseded, never deleted.
@@ -104,6 +105,24 @@ Every stage change is recorded in an append-only history (who, when, from, to, r
 | Using Sandz knowledge | Enterprise, market and technical knowledge bases attached read-only to the Discovery Project (shared, not copied) |
 | Keeping speculation contained | Project privacy, evidence access groups and the sensitivity gate. The Discovery Project is **confidential**, so financial assumptions go only to AI providers approved for confidential data |
 | Contributors outside management | Added to a single Trigger through an evidence access group, without seeing other Triggers |
+
+### Fit check
+
+The first question for any Trigger is whether it suits Sandz. In the Research tab, the sponsor asks Ember for a **fit check**. Ember answers from Sandz's own knowledge (Enterprise Solutions: partner products, capabilities, past Triggers) and from the web through Tavily (market, regulation, competitors, news), under five headings:
+
+| Heading | Question | Typical sources |
+|---|---|---|
+| Strategic fit | Does it match Sandz's direction and partners? | Enterprise Solutions knowledge, past decisions |
+| Capability fit | Can Sandz and its partners deliver it today? What is missing? | Partner product knowledge, Presales and Engineering input |
+| Market attractiveness | How many companies are affected in the Philippines, and how urgently? | Tavily: news, industry publications, BSP data |
+| Competition | Who else is offering this, and how is Sandz different? | Tavily, partner material |
+| Risks and unknowns | Technical, commercial and delivery risks; what Ember could not find | All of the above |
+
+Every point shows its source, and Ember lists what it could not find. The fit check is saved as a note on the Trigger and refreshed as research continues. Web results are leads, not facts, until the team saves them with their sources.
+
+### Brainstorming with other departments
+
+The sponsor can add people from other departments to one Trigger, for example Presales and Engineering to check technical fit. They join the Research tab for that Trigger only, contribute notes and documents, and see no other Triggers (§9).
 
 **Discovery does not get its own large knowledge base.** Each Trigger's evidence lives in its Workstream. Findings become reusable knowledge only after approval, through Ember's source submission and curator review.
 
@@ -132,7 +151,7 @@ Until the Marketing and Sales modules exist, the destination is a new Workstream
 
 A handoff to Marketing is **the list of candidate customers defined by the Discovery team**, with the approved material Marketing needs to approach them. Discovery decides *who* the solution is for; Marketing decides *how* to reach them.
 
-- **Building the list.** During Concept and Feasibility, the Discovery team adds candidate customers to the Trigger. Each has a **fit rationale** (why this company), a priority, the target industry and sub-industry, any known contacts or relationships, and the evidence used. Rankings such as Top 1000 and BSP, which the Discovery team maintains (registry design §4), help choose and order them. Ember can suggest candidates from the registry, attached knowledge and Tavily research, as drafts the team accepts.
+- **Building the list.** During **Targeting** (after the MD's *Go*), the Discovery team builds the list in rounds, trimming as it goes: **existing customers** first (ordered by how well the solution fits what they already run, from their technology profile in the registry), then **related companies** (members of the same group as a customer, found through conglomerate links), then **new prospects** found through research. Ember may suggest candidates earlier, during research, but the list is settled in Targeting. The Discovery team adds candidate customers to the Trigger. Each has a **fit rationale** (why this company), a priority, the target industry and sub-industry, any known contacts or relationships, and the evidence used. Rankings such as Top 1000 and BSP, which the Discovery team maintains (registry design §4), help choose and order them. Ember can suggest candidates from the registry, attached knowledge and Tavily research, as drafts the team accepts.
 - **Existing or new companies.** A candidate is either an existing registry customer or a new prospect. New prospects go through the registry's duplicate check (registry design §5) before they are added, so the list never creates a second record for a company Sandz already knows.
 - **What Marketing receives.** The candidate list (a snapshot at handoff, with each customer linked to the registry), plus the value proposition, target industries, validated capabilities, approved claims and campaign recommendations. When the Marketing module exists (S5), accepting the handoff creates the campaign's target list from the candidates.
 - **Marketing can push back.** If the list is too thin, poorly targeted or missing contacts, Marketing **returns** the handoff with a reason, and the Discovery team revises the list.
@@ -170,7 +189,7 @@ All tables are prefixed `sli_`, with RLS on and `select apply_oauth_read_only_po
 | `sli_decision_evidence` | `decision_id`, artifact or source reference |
 | `sli_recommendations` | `trigger_id`, `recommended_by`, `recommendation` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `comments`, `recorded_at`; the latest per person counts, earlier ones stay in history |
 | `sli_handoffs` | `id`, `trigger_id`, `kind` (`promote`/`send_back`), `from_stage`, `to_stage` or `destination`, `destination_owner_id`, `destination_workstream_id`, `status` (`proposed`/`accepted`/`returned`/`withdrawn`), `reason_category` and `reason` (send-backs and returns), `downstream_action` (`pause`/`close`, send-backs), `proposed_by`, `decided_by`, `decided_at`, `previous_handoff_id` |
-| `sli_trigger_candidate_customers` | `trigger_id`, `customer_id` (registry customer), `fit_rationale`, `priority`, `target_industry`, `target_sub_industry`, `known_relationships`, `evidence_reference`, `status` (`proposed`/`accepted`/`removed`), `added_by`, `created_via` (`manual`/`assistant`), `accepted_by`, audit columns |
+| `sli_trigger_candidate_customers` | `trigger_id`, `customer_id` (registry customer), `tier` (`existing_customer`/`related_company`/`new_prospect`), `relationship_path` (for example "sister company of a Zadara storage customer in the same group"), `solution_fit` (`strong`/`partial`/`poor`/`unknown`), `trimmed_reason` (when removed), `fit_rationale`, `priority`, `target_industry`, `target_sub_industry`, `known_relationships`, `evidence_reference`, `status` (`proposed`/`accepted`/`removed`), `added_by`, `created_via` (`manual`/`assistant`), `accepted_by`, audit columns |
 | `sli_handoff_package_items` | `handoff_id`, artifact reference, copied artifact reference, `item_type` (`artifact`/`claim`/`condition`/`target_industry`/`candidate_customer`) |
 
 Writes go through `SECURITY DEFINER` functions (`sli_transition_trigger()`, `sli_record_decision()`, `sli_propose_handoff()`, `sli_decide_handoff()`). Each checks the caller's authority and the allowed transitions, and writes history in the same transaction.
@@ -198,7 +217,22 @@ The same `sli_handoffs` table is reused, with other subject types, for the Marke
 
 Platform admins keep their bypass in the helpers, with access to confidential Triggers logged.
 
-## 10. Worked example: AI warehouse monitoring
+## 10. Worked example: VMware licensing changes
+
+*Illustrative. Customer names are fictional.* An interactive simulation of this flow accompanies this design.
+
+1. **Trigger (market event):** after Broadcom's acquisition of VMware, VMware licensing moved to subscription bundles and many customers face much higher renewal costs. The Head of Engineering raises **TRG-014 "VMware licensing changes: migration opportunity"** with a link to the announcements. The CTO takes it on as sponsor.
+2. **Fit check:** Ember combines Sandz's knowledge (Zadara storage and compute, existing partners) with Tavily research (cost complaints, migration interest in the Philippines, competing offers such as other hypervisors and hyperscalers). Verdict: strong strategic and market fit; capability fit to confirm, because some customers use VMware features that may have no direct equivalent.
+3. **Brainstorming:** Presales and Engineering are added to the Trigger. They list the VMware features customers depend on (high availability, live migration, distributed switching, backup and disaster recovery integrations) and compare them with Zadara compute. Notes are saved, partner documents uploaded.
+4. **Concept and feasibility:** a concept paper, "Exit VMware to Zadara" (assessment, migration and managed service tiers), and a feasibility assessment (migration path, feature gaps, Zadara capacity, pricing against typical VMware renewals).
+5. **Recommendations and decision:** the Country Manager, CTO and Head of Engineering recommend *Go*. The MD approves with destination **Marketing** and a condition: start with existing Zadara storage customers.
+6. **Targeting, round 1: existing customers.** Ember lists registry customers whose technology profile shows Zadara storage and VMware in use (14). Presales reviews each customer's VMware footprint: 8 are a strong fit, 3 partial (features with no equivalent yet), 3 poor (renewal just signed or heavy dependence on unsupported features). The list is trimmed to the 8, with reasons recorded for the rest.
+7. **Targeting, round 2: related companies.** Ember follows conglomerate links: a group whose parent is not yet a Sandz customer, but whose logistics subsidiary uses Zadara storage. Its sister companies are added as warm prospects, with the relationship recorded (5 added, 2 trimmed).
+8. **Targeting, round 3: new prospects.** Ember searches with Tavily for Philippine companies likely to be running VMware in the target industries, ranked with the Top 1000 list. Each is checked against the registry for duplicates. The team keeps 10 with the clearest fit.
+9. **Promote to Marketing:** 23 candidates in three tiers, each with a fit rationale, plus the value proposition, approved claims, and a campaign recommendation (VMware cost assessment offer; Tier 1 first). Marketing accepts.
+10. **Continuous learning:** campaign responses show several prospects also want disaster recovery. That becomes a **new Trigger**, linked to TRG-014.
+
+## 10b. Second worked example: AI warehouse monitoring (send-back)
 
 *Illustrative.*
 
@@ -254,8 +288,9 @@ All Discovery questions are answered. The customer registry's open questions wai
 5. A decision authority records approve, revise, defer and reject outcomes with rationale and evidence. A sponsor cannot decide their own Trigger unless the policy allows it.
 6. An approved Trigger is promoted. The destination lead accepts, and a destination Workstream is created with copied package artifacts. The Discovery workspace stays inaccessible to the destination team.
 7. A handoff to Marketing cannot be proposed without at least one accepted candidate customer. Every candidate is a registry customer (no duplicates created), with a fit rationale. Marketing sees the candidates and rationale but not the Discovery research.
-8. A destination lead can return a proposed handoff with a reason.
-9. A downstream owner can send back. The Trigger reopens at the agreed stage, the earlier decision shows as superseded, the downstream work is paused or closed, and nothing is deleted.
-10. A Deferred Trigger can be revisited at any time and moved back to an earlier stage. Any Trigger can be archived and unarchived; archived Triggers leave active lists but remain searchable with their history.
-11. The worked example (§10) runs end to end on lab with synthetic data.
-12. With `EMBER_SLI_ENABLED` off, none of this is visible.
+8. Candidate lists are built in the Targeting stage, in tiers (existing customers, related companies, new prospects). Existing customers can be found from their technology profile, related companies from group links, and trimmed candidates keep their reason.
+9. A destination lead can return a proposed handoff with a reason.
+10. A downstream owner can send back. The Trigger reopens at the agreed stage, the earlier decision shows as superseded, the downstream work is paused or closed, and nothing is deleted.
+11. A Deferred Trigger can be revisited at any time and moved back to an earlier stage. Any Trigger can be archived and unarchived; archived Triggers leave active lists but remain searchable with their history.
+12. The worked examples (§10 and §10b) runs end to end on lab with synthetic data.
+13. With `EMBER_SLI_ENABLED` off, none of this is visible.
