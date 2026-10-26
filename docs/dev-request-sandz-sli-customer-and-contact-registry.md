@@ -15,7 +15,7 @@ Field choices are grounded in Sandz's current Zoho CRM, as seen on 23 October 20
 3. **Contacts.** People, their contact methods and consent, and their links to customers over time.
 4. **Duplicate detection and merge.** Checks on create, a merge with history, and no hard deletes.
 5. **Restricted customers.** Sensitivity, explicit grants, access audit.
-6. **Zoho import.** Dry run, field mapping, external IDs, duplicate report. **Later:** Sandz will migrate after the pilot (§13).
+6. **Zoho import.** Dry run, field mapping, external IDs, duplicate report. Working assumption: import a customer's history on demand when a new Trigger or opportunity involves it, rather than a bulk migration up front (§10, §13).
 7. **Ember and MCP read tools.** Customer summary and search through the sensitivity gate.
 
 Stages 1–5 complete the registry milestone ("authorized users can create, search and maintain shared records"). Stages 6–7 can follow alongside S5 (Marketing workflows).
@@ -100,7 +100,7 @@ Department names and codes are seeded per instance as data, not code (ADR-0002).
 
 | Table | Key columns |
 |---|---|
-| `sli_customers` | `id`, `name`, `legal_name`, `normalized_name`, `website`, `domain`, `main_phone`, `main_phone_normalized`, `industry`, `sub_industry`, `country_of_origin`, `parent_customer_id`, `lifecycle_status`, `priority` (`low`/`medium`/`high`), `call_status`, `infra_profile_status`, `information_sensitivity` (`public`/`internal`/`confidential`/`restricted`, default `internal`), `source` (`manual`/`zoho_import`), `merged_into_id`, `archived_at`, `created_by`, `created_at`, `updated_by`, `updated_at` |
+| `sli_customers` | `id`, `name`, `legal_name`, `normalized_name`, `website`, `domain`, `main_phone`, `main_phone_normalized`, `industry`, `sub_industry`, `country_of_origin`, `region`, `parent_customer_id`, `lifecycle_status`, `priority` (`low`/`medium`/`high`), `call_status`, `infra_profile_status`, `information_sensitivity` (`public`/`internal`/`confidential`/`restricted`, default `internal`), `source` (`manual`/`zoho_import`), `merged_into_id`, `archived_at`, `created_by`, `created_at`, `updated_by`, `updated_at` |
 | `sli_customer_assignments` | `customer_id`, `role` (`account_owner`/`isr_owner`/`account_rep`), `user_id`, `valid_from`, `valid_to`, `assigned_by`; the assignee must be an active member of the role's department (`isr_owner`: Marketing, `account_rep`: Sales); at most one current (`valid_to is null`) per customer and role |
 | `sli_tag_categories` | `id`, `name` (for example *Interest*, *Programme*, *Stage*, *Country*), `allow_multiple`, `show_as_badge`, `sort_order`, `is_active` |
 | `sli_tags` | `id`, `category_id` (optional), `name`, `colour`, `is_active`; unique (category, name) |
@@ -232,6 +232,7 @@ Mobile-friendly layouts: ISRs may update call status from a phone.
 - **Traceability:** every imported record gets an `sli_external_ids` row with its Zoho ID, so a later import can update instead of duplicating.
 - **Owners:** Zoho owner names are matched to Ember accounts; unmatched names are reported, not guessed.
 - **Not in the first import:** emails, attachments and the full timeline, unless the migration decision requires them.
+- **Import on demand (working assumption, §13).** Rather than migrating everything up front, a customer's Zoho history is imported when a new Trigger or opportunity involves that customer. A Discovery team member, or a Marketing or Sales lead, starts an import for one customer from its exported Zoho records; the same dry run, duplicate check and external IDs apply. Marketing's current Zoho data and spreadsheets define the import templates.
 
 ## 11. Coexistence with Zoho
 
@@ -260,6 +261,22 @@ This is a Sandz decision (concept paper §11, "Which functions remain in externa
 - Reports and dashboards beyond list counts.
 
 ## 13. Open questions for Sandz
+
+### Working assumptions (pending the Marketing team's answers)
+
+Questions sent to the Marketing team on 26 October 2026. Until they answer, the design follows these assumptions, which will be replaced by their answers.
+
+| Topic | Assumption | Effect on the design |
+|---|---|---|
+| Zoho tags | Text labels used for filtering and grouping | User-created tags for filtering (§4). Zoho tags import as tags |
+| Company Owner | The person accountable for the account overall, separate from the ISR (Marketing) and account rep (Sales) | Kept as the `account_owner` assignment; its label is configurable |
+| Status, Call Status, Infra Status | Start from the values seen in Zoho (Status: *Leads*; Call Status: *Contacted*; Infra Status: *Profiled*), extended as Zoho exports reveal more | Reference lists in `sli_reference_values`, maintained by admins without a release |
+| Regions | Philippine regions and districts (for example NCR districts, Region I to XIII, CAR, BARMM), where "Region 1 History" records changes to a company's region | A `region` field from a reference list of Philippine regions; changes are kept in the change history. Not a sales territory |
+| Conglomerates | Business groups such as Ayala or Aboitiz, used to see all member companies together | The group is a customer; member companies link to it with `parent_customer_id`. The group's page lists its members, and lists can filter by group |
+| Contact history | Used to follow people who move between companies, and to see past interactions | Dated contact-to-customer links (§4). Interactions arrive with Marketing activities (S5) |
+| Migration | No bulk migration at the start. A customer's Zoho history is brought over when a new Trigger or opportunity involves that customer, using templates matching Marketing's Zoho data and spreadsheets | Import on demand per customer (§10), plus a bulk import later if wanted |
+
+### Questions
 
 1. **Tags (awaiting feedback):** what do "Staller", "Global-Sol. & Procurement", "With Lead", "Demand Gen" and "OpentoCloud" mean? Is the country tag the parent company's home country? Meanwhile, users can create their own tags for filtering (§4).
 2. **Rankings (answered):** maintained by the Discovery team using Tavily and other research, BSP (Bangko Sentral ng Pilipinas) and industry publications (§4).
