@@ -1,4 +1,6 @@
-# Sandz SLI — Customer and Contact Registry
+# Ember Sandz — Customer and Contact Registry
+
+*Ember Sandz: Solution Lifecycle Intelligence*
 
 ## Status
 
@@ -87,7 +89,7 @@ All tables are new, prefixed `sli_`, with RLS on. Each migration ends with `sele
 
 | Table | Key columns |
 |---|---|
-| `sli_departments` | `id`, `code` (unique: `marketing`, `sales`, `presales`, `delivery`, `maintenance`), `name`, `is_active` |
+| `sli_departments` | `id`, `code` (unique: `management`, `marketing`, `sales`, `presales`, `delivery`, `maintenance`), `name`, `is_active`. Presales includes Sandz's engineering and procurement staff; management is the Discovery team |
 | `sli_department_members` | `department_id`, `user_id`, `role` (`member`/`lead`/`viewer`), `status` (`active`/`inactive`), unique (department, user) |
 
 Department names and codes are seeded per instance as data, not code (ADR-0002).

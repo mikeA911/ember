@@ -1,10 +1,16 @@
-# Sandz SLI — Discovery: Triggers, Decisions and Handoffs
+# Ember Sandz — Discovery: Triggers, Decisions and Handoffs
+
+*Ember Sandz: Solution Lifecycle Intelligence*
 
 ## Status
 
 **Proposed, not built.** Discovery becomes the **first stage** of Solution Lifecycle Intelligence (SLI), before Marketing. This document covers milestones **S2** (Discovery workspace and Triggers) and **S3** (management decisions, handoffs and send-backs). It follows [ADR-0002](architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md): Discovery is part of the SLI module and is switched on with it.
 
 The customer registry ([design](dev-request-sandz-sli-customer-and-contact-registry.md)) moves to S4. A Trigger can reference industries now and customers once the registry exists.
+
+**Naming.** The module is presented as **Ember Sandz**, with **Solution Lifecycle Intelligence** as its byline. The assistant inside it is still called **Ember**. SLI may later be sold to other customers, so the product name, byline, departments, Trigger types and reference lists are instance configuration and data, not code (ADR-0002).
+
+**Sandz's answers (26 October 2026)** are recorded in §12.
 
 ## Delivery stages
 
@@ -44,14 +50,20 @@ Discovery (Triggers) → Marketing → Sales & Presales → Project Delivery →
 
 ## 3. What a user sees: the SLI shell
 
-SLI users should not see Ember's own screens (Projects, Workstreams, Methods, Evals, Wiki administration), because those would confuse them.
+**Why.** Ember Core was built for builders and app developers. When Sandz staff tried it, its vocabulary and screens (Projects, Workstreams, Methods, Evals, Wiki administration) confused or overwhelmed them. Each audience should get a UI that fits its purpose and skills:
+
+| Audience | UI |
+|---|---|
+| Builders and app developers (the Builders instance, ADR-0004) | Ember Core's existing UI |
+| Discovery (management) and Marketing | **Purpose-built Ember Sandz screens**, in business language. Ember Core screens are never shown |
+| Later SLI stages (Presales, Delivery, Maintenance) | May reuse Ember Core screens where they suit a technical audience (for example requirements and verification), decided per stage |
 
 - On an instance with `EMBER_SLI_ENABLED`, users whose only access is through SLI departments get the **SLI shell**. Its navigation is SLI only: **Home** (my work), **Discovery**, and later **Customers**, **Marketing**, **Sales** and so on. This extends the existing role-directed shell in `src/components/Header.tsx`.
 - **Ember's features are used underneath, presented in SLI terms.** A Trigger's research space *is* an Ember Workstream, but the user sees a "Research" tab on the Trigger, not a Workstream page. The assistant appears inside SLI pages, with the instance's branding.
 - **Core routes are not linked** from the SLI shell. Opening one directly sends an SLI-only user back to SLI Home.
 - **Platform admins and knowledge curators** keep the full Ember navigation for administration, knowledge curation and evaluations.
 
-This applies to every later SLI stage, not only Discovery.
+The shell itself applies to every SLI stage; what differs per stage is whether its screens are purpose-built or reused from Ember Core.
 
 ## 4. Trigger lifecycle
 
@@ -101,7 +113,7 @@ Promotions happen at several points in the lifecycle: Discovery to Marketing, Ma
 
 ### Promote (forward)
 
-1. After an *Approve* decision, the sponsor proposes a handoff to a destination: **Marketing** (campaign or market validation), **Engineering** (prototype or proof of concept), **Sales / Presales** (a customer-specific pursuit), or **Project Delivery** (an approved internal initiative).
+1. After an *Approve* decision, the sponsor proposes a handoff to a destination: **Marketing** (campaign or market validation), **Presales** (prototype, proof of concept, product and partner sourcing; Sandz's engineering and procurement sit here), **Sales** (a customer-specific pursuit), or **Project Delivery** (implementation, or an approved internal initiative).
 2. The handoff names the destination owner and attaches a **package**: selected approved artifacts, approved claims, target industries, conditions from the decision. Package artifacts are **copied** into the destination, as Ember's Workstream promotion already does, so the confidential Discovery workspace is never exposed.
 3. The destination department lead **accepts** it. Acceptance creates the destination record or Workstream, links it to the Trigger, and moves the Trigger to *Promoted*.
 
@@ -115,7 +127,7 @@ The destination owner can **return** a proposed handoff instead of accepting it,
 
 A later stage can find that the solution is not adequate. This is the "go back" case.
 
-1. The current owner (for example the Engineering prototype team) raises a **send-back** to an earlier stage. It includes a reason category (*solution inadequate*, *insufficient evidence*, *market changed*, *customer feedback*, *cost or risk higher than assessed*), the evidence (test results, customer feedback), and the stage it proposes to return to.
+1. The current owner (for example the Presales prototype team) raises a **send-back** to an earlier stage. It includes a reason category (*solution inadequate*, *insufficient evidence*, *market changed*, *customer feedback*, *cost or risk higher than assessed*), the evidence (test results, customer feedback), and the stage it proposes to return to.
 2. The Trigger's sponsor, or a decision authority, accepts the send-back. The Trigger moves back to the agreed stage (*Researching*, *Concept* or *Feasibility*) and the previous decision is marked **superseded**.
 3. The downstream work is **paused or closed**, as the send-back states. Nothing is deleted. The destination record keeps its link and history.
 4. The Trigger goes through review again and gets a new decision, which may promote it to the same or a different destination.
@@ -148,11 +160,11 @@ The same `sli_handoffs` table is reused, with other subject types, for the Marke
 |---|---|
 | Raise a Trigger | Any active member of any SLI department (a short form: title, type, summary, evidence) |
 | See your own submitted Triggers and their stage | The person who raised them |
-| See all Triggers and their research | Discovery team: management and appointed analysts (members of the Discovery Project) |
+| See all Triggers and their research | Discovery team: the Managing Director, Country Manager, CTO and the applications lead (members of the Discovery Project), plus anyone they appoint |
 | Contribute to one Trigger | People added to that Trigger's access group |
 | Accept or decline a new Trigger; sponsor its research | Discovery team members with the sponsor role |
 | Submit for review; propose a handoff | The Trigger's sponsor |
-| Decide | Holders of the `discovery_decision` authority |
+| Decide | Holders of the `discovery_decision` authority: the Discovery team |
 | Accept or return a handoff | The destination department's lead |
 | Raise a send-back | The current owner of the downstream work |
 | Accept a send-back | The Trigger's sponsor or a decision authority |
@@ -167,10 +179,10 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 2. **Researching:** the team uses the assistant and web search on computer-vision vendors and warehouse safety needs, uploads partner material, and records candidate concepts.
 3. **Concept:** the *Concept development* Method produces a concept paper: solution, target market, business model, partners, dependencies.
 4. **Feasibility:** the *Feasibility assessment* Method produces technical, commercial, cost and risk findings, including GPU capacity on Zadara.
-5. **Decision:** *Approve* with destination **Engineering**: "limited technical prototype before marketing launch", with a condition on detection accuracy.
-6. **Promote:** the Engineering lead accepts the handoff. A prototype Workstream is created with the copied package.
-7. **Send back:** the prototype misses the accuracy condition at the lighting levels found in real warehouses. Engineering sends back to *Feasibility* with test results, reason *solution inadequate*, downstream action *pause*. The sponsor accepts, and the first decision is superseded.
-8. **Revise and decide again:** feasibility is updated (different camera placement, a better model). New decision: *Approve*, Engineering again. The second prototype meets the condition.
+5. **Decision:** *Approve* with destination **Presales**: "limited technical prototype before marketing launch", with a condition on detection accuracy.
+6. **Promote:** the Presales lead accepts the handoff. A prototype Workstream is created with the copied package.
+7. **Send back:** the prototype misses the accuracy condition at the lighting levels found in real warehouses. Presales sends back to *Feasibility* with test results, reason *solution inadequate*, downstream action *pause*. The sponsor accepts, and the first decision is superseded.
+8. **Revise and decide again:** feasibility is updated (different camera placement, a better model). New decision: *Approve*, Presales again. The second prototype meets the condition.
 9. **Promote to Marketing:** Marketing receives the value proposition, target industries, validated capabilities, approved claims, demonstrations and campaign recommendations. The original research, both decisions and the send-back stay linked to the Trigger for traceability.
 
 ## 11. Scope
@@ -188,12 +200,22 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 
 ## 12. Open questions for Sandz
 
-1. Who is on the Discovery team, and who holds the decision authority? Is it one person or a committee, and does a decision need more than one approver?
+**Answered (26 October 2026):**
+
+| Question | Answer |
+|---|---|
+| Who is on the Discovery team and holds the decision authority? | Management: the Managing Director, the Country Manager, the CTO, and the applications lead (title to confirm) |
+| Engineering as a destination? | Not a separate department. Engineering is mostly the Presales and implementation teams, so prototypes go to **Presales** and implementation to **Delivery** |
+| Procurement? | Part of **Presales**, because procurement knows the partner products Sandz sells |
+| Assistant name? | Still **Ember** |
+| Module name? | **Ember Sandz**, with **Solution Lifecycle Intelligence** as the byline. SLI may be sold to other customers later |
+
+**Still open:**
+
+1. Does a decision need one approver from the Discovery team, or more than one (for example the MD plus one other)?
 2. Should employees outside management see Triggers raised by others, or only their own?
-3. Which destinations should exist on day one: Marketing, Engineering, Sales/Presales, Delivery?
-4. Who leads Engineering as a destination, since it is not one of the five SLI departments? Add it as a department?
-5. What review dates for deferred Triggers: a fixed period, or set per decision?
-6. Should the assistant inside SLI keep the name "Ember", or use an SLI or Sandz name?
+3. What review dates for deferred Triggers: a fixed period, or set per decision?
+4. The applications lead's title, for role labels in the app.
 
 ## 13. Acceptance criteria
 
