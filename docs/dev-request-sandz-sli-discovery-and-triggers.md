@@ -6,7 +6,7 @@
 
 **Proposed, not built.** Discovery becomes the **first stage** of Solution Lifecycle Intelligence (SLI), before Marketing. This document covers milestones **S2** (Discovery workspace and Triggers) and **S3** (management decisions, handoffs and send-backs). It follows [ADR-0002](architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md): Discovery is part of the SLI module and is switched on with it.
 
-The customer registry ([design](dev-request-sandz-sli-customer-and-contact-registry.md)) moves to S4. A Trigger can reference industries now and customers once the registry exists.
+The customer registry ([design](dev-request-sandz-sli-customer-and-contact-registry.md)) is mostly S4, but its **customer core** (customers, duplicate checks, rankings) moves into S3, because the handoff to Marketing is a list of **candidate customers** defined by the Discovery team (§7).
 
 **Naming.** The module is presented as **Ember Sandz**, with **Solution Lifecycle Intelligence** as its byline. The assistant inside it is still called **Ember**. SLI may later be sold to other customers, so the product name, byline, departments, Trigger types and reference lists are instance configuration and data, not code (ADR-0002).
 
@@ -22,6 +22,7 @@ The customer registry ([design](dev-request-sandz-sli-customer-and-contact-regis
 | S2 | 4. Concept and feasibility Methods and artifacts | DISC-03 |
 | S3 | 5. Management review and recorded decisions | DISC-04 |
 | S3 | 6. Handoffs: promote forward, return, send back | DISC-05 |
+| S3 | 7. Candidate customers for the Marketing handoff, on the registry's customer core | DISC-05 |
 | Later | Comparison and prioritisation; AI-assisted assessment; portfolio dashboard; lessons learned | DISC-07 to DISC-10 |
 
 ## 1. Purpose
@@ -45,6 +46,7 @@ Discovery (Triggers) → Marketing → Sales & Presales → Project Delivery →
 | **Decision** | A recorded management outcome with its rationale and evidence (§6) |
 | **Handoff** | Moving work between stages with a package of approved material. Three kinds: **promote** (forward), **return** (the receiver refuses a handoff before accepting it), **send back** (a later stage reopens earlier work after accepting it) (§7) |
 | **Handoff package** | The selected, approved artifacts and claims passed to the next owner; never the whole research workspace |
+| **Candidate customers** | The companies the Discovery team judges most likely to need an approved solution, with the reason for each. The core of every handoff to Marketing |
 
 "Opportunity" is not used in Discovery. It stays free for Sales opportunities later.
 
@@ -120,6 +122,18 @@ Promotions happen at several points in the lifecycle: Discovery to Marketing, Ma
 
 Until the Marketing and Sales modules exist, the destination is a new Workstream in the destination department's SLI workspace.
 
+### Candidate customers: the handoff to Marketing
+
+A handoff to Marketing is **the list of candidate customers defined by the Discovery team**, with the approved material Marketing needs to approach them. Discovery decides *who* the solution is for; Marketing decides *how* to reach them.
+
+- **Building the list.** During Concept and Feasibility, the Discovery team adds candidate customers to the Trigger. Each has a **fit rationale** (why this company), a priority, the target industry and sub-industry, any known contacts or relationships, and the evidence used. Rankings such as Top 1000 and BSP, which the Discovery team maintains (registry design §4), help choose and order them. Ember can suggest candidates from the registry, attached knowledge and Tavily research, as drafts the team accepts.
+- **Existing or new companies.** A candidate is either an existing registry customer or a new prospect. New prospects go through the registry's duplicate check (registry design §5) before they are added, so the list never creates a second record for a company Sandz already knows.
+- **What Marketing receives.** The candidate list (a snapshot at handoff, with each customer linked to the registry), plus the value proposition, target industries, validated capabilities, approved claims and campaign recommendations. When the Marketing module exists (S5), accepting the handoff creates the campaign's target list from the candidates.
+- **Marketing can push back.** If the list is too thin, poorly targeted or missing contacts, Marketing **returns** the handoff with a reason, and the Discovery team revises the list.
+- **Confidentiality.** Marketing sees the candidates and their fit rationale, but not the Discovery research, financial assumptions or decision deliberations behind them.
+
+Handoffs to Presales, Sales or Delivery may also carry candidate customers (for example a specific customer for a proof of concept), but for them it is optional.
+
 ### Return (before acceptance)
 
 The destination owner can **return** a proposed handoff instead of accepting it, with a reason, for example "value proposition not specific enough to market". The Trigger stays *Approved*, and the sponsor revises the package or seeks a new decision.
@@ -150,7 +164,8 @@ All tables are prefixed `sli_`, with RLS on and `select apply_oauth_read_only_po
 | `sli_decision_evidence` | `decision_id`, artifact or source reference |
 | `sli_recommendations` | `trigger_id`, `recommended_by`, `recommendation` (`approve`/`revise`/`defer`/`reject`), `destination` (if approve), `comments`, `recorded_at`; the latest per person counts, earlier ones stay in history |
 | `sli_handoffs` | `id`, `trigger_id`, `kind` (`promote`/`send_back`), `from_stage`, `to_stage` or `destination`, `destination_owner_id`, `destination_workstream_id`, `status` (`proposed`/`accepted`/`returned`/`withdrawn`), `reason_category` and `reason` (send-backs and returns), `downstream_action` (`pause`/`close`, send-backs), `proposed_by`, `decided_by`, `decided_at`, `previous_handoff_id` |
-| `sli_handoff_package_items` | `handoff_id`, artifact reference, copied artifact reference, `item_type` (`artifact`/`claim`/`condition`/`target_industry`) |
+| `sli_trigger_candidate_customers` | `trigger_id`, `customer_id` (registry customer), `fit_rationale`, `priority`, `target_industry`, `target_sub_industry`, `known_relationships`, `evidence_reference`, `status` (`proposed`/`accepted`/`removed`), `added_by`, `created_via` (`manual`/`assistant`), `accepted_by`, audit columns |
+| `sli_handoff_package_items` | `handoff_id`, artifact reference, copied artifact reference, `item_type` (`artifact`/`claim`/`condition`/`target_industry`/`candidate_customer`) |
 
 Writes go through `SECURITY DEFINER` functions (`sli_transition_trigger()`, `sli_record_decision()`, `sli_propose_handoff()`, `sli_decide_handoff()`). Each checks the caller's authority and the allowed transitions, and writes history in the same transaction.
 
@@ -169,6 +184,7 @@ The same `sli_handoffs` table is reused, with other subject types, for the Marke
 | Accept or decline a new Trigger; sponsor its research | Discovery team members with the sponsor role |
 | Submit for review; propose a handoff | The Trigger's sponsor |
 | Decide | Holder of the `discovery_decision` authority: the Managing Director |
+| Add, accept or remove candidate customers | Discovery team members |
 | Accept or return a handoff | The destination department's lead |
 | Raise a send-back | The current owner of the downstream work |
 | Accept a send-back | The Trigger's sponsor or a decision authority |
@@ -187,7 +203,7 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 6. **Promote:** Digital Solutions accepts the handoff. A prototype Workstream is created with the copied package. Presales is consulted on the camera and GPU hardware from Sandz's partners.
 7. **Send back:** the prototype misses the accuracy condition at the lighting levels found in real warehouses. Digital Solutions sends back to *Feasibility* with test results, reason *solution inadequate*, downstream action *pause*. The sponsor accepts, and the first decision is superseded.
 8. **Revise and decide again:** feasibility is updated (different camera placement, a better model). New decision by the MD: *Approve*, Digital Solutions again. The second prototype meets the condition.
-9. **Promote to Marketing:** Marketing receives the value proposition, target industries, validated capabilities, approved claims, demonstrations and campaign recommendations. The original research, both decisions and the send-back stay linked to the Trigger for traceability.
+9. **Promote to Marketing:** the Discovery team has built a list of candidate customers (for example 15 logistics operators and warehouse owners, ordered by Top 1000 rank, each with a fit rationale). Marketing receives that list with the value proposition, target industries, validated capabilities, approved claims, demonstrations and campaign recommendations. The original research, both decisions and the send-back stay linked to the Trigger for traceability.
 
 ## 11. Scope
 
@@ -231,7 +247,8 @@ Platform admins keep their bypass in the helpers, with access to confidential Tr
 4. The two Methods produce a concept paper and a feasibility assessment as artifacts on the Trigger.
 5. A decision authority records approve, revise, defer and reject outcomes with rationale and evidence. A sponsor cannot decide their own Trigger unless the policy allows it.
 6. An approved Trigger is promoted. The destination lead accepts, and a destination Workstream is created with copied package artifacts. The Discovery workspace stays inaccessible to the destination team.
-7. A destination lead can return a proposed handoff with a reason.
-8. A downstream owner can send back. The Trigger reopens at the agreed stage, the earlier decision shows as superseded, the downstream work is paused or closed, and nothing is deleted.
-9. The worked example (§10) runs end to end on lab with synthetic data.
-10. With `EMBER_SLI_ENABLED` off, none of this is visible.
+7. A handoff to Marketing cannot be proposed without at least one accepted candidate customer. Every candidate is a registry customer (no duplicates created), with a fit rationale. Marketing sees the candidates and rationale but not the Discovery research.
+8. A destination lead can return a proposed handoff with a reason.
+9. A downstream owner can send back. The Trigger reopens at the agreed stage, the earlier decision shows as superseded, the downstream work is paused or closed, and nothing is deleted.
+10. The worked example (§10) runs end to end on lab with synthetic data.
+11. With `EMBER_SLI_ENABLED` off, none of this is visible.

@@ -20,7 +20,9 @@ Field choices are grounded in Sandz's current Zoho CRM, as seen on 23 October 20
 
 Stages 1–5 complete the registry milestone ("authorized users can create, search and maintain shared records"). Stages 6–7 can follow alongside S5 (Marketing workflows).
 
-**Shared with Discovery:** stage 1 here (module switch, departments, access helpers, change history) is also the foundation for Discovery. Whichever is built first builds it once. Discovery Triggers link to customers through `sli_trigger_links` once this registry exists.
+**Shared with Discovery:** stage 1 here (module switch, departments, access helpers, change history) is also the foundation for Discovery. Whichever is built first builds it once.
+
+**Customer core moves to S3.** The handoff from Discovery to Marketing is a list of candidate customers defined by the Discovery team ([Discovery design](dev-request-sandz-sli-discovery-and-triggers.md) §7). So the **customer core** is built in S3: customers (stage 2, without notes), duplicate detection for customers (part of stage 4) and rankings. Contacts, merge, restricted customers, the Zoho import and Ember tools stay in S4.
 
 ## 1. Problem
 
