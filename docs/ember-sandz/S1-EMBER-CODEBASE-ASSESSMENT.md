@@ -158,6 +158,20 @@ Carried from the concept paper §11, with what the codebase adds:
 
 ## 6. Proposed S2 work package
 
+**Revised sequence (26 October 2026).** Discovery now comes first. S2–S3 are Discovery ([design](../dev-request-sandz-sli-discovery-and-triggers.md)), and the registry below becomes S4 ([design](../dev-request-sandz-sli-customer-and-contact-registry.md)):
+
+| Milestone | Focus |
+|---|---|
+| S1 | Ember codebase assessment (this document) |
+| S2 | Discovery workspace: SLI shell, Triggers, research on Workstreams, concept and feasibility Methods |
+| S3 | Management decisions and handoffs: promote, return, send back; **candidate customers** for the Marketing handoff, on the registry's customer core (customers, duplicate checks, rankings) |
+| S4 | Rest of the customer and contact registry: contacts, merge, restricted customers, Zoho import, Ember tools (the work package below) |
+| S5 | Marketing workflows. The Marketing **knowledge foundation** is brought forward to run alongside S2–S3 ([design](../dev-request-sandz-sli-knowledge-foundation.md)) |
+| S6 | Marketing-to-Sales handoff (reusing the S3 handoff mechanism) |
+| S7 onward | Presales, Delivery, Maintenance and continuous learning |
+
+The work package below is unchanged and now describes S4.
+
 1. Migrations: `sli_departments`, `sli_department_members`, `sli_customers`, `sli_contacts`, `sli_contact_methods`, access helpers, sensitivity and grant tables, history tables.
 2. Service layer `src/lib/sli/customers.ts` and `contacts.ts` with duplicate detection (name normalisation, registration number, email domain).
 3. Routes for search, create, view and edit; navigation behind the module switch.

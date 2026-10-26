@@ -14,6 +14,7 @@
 - [Zadara resource request](../Deployment/zadara-resource-request.md)
 - [Moving guide](../guides/moving-to-gitlab-and-zadara.md)
 - [Dial whitepaper: The Agent Channel Exchange Standard (ACES)](partners/Dial-ACES-Whitepaper.md)
+- [Discovery design](../dev-request-sandz-sli-discovery-and-triggers.md) and its [click-through simulation](https://claude.ai/artifact/Hdye7zxBMvvyFzMtDUJVQG) (private; share before the meeting)
 
 ---
 
@@ -43,11 +44,37 @@
 
 ## 5. Step 1: Sandz SLI
 
-- One shared customer and contact registry for every department
-- Marketing first: campaigns, telemarketing, lead endorsement to Sales
+- **Discovery first:** a place for management to capture Triggers (ideas, market events, customer problems, technology developments), research them with AI, develop concepts, assess feasibility and decide, before anything reaches Marketing
+- After a *Go*, the Discovery team picks the target segments and builds a **candidate customer list** for Marketing: existing customers first, then sister companies in the same groups, then new prospects
+- Approved work is promoted to Marketing, an Engineering prototype, Sales/Presales or Delivery, and any later stage can **send it back** if the solution proves inadequate
+- Then one shared customer and contact registry for every department
+- Then Marketing: campaigns, telemarketing, lead endorsement to Sales
 - Later: Presales, Delivery and Maintenance. Ember's requirements, verification and re-verification features give these a head start
 - AI drafts and recommends; people approve. No AI-only approvals or lead qualifications
 - Pilot success: a full Marketing → Sales handoff with no lost information, no duplicate records and no unauthorized access
+
+## 5a. Live demo: Discovery in action (VMware licensing changes)
+
+- **Click through the simulation during the meeting:** <https://claude.ai/artifact/Hdye7zxBMvvyFzMtDUJVQG>. It is private by default: share it from the page's Share menu with the people presenting, or present it from Mike's screen.
+- **The story, in 12 steps (about 5 minutes):**
+  1. Head of Engineering raises the Trigger: VMware's licensing changes after Broadcom's acquisition
+  2. CTO sponsors it
+  3. Ember's fit check, using Sandz knowledge plus web research
+  4. Presales and Engineering brainstorm VMware needs against Zadara compute
+  5. Concept paper and feasibility assessment
+  6. Three recommendations, then the MD's *Go*
+  7. Targeting round 1: existing Zadara storage customers running VMware (14 found, 8 kept)
+  8. Targeting round 2: sister companies in the same groups (5 added)
+  9. Targeting round 3: new prospects from web research (10 kept)
+  10. Handoff of 23 candidates to Marketing
+  11. Marketing accepts (or returns)
+  12. Campaign feedback becomes a new Trigger
+- **Points to make while clicking:**
+  - Business language throughout; staff never see Ember's technical screens
+  - Every AI finding shows its source, and Ember says what it could not find
+  - People decide at every step: the MD approves, the team trims the list, Marketing accepts
+  - Nothing is lost: trimmed candidates keep their reasons, and work can be sent back to an earlier stage
+- **Say clearly:** the companies and numbers are fictional, the VMware summary reflects widely reported changes, and the Zadara feature comparison is an example of what Presales would verify.
 
 ## 6. How we build it
 
@@ -139,7 +166,7 @@
 
 ## 12. Roadmap
 
-- **B0:** SLI (Marketing pilot) and the move to Zadara
+- **B0:** SLI (Discovery first, then the customer registry and the Marketing pilot) and the move to Zadara
 - **B1:** Builders instance for internal builders
 - **B2:** App hosting and the shared-services gateway (internal builders)
 - **B3:** External builders: partners, then schools
@@ -198,7 +225,7 @@ These are for management to decide. The technical work does not set them.
 
 ## 16. Decisions needed today
 
-- Approve SLI as the first implementation (Marketing pilot)
+- Approve SLI as the first implementation, starting with Discovery, then the Marketing pilot
 - Approve the Zadara resource quota and the move plan
 - Endorse the builder platform direction (detailed design per phase, not yet a build commitment)
 - Name department owners for SLI workflows and permissions
