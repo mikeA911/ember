@@ -9,6 +9,8 @@ import { listMemberProjectOptions } from '@/lib/projects/queries'
 import { collaborationEnabled } from '@/lib/collaboration/flag'
 import { CollaborationProvider } from '@/components/collaboration/CollaborationProvider'
 import { SessionBar } from '@/components/collaboration/SessionBar'
+import { getSliContext } from '@/lib/sli/api'
+import { sliEnabled } from '@/lib/sli/flag'
 import type { Profile } from '@/types/database'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -26,13 +28,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!profile || !(profile as Profile).is_active) redirect('/login')
 
+  // Ember SLI shell (docs/dev-request-sandz-sli-discovery-and-triggers.md
+  // §3): on an SLI instance, people whose access is through SLI departments
+  // never see Ember Core screens -- any Core route sends them to SLI Home.
+  // Platform admins and curators keep the full navigation, plus a link in.
+  let sliLabel: string | null = null
+  if (sliEnabled()) {
+    const ctx = await getSliContext(supabase).catch(() => null)
+    const role = (profile as Profile).role
+    if (ctx?.isDepartmentMember && role !== 'admin' && role !== 'curator') redirect('/sli')
+    if (ctx && (ctx.isMember || ctx.isPlatformAdmin)) sliLabel = ctx.productName
+  }
+
   // Backs the floating widget's header project picker (ChatPanel.tsx) --
   // same "own active memberships only" scope already used by EmberHome.
   const projects = await listMemberProjectOptions(supabase, user.id)
 
   const page = (
     <div className="flex flex-1 flex-col">
-      <Header profile={profile as Profile} logoUrl={brandingUrls.logo} />
+      <Header profile={profile as Profile} logoUrl={brandingUrls.logo} sliLabel={sliLabel} />
       {/* Shared workspace sessions (feature-flagged): the session bar stays
           on every route while a live session is going on. */}
       <SessionBar />
