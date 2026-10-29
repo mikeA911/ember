@@ -114,7 +114,7 @@ This is separate from the **OAuth 2.1 server** in section 6. That one lets AI ap
 
 ## 4. Apply Ember's migrations to a new stack
 
-Ember has 129 migrations in `supabase/migrations/`, all correctly named for the Supabase CLI. **They have never been applied in order to an empty database:** the existing cloud project was built by hand in the SQL Editor and with `scripts/run-migrations.mjs`, so there is no CLI migration history and no `supabase/config.toml`.
+Ember has 129 migrations in `supabase/migrations/`, all correctly named for the Supabase CLI. The original cloud project was built by hand in the SQL Editor and with `scripts/run-migrations.mjs`, so there is no CLI migration history and no `supabase/config.toml`. **A clean apply has since been verified:** on 29 October 2026 all 157 migrations applied in order to an empty Supabase Cloud database (`ember-sli`) with no failures, using `scripts/run-migrations.mjs`.
 
 Do this on **lab first**:
 
