@@ -69,6 +69,8 @@ Discovery (Triggers) → Marketing → Sales & Presales → Project Delivery →
 
 The shell itself applies to every SLI stage; what differs per stage is whether its screens are purpose-built or reused from Ember Core.
 
+**Proposed direction (30 October 2026):** a chat-first *calm workspace*, where the conversation is the main screen and Triggers, the board and papers appear as artifacts beside it, with speech input. See [the design note](design-notes/ember-sli-calm-workspace.md). Pending the Sandz team's reactions; the permission and history rules in this document are unchanged.
+
 ## 4. Trigger lifecycle
 
 ```text
