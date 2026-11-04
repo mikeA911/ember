@@ -39,3 +39,19 @@ export async function listTriggerTypes(supabase: Client): Promise<TriggerType[]>
 export async function listContributorCandidates(supabase: Client, triggerId: string): Promise<TriggerContributor[]> {
   return sliRpc<TriggerContributor[]>(supabase, 'sli_list_contributor_candidates', { p_trigger: triggerId })
 }
+
+export type ResearchFinding = { id: string; type: string; title: string; content: string | null; createdAt: string }
+
+// What has been saved to a Trigger's Research workstream (the fit check,
+// attached files saved as findings, ...), newest first. Read as the caller,
+// so Project membership and evidence access rules apply.
+export async function listResearchFindings(supabase: Client, workstreamId: string): Promise<ResearchFinding[]> {
+  const { data, error } = await supabase
+    .from('workstream_artifacts')
+    .select('id, artifact_type, title, content, created_at')
+    .eq('workstream_id', workstreamId)
+    .order('created_at', { ascending: false })
+    .limit(50)
+  if (error) throw new SliError('The research findings couldn’t be loaded.')
+  return (data ?? []).map((a) => ({ id: a.id, type: a.artifact_type, title: a.title, content: a.content, createdAt: a.created_at }))
+}
