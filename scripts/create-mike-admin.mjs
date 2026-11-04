@@ -50,7 +50,10 @@ const { error: profileError } = await admin.from('profiles').upsert(
     full_name: 'Mike Aguilar',
     role: 'admin',
     is_active: true,
-    assigned_kbs: ['fhir', 'vbc', 'grants', 'billing'],
+    // No assigned_kbs: the original four (fhir, vbc, grants, billing) are
+    // retained for reference only, and the database refuses new
+    // assignments to them (20260824120001_knowledge_base_classification.sql).
+    // Admins reach every knowledge base anyway.
   },
   { onConflict: 'id' }
 )

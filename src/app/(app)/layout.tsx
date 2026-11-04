@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { FIRST_SIGN_IN_PATH, mustChangePassword } from '@/lib/password-change'
 import { Header } from '@/components/Header'
 import { getBrandingUrls } from '@/lib/branding'
 import { ChatPanel } from '@/components/chat/ChatPanel'
@@ -20,6 +21,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   } = await supabase.auth.getUser()
 
   if (!user) redirect('/login')
+  // Temporary password (scripts/sli-add-members.mjs): choose your own first.
+  if (mustChangePassword(user)) redirect(FIRST_SIGN_IN_PATH)
 
   const [{ data: profile }, brandingUrls] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),

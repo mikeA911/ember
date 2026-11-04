@@ -4,7 +4,9 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/browser'
 
-export function ResetPasswordForm() {
+// firstSignIn: the person signed in with a temporary password
+// (scripts/sli-add-members.mjs) and must choose their own before going on.
+export function ResetPasswordForm({ firstSignIn = false }: { firstSignIn?: boolean }) {
   const router = useRouter()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -26,7 +28,8 @@ export function ResetPasswordForm() {
 
     setSubmitting(true)
     const supabase = createClient()
-    const { error: updateError } = await supabase.auth.updateUser({ password })
+    // Clears the first-sign-in flag in the same call (src/lib/password-change.ts).
+    const { error: updateError } = await supabase.auth.updateUser({ password, data: { must_change_password: false } })
 
     setSubmitting(false)
     if (updateError) {
@@ -39,6 +42,12 @@ export function ResetPasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 w-full max-w-sm">
+      {firstSignIn && (
+        <div className="text-sm text-zinc-700">
+          <p className="font-medium">Welcome. Choose your own password</p>
+          <p className="mt-1 text-zinc-600">You signed in with a temporary password. Choose a new one to continue; the temporary one stops working.</p>
+        </div>
+      )}
       <div>
         <label className="block text-sm font-medium mb-1" htmlFor="password">New password</label>
         <input
@@ -67,7 +76,7 @@ export function ResetPasswordForm() {
         disabled={submitting}
         className="rounded bg-zinc-900 text-white py-2 font-medium disabled:opacity-50"
       >
-        {submitting ? 'Updating…' : 'Update password'}
+        {submitting ? 'Updating…' : firstSignIn ? 'Save and continue' : 'Update password'}
       </button>
     </form>
   )

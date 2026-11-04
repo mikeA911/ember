@@ -37,3 +37,21 @@ This creates the Sandz organisation ("Ember Sandz", "Solution Lifecycle Intellig
 ## 4. Turn the module on
 
 In Vercel, `EMBER_SLI_ENABLED=true` (already set on `ember-sli`), then redeploy. Admins and curators see an **Ember Sandz** link in Ember's navigation; people whose access is only through SLI departments see the SLI screens only.
+
+## 5. Add people
+
+Supabase's built-in email can't reach staff addresses, so people get a temporary password instead of an invitation:
+
+1. Copy `scripts/sli-members.example.json` to a file ending in `.local.json` (for example `sli-members.local.json`; such files are ignored by git, so real names never reach the public repository) and list the people, each with a department code (`discovery`, `marketing`, `sales`, `presales`, `engineering`, `delivery`, `support`), `lead` or `member`, and for the Discovery team whether they can sponsor.
+2. Run:
+
+   ```sh
+   node --env-file=.env.local scripts/sli-add-members.mjs sli-members.local.json
+   ```
+
+3. The script prints each new person's temporary password once. Give it to them privately.
+4. At first sign-in Ember asks them to choose their own password before anything else.
+
+To give everyone the same temporary password instead, add `--shared-password`: the script asks you for it (typed hidden, never printed). It is easier to hand out, but until each person changes it, anyone who knows it can sign in as them, so ask everyone to sign in the same day.
+
+Re-running is safe: existing accounts keep their password and role, and their memberships are updated. `--reset-passwords` issues new temporary passwords to everyone in the list (for someone who lost theirs, use a list with just that person).
