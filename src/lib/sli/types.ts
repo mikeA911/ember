@@ -356,3 +356,19 @@ export type CandidateCustomer = CandidateSnapshot & {
 export type CandidateList = { canEdit: boolean; candidates: CandidateCustomer[] }
 
 export type DuplicateMatch = { id: string; name: string; domain: string | null; reason: string; strength: 'blocking' | 'warning' | 'possible' }
+
+// A change Ember proposed in a conversation, waiting for (or decided by)
+// the person (20261110100001_sli_assistant_proposals.sql).
+export type SliProposalKind = 'raise_trigger' | 'add_candidate' | 'create_customer' | 'record_recommendation'
+export type SliProposal = {
+  id: string
+  kind: SliProposalKind
+  summary: string
+  payload: Record<string, unknown>
+  status: 'proposed' | 'confirmed' | 'cancelled' | 'failed'
+  result: { id?: string; code?: string; customerId?: string } | null
+  error: string | null
+  createdAt: string
+  decidedAt: string | null
+  triggerCode: string | null
+}

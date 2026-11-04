@@ -1,6 +1,6 @@
 # Ember SLI: the calm workspace
 
-**Status:** step 1 built (9 November 2026); the rest proposed. Design direction for SLI's user interface, from Mike (30 October 2026), with a clickable prototype (an HTML artifact, synthetic data, simulated speech). Waiting for the Sandz team's reactions before it changes the delivery plan.
+**Status:** steps 1 and 2 built (9 and 10 November 2026); the rest proposed. Design direction for SLI's user interface, from Mike (30 October 2026), with a clickable prototype (an HTML artifact, synthetic data, simulated speech). Waiting for the Sandz team's reactions before it changes the delivery plan.
 **Applies to:** Discovery and Marketing screens in Ember SLI ([ADR-0002](../architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md), "UI per audience"; [Discovery design](../dev-request-sandz-sli-discovery-and-triggers.md) §3).
 **Does not change:** the tenant, Trigger, permission and history layer built in S2 (`supabase/migrations/20261101100001_*`, `20261101100002_*`). Every action in the conversation goes through the same database functions.
 
@@ -83,4 +83,12 @@ The app samples the picture's brightness and picks light or dark glass and text 
 - Artifacts open beside it on request and close again: **Trigger** (summary and stage actions), **Saved** (research by stage, with what is still to write), **Candidates**, **Decision**, **Handoff** and **Colleagues**. A dot marks an artifact waiting for the person. They are the classic page's own components, loaded by the same loader (`src/lib/sli/trigger-view.ts`), so both views always agree. On a phone an artifact covers the conversation until closed.
 - **View**: garden at dusk, morning mist, plain, or the person's own photo, with dim and soften; kept on the device for now. Built-in photos are left out until their licensing is clear.
 
-**Step 2 (next):** Ember SLI tools with confirmation cards (raise a Trigger, add a candidate, record a recommendation, propose a handoff, save brainstorm notes), and Home as the calm greeting with a general conversation.
+**Step 2 (10 November 2026): Ember proposes, the person confirms; the calm Home.**
+
+- Ember SLI tools in the conversation (`src/lib/chat/sli-tools.ts`), offered to members of an SLI department: **find companies** (read-only), and **propose** a new Trigger, a new company (optionally also as a candidate), a candidate customer, or the person's recommendation. The last two only in a Trigger's research conversation; the Trigger always comes from the conversation's Project, never from the model.
+- A proposal is stored (`sli_assistant_proposals`, `20261110100001_sli_assistant_proposals.sql`) with a summary written by the database, not by Ember, and shown as an **Ember suggests** card with **Confirm** and **Not now**. Confirming runs the same SLI function as the pages, as the person; a refusal is kept on the card with the reason and nothing is saved. A confirmed card becomes a quiet line ("Raised as TRG-005 · in the history"), and Ember's own record of the call is updated so the next reply knows what happened. Cards come back as they stand when a conversation is reopened. "Edit" is "tell Ember what to change": it proposes again.
+- In a Trigger's workspace, **Find candidates** and **Recommend** chips appear when the person may do those.
+- **Home** (`/sli`) is the calm greeting: the person's view, "Good evening, Maria", a few quiet lines of what is waiting (decisions, handoff answers, Triggers waiting for a sponsor), up to two "Continue TRG-…" suggestions, and a general conversation with **Raise a Trigger**, **Find a company** and **Think it through** chips. The classic lists moved to **My work** (`/sli/my-work`).
+- Not yet: proposing a handoff, and saving brainstorm notes through a card (Ember still saves them when the person asks, as before).
+
+**Step 3 (next):** thinking aloud.

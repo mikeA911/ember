@@ -23,6 +23,7 @@ node --env-file=.env.local scripts/run-migrations.mjs 20261106100001_speech_to_t
 node --env-file=.env.local scripts/run-migrations.mjs 20261107100001_sli_recommendations_and_decisions.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261108100001_sli_handoffs.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261109100001_sli_customers_and_candidates.sql
+node --env-file=.env.local scripts/run-migrations.mjs 20261110100001_sli_assistant_proposals.sql
 ```
 
 This one also gives Triggers already in research their research space.
@@ -90,4 +91,10 @@ The **Dictate** button in Ember's chat (including a Trigger's research conversat
 
 ## 8. Who decides on Triggers
 
-Add `"decides": true` to the decider's entry in your members list (one person per organisation) and re-run `scripts/sli-add-members.mjs`. The decider then names a dated delegate on SLI Home when they are away; the delegate decides only between those dates and never on a Trigger they sponsor.
+Add `"decides": true` to the decider's entry in your members list (one person per organisation) and re-run `scripts/sli-add-members.mjs`. The decider then names a dated delegate in My work when they are away; the delegate decides only between those dates and never on a Trigger they sponsor.
+
+## 9. Ember proposes, you confirm
+
+After `20261110100001_sli_assistant_proposals.sql`, Ember can raise a Trigger, add a company to the registry, add a candidate customer and record a recommendation from the conversation, but only as a card the person confirms. Nothing is saved until they press **Confirm**, and the change then goes through the same checks as the pages. Members of an SLI department get these tools in any Ember conversation; candidate and recommendation proposals appear only in a Trigger's research conversation.
+
+SLI Home (`/sli`) is now the calm greeting with a general conversation. The lists that were on Home are under **My work**.

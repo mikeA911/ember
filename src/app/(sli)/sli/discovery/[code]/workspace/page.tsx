@@ -12,6 +12,11 @@ import { TriggerDecision } from '@/components/sli/TriggerDecision'
 import { TriggerHandoffs } from '@/components/sli/TriggerHandoffs'
 import { STAGE_LABELS } from '@/lib/sli/types'
 
+const FIND_CANDIDATES_PROMPT =
+  'Help me find candidate customers for this Trigger. Ask me one question at a time about who it is for, look companies up in our registry, and propose each good fit as a candidate (with its tier and why) for me to confirm. If a company isn’t in the registry, propose adding it.'
+const RECOMMEND_PROMPT =
+  'I’d like to record my recommendation on this Trigger. Ask me what I recommend (approve, revise, defer or reject), where it should go if approved, and why, one question at a time. Then propose it for me to confirm.'
+
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   return { title: `${code.toUpperCase()} workspace` }
@@ -106,6 +111,13 @@ export default async function TriggerWorkspacePage({ params }: { params: Promise
     })
   }
 
+  const taskChips = [
+    ...(view.showCandidates && view.candidateList?.canEdit
+      ? [{ label: 'Find candidates', prompt: FIND_CANDIDATES_PROMPT, title: 'Ember looks companies up; you confirm each one' }]
+      : []),
+    ...(trigger.decisionInfo?.canRecommend ? [{ label: 'Recommend', prompt: RECOMMEND_PROMPT, title: 'Ember records it once you confirm' }] : []),
+  ]
+
   return (
     <CalmWorkspace
       code={trigger.code}
@@ -115,6 +127,7 @@ export default async function TriggerWorkspacePage({ params }: { params: Promise
       projectId={view.hasResearch && !trigger.archived ? (trigger.projectId ?? null) : null}
       stagePrompt={stagePrompt}
       fitCheckPrompt={fitCheckPrompt}
+      taskChips={taskChips}
       panels={panels}
     />
   )
