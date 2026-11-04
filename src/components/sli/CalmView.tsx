@@ -7,10 +7,13 @@ import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 're
 // dim and soften sliders. Kept on this device for now (localStorage); a
 // photo is resized in the browser before it is kept.
 
-export type ViewSettings = { scene: 'dusk' | 'mist' | 'plain' | 'photo'; photo: string | null; dim: number; soften: number }
+export type ViewSettings = { scene: 'ember' | 'dusk' | 'mist' | 'plain' | 'photo'; photo: string | null; dim: number; soften: number }
 
 const STORE = 'ember-sli-view'
-const DEFAULTS: ViewSettings = { scene: 'dusk', photo: null, dim: 15, soften: 0 }
+const DEFAULTS: ViewSettings = { scene: 'ember', photo: null, dim: 15, soften: 0 }
+
+// The sign-in page's picture, the default view.
+export const EMBER_SCENE = '/images/ember-sli-login.jpg'
 
 export const SCENES: Record<'dusk' | 'mist', string> = {
   dusk:
@@ -83,7 +86,13 @@ export function useViewSettings() {
 
 export function ViewBackground({ settings }: { settings: ViewSettings }) {
   const image =
-    settings.scene === 'photo' && settings.photo ? `url("${settings.photo}")` : settings.scene === 'dusk' || settings.scene === 'mist' ? SCENES[settings.scene] : null
+    settings.scene === 'photo' && settings.photo
+      ? `url("${settings.photo}")`
+      : settings.scene === 'ember'
+        ? `url("${EMBER_SCENE}")`
+        : settings.scene === 'dusk' || settings.scene === 'mist'
+          ? SCENES[settings.scene]
+          : null
   return (
     <>
       <div
@@ -155,6 +164,15 @@ export function ViewPicker({
         <button type="button" onClick={onClose} className="text-zinc-600 underline">Done</button>
       </div>
       <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => update({ scene: 'ember' })}
+          aria-pressed={settings.scene === 'ember'}
+          className={`${tile} bg-cover bg-center ${settings.scene === 'ember' ? 'border-orange-500' : 'border-transparent'}`}
+          style={{ backgroundImage: `url("${EMBER_SCENE}")` }}
+        >
+          <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 px-2 py-1 text-white">Ember</span>
+        </button>
         {(['dusk', 'mist'] as const).map((scene) => (
           <button
             key={scene}

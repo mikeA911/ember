@@ -44,6 +44,8 @@ export function CalmWorkspace({
   const router = useRouter()
   const view = useViewSettings()
   const [showView, setShowView] = useState(false)
+  // Hidden, not unmounted: the conversation is still there when it comes back.
+  const [hidden, setHidden] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
   const active = panels.find((p) => p.key === open) ?? null
 
@@ -96,7 +98,10 @@ export function CalmWorkspace({
             <button
               key={p.key}
               type="button"
-              onClick={() => setOpen(open === p.key ? null : p.key)}
+              onClick={() => {
+                setHidden(false)
+                setOpen(open === p.key ? null : p.key)
+              }}
               aria-pressed={open === p.key}
               className={`rounded-full px-3 py-1 ${open === p.key ? 'bg-zinc-900 text-white' : 'hover:bg-white'}`}
             >
@@ -105,6 +110,9 @@ export function CalmWorkspace({
             </button>
           ))}
           <span aria-hidden="true" className="mx-1 h-4 w-px bg-zinc-300" />
+          <button type="button" onClick={() => setHidden((h) => !h)} aria-pressed={hidden} className="rounded-full px-3 py-1 hover:bg-white">
+            {hidden ? 'Show conversation' : 'Hide conversation'}
+          </button>
           <button type="button" onClick={() => setShowView((v) => !v)} aria-expanded={showView} className="rounded-full px-3 py-1 hover:bg-white">
             View
           </button>
@@ -120,7 +128,17 @@ export function CalmWorkspace({
         </div>
       )}
 
-      <div className="relative z-10 flex min-h-0 flex-1 gap-3 p-3">
+
+      {hidden && (
+        <button
+          type="button"
+          onClick={() => setHidden(false)}
+          className="absolute bottom-6 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/60 bg-white/80 px-4 py-2 text-sm shadow-lg backdrop-blur hover:bg-white"
+        >
+          Show conversation
+        </button>
+      )}
+      <div className={`relative z-10 flex min-h-0 flex-1 gap-3 p-3 ${hidden ? 'hidden' : ''}`}>
         <section className={`flex min-w-0 flex-1 justify-center ${active ? 'max-md:hidden' : ''}`}>
           <div className={`flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl ${glass}`}>
             {projectId ? (

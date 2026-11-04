@@ -47,6 +47,8 @@ export function CalmHome({
 }) {
   const view = useViewSettings()
   const [showView, setShowView] = useState(false)
+  // Hidden, not unmounted: the conversation is still there when it comes back.
+  const [hidden, setHidden] = useState(false)
   const greeting = useSyncExternalStore(subscribeClock, greetingNow, () => 'Hello')
 
   useEffect(() => {
@@ -81,6 +83,9 @@ export function CalmHome({
           <Link href="/sli/discovery" className="rounded-full px-3 py-1 hover:bg-white">Discovery</Link>
           <Link href="/sli/customers" className="rounded-full px-3 py-1 hover:bg-white">Customers</Link>
           <span aria-hidden="true" className="mx-1 h-4 w-px bg-zinc-300" />
+          <button type="button" onClick={() => setHidden((h) => !h)} aria-pressed={hidden} className="rounded-full px-3 py-1 hover:bg-white">
+            {hidden ? 'Show conversation' : 'Hide conversation'}
+          </button>
           <button type="button" onClick={() => setShowView((v) => !v)} aria-expanded={showView} className="rounded-full px-3 py-1 hover:bg-white">
             View
           </button>
@@ -93,7 +98,17 @@ export function CalmHome({
         </div>
       )}
 
-      <div className="relative z-10 flex min-h-0 flex-1 justify-center p-3">
+
+      {hidden && (
+        <button
+          type="button"
+          onClick={() => setHidden(false)}
+          className="absolute bottom-6 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/60 bg-white/80 px-4 py-2 text-sm shadow-lg backdrop-blur hover:bg-white"
+        >
+          Show conversation
+        </button>
+      )}
+      <div className={`relative z-10 flex min-h-0 flex-1 justify-center p-3 ${hidden ? 'hidden' : ''}`}>
         <div className={`flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl ${glass}`}>
           <div className="border-b border-white/60 px-5 py-4">
             <h1 className="font-serif text-2xl text-zinc-900">
