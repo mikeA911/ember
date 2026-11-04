@@ -41,17 +41,37 @@ export async function listContributorCandidates(supabase: Client, triggerId: str
 }
 
 export type ResearchFinding = { id: string; type: string; title: string; content: string | null; createdAt: string }
+export type ResearchStage = { workstreamId: string; name: string; slug: string; deliverables: string[]; findings: ResearchFinding[] }
 
-// What has been saved to a Trigger's Research workstream (the fit check,
-// attached files saved as findings, ...), newest first. Read as the caller,
-// so Project membership and evidence access rules apply.
-export async function listResearchFindings(supabase: Client, workstreamId: string): Promise<ResearchFinding[]> {
-  const { data, error } = await supabase
+// What has been saved to a Trigger's research Project, by Workstream in the
+// order the stages began (Research, Concept, Feasibility): the fit check,
+// the concept paper, the feasibility assessment, saved files. Read as the
+// caller, so Project membership and evidence access rules apply.
+export async function listResearchStages(supabase: Client, projectId: string): Promise<ResearchStage[]> {
+  const { data: workstreams, error } = await supabase
+    .from('project_workstreams')
+    .select('id, name, slug, deliverables')
+    .eq('project_id', projectId)
+    .order('created_at')
+  if (error) throw new SliError('The research couldn’t be loaded.')
+  const ids = (workstreams ?? []).map((w) => w.id)
+  if (ids.length === 0) return []
+  const { data: artifacts, error: artifactError } = await supabase
     .from('workstream_artifacts')
-    .select('id, artifact_type, title, content, created_at')
-    .eq('workstream_id', workstreamId)
+    .select('id, workstream_id, artifact_type, title, content, created_at')
+    .in('workstream_id', ids)
     .order('created_at', { ascending: false })
-    .limit(50)
-  if (error) throw new SliError('The research findings couldn’t be loaded.')
-  return (data ?? []).map((a) => ({ id: a.id, type: a.artifact_type, title: a.title, content: a.content, createdAt: a.created_at }))
+    .limit(200)
+  if (artifactError) throw new SliError('The research couldn’t be loaded.')
+  return (workstreams ?? []).map((w) => ({
+    workstreamId: w.id,
+    name: w.name,
+    slug: w.slug,
+    deliverables: Array.isArray(w.deliverables)
+      ? (w.deliverables as { label?: unknown }[]).map((d) => (typeof d?.label === 'string' ? d.label : '')).filter(Boolean)
+      : [],
+    findings: (artifacts ?? [])
+      .filter((a) => a.workstream_id === w.id)
+      .map((a) => ({ id: a.id, type: a.artifact_type, title: a.title, content: a.content, createdAt: a.created_at })),
+  }))
 }

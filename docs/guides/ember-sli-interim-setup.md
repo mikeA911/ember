@@ -18,6 +18,7 @@ Later migrations, in order:
 node --env-file=.env.local scripts/run-migrations.mjs 20261102100001_sli_trigger_research_projects.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261103100001_sli_research_fit_check_prompt.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261104100001_anthropic_provider.sql
+node --env-file=.env.local scripts/run-migrations.mjs 20261105100001_sli_concept_and_feasibility_methods.sql
 ```
 
 This one also gives Triggers already in research their research space.

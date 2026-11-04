@@ -11,6 +11,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261101100002_sli_triggers.sql',
   'supabase/migrations/20261102100001_sli_trigger_research_projects.sql',
   'supabase/migrations/20261103100001_sli_research_fit_check_prompt.sql',
+  'supabase/migrations/20261105100001_sli_concept_and_feasibility_methods.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 // Sandz: md and cto are Discovery sponsors, analyst is on the Discovery
@@ -72,7 +73,11 @@ beforeAll(async () => {
     create table project_members(id uuid primary key default gen_random_uuid(), project_id uuid not null references projects(id) on delete cascade,
       user_id uuid not null references profiles(id), role text not null, status text not null default 'active', unique (project_id, user_id));
     create table project_workstreams(id uuid primary key default gen_random_uuid(), project_id uuid not null references projects(id) on delete cascade,
-      name text not null, slug text not null, status text not null default 'draft', goal text, created_by uuid, unique (project_id, slug));
+      name text not null, slug text not null, status text not null default 'draft', goal text, created_by uuid,
+      guardrail text, deliverables jsonb not null default '[]', derived_from_method_id uuid, unique (project_id, slug));
+    create table methods(id uuid primary key default gen_random_uuid(), name text not null, slug text not null unique, description text,
+      requirements text, evidence text, deliverables text, guardrails text, review_points text, status text not null default 'draft',
+      published_at timestamptz);
     -- Replaced by the SLI migration (which adds the reservation exemption).
     create function enforce_project_approval() returns trigger language plpgsql as $$ begin return new; end; $$;
     create trigger projects_enforce_approval before insert or update on projects for each row execute function enforce_project_approval();
@@ -459,7 +464,8 @@ describe('research spaces', () => {
     const { rows } = await db.query<{ n: number }>('select count(*)::int as n from projects')
     const ws = await db.query<{ n: number }>('select count(*)::int as n from project_workstreams')
     await db.exec('set role authenticated')
-    expect([rows[0].n, ws.rows[0].n]).toEqual([1, 1])
+    // One Project; the Research workstream plus the Concept stage's own.
+    expect([rows[0].n, ws.rows[0].n]).toEqual([1, 2])
   })
 
   it('keeps the Discovery team in step with every Trigger Project', async () => {
@@ -539,5 +545,66 @@ describe('contributors', () => {
     await call('sli_set_trigger_contributor', t.id, isr, true)
     await as(isr)
     expect((await call('sli_get_trigger', t.code)).canManageContributors).toBe(false)
+  })
+})
+
+describe('concept and feasibility', () => {
+  async function workstreams(projectId: string) {
+    await db.exec('reset role')
+    const { rows } = await db.query<Json>(
+      `select w.slug, w.name, w.status, w.guardrail, w.deliverables, m.slug as method from project_workstreams w
+       left join methods m on m.id = w.derived_from_method_id where w.project_id = $1 order by w.slug`,
+      [projectId]
+    )
+    const prompt = await db.query<{ starter_prompt: string }>('select starter_prompt from projects where id = $1', [projectId])
+    await db.exec('set role authenticated')
+    return { rows, prompt: prompt.rows[0].starter_prompt }
+  }
+
+  it('starts each stage from its Method and points the conversation at its paper', async () => {
+    const t = await raise(isr)
+    await move(cto, t.id, 'researching')
+    await as(cto)
+    const { projectId } = await call('sli_get_trigger', t.code)
+    expect((await workstreams(projectId)).prompt).toMatch(/^Run a fit check/)
+
+    await move(cto, t.id, 'concept')
+    let state = await workstreams(projectId)
+    expect(state.rows.map((w: Json) => [w.slug, w.method])).toEqual([['concept', 'sli-concept-development'], ['research', null]])
+    const concept = state.rows.find((w: Json) => w.slug === 'concept')
+    expect(concept).toMatchObject({ name: 'Concept', status: 'active', deliverables: [{ label: 'Concept paper', completed: false }] })
+    expect(concept.guardrail).toMatch(/^Write the concept paper with these sections/)
+    expect(state.prompt).toMatch(/^Draft the concept paper.*"Concept paper" in the Concept workstream\.$/)
+
+    await move(cto, t.id, 'feasibility')
+    state = await workstreams(projectId)
+    expect(state.rows.map((w: Json) => w.slug)).toEqual(['concept', 'feasibility', 'research'])
+    expect(state.rows.find((w: Json) => w.slug === 'feasibility').guardrail).toMatch(/Recommendation: approve, revise, defer or reject/)
+    expect(state.prompt).toMatch(/^Draft the feasibility assessment/)
+  })
+
+  it('reuses stage Workstreams and restores the fit check when research reopens', async () => {
+    const t = await raise(isr)
+    await move(cto, t.id, 'researching')
+    await move(cto, t.id, 'concept')
+    await move(cto, t.id, 'researching', 'Need more evidence')
+    await as(cto)
+    const { projectId } = await call('sli_get_trigger', t.code)
+    let state = await workstreams(projectId)
+    expect(state.prompt).toMatch(/^Run a fit check/)
+    await move(cto, t.id, 'concept')
+    state = await workstreams(projectId)
+    expect(state.rows.map((w: Json) => w.slug)).toEqual(['concept', 'research'])
+    expect(state.prompt).toMatch(/^Draft the concept paper/)
+  })
+
+  it('publishes the two Methods once', async () => {
+    await db.exec('reset role')
+    const { rows } = await db.query<{ slug: string; status: string }>("select slug, status from methods where slug like 'sli-%' order by slug")
+    await db.exec('set role authenticated')
+    expect(rows).toEqual([
+      { slug: 'sli-concept-development', status: 'published' },
+      { slug: 'sli-feasibility-assessment', status: 'published' },
+    ])
   })
 })
