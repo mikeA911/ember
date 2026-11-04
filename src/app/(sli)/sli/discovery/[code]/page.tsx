@@ -1,7 +1,15 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getSliContext, getTrigger, listContributorCandidates, listResearchStages, listWorkstreamFindings } from '@/lib/sli/api'
+import {
+  getSliContext,
+  getTrigger,
+  listCandidateCustomers,
+  listContributorCandidates,
+  listResearchStages,
+  listWorkstreamFindings,
+} from '@/lib/sli/api'
+import { CandidateCustomers } from '@/components/sli/CandidateCustomers'
 import { StageBadge } from '@/components/sli/StageBadge'
 import { TriggerActions } from '@/components/sli/TriggerActions'
 import { TriggerContributors } from '@/components/sli/TriggerContributors'
@@ -52,11 +60,14 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
   if (!trigger) notFound()
   const hasResearch = (trigger.access === 'full' || trigger.access === 'contributor') && !!trigger.projectId
   const acceptedHandoff = [...(trigger.handoffInfo?.handoffs ?? [])].reverse().find((h) => h.kind === 'promote' && h.status === 'accepted')
-  const [candidates, stages, receivedPackage] = await Promise.all([
+  const [candidates, stages, receivedPackage, candidateList] = await Promise.all([
     trigger.canManageContributors ? listContributorCandidates(supabase, trigger.id) : Promise.resolve([]),
     hasResearch && trigger.projectId ? listResearchStages(supabase, trigger.projectId) : Promise.resolve([]),
     acceptedHandoff?.destinationWorkstreamId ? listWorkstreamFindings(supabase, acceptedHandoff.destinationWorkstreamId) : Promise.resolve([]),
+    trigger.access === 'full' ? listCandidateCustomers(supabase, trigger.id) : Promise.resolve(null),
   ])
+  const acceptedCandidateCount = candidateList?.candidates.filter((c) => c.status === 'accepted').length ?? 0
+  const showCandidates = !!candidateList && (candidateList.canEdit || candidateList.candidates.length > 0)
   const researchOptions = stages.flatMap((st) => st.findings.map((f) => ({ id: f.id, title: f.title, stage: st.name })))
   const showHandoffs =
     !!trigger.handoffInfo &&
@@ -142,9 +153,20 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
               triggerId={trigger.id}
               info={trigger.decisionInfo}
               evidenceOptions={researchOptions}
+              candidateCount={acceptedCandidateCount}
             />
           </section>
         )}
+
+      {showCandidates && candidateList && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Candidate customers</h2>
+          {trigger.stage === 'approved' && (
+            <p className="text-sm text-zinc-600">Use Start Targeting to settle the list before handing off to Marketing.</p>
+          )}
+          <CandidateCustomers triggerId={trigger.id} list={candidateList} />
+        </section>
+      )}
 
       {showHandoffs && trigger.handoffInfo && (
         <section className="space-y-3">

@@ -27,10 +27,12 @@ export function TriggerDecision({
   triggerId,
   info,
   evidenceOptions,
+  candidateCount = 0,
 }: {
   triggerId: string
   info: TriggerDecisionInfo
   evidenceOptions: { id: string; title: string; stage: string }[]
+  candidateCount?: number
 }) {
   const decisions = [...(info.decisions ?? [])].reverse()
   const current = (info.recommendations ?? []).filter((r) => r.current)
@@ -99,7 +101,13 @@ export function TriggerDecision({
 
       {info.canRecommend && <RecommendForm triggerId={triggerId} destinations={info.destinations ?? []} />}
       {info.canDecide && (
-        <DecideForm triggerId={triggerId} destinations={info.destinations ?? []} evidenceOptions={evidenceOptions} decideAs={info.decideAs ?? null} />
+        <DecideForm
+          triggerId={triggerId}
+          destinations={info.destinations ?? []}
+          evidenceOptions={evidenceOptions}
+          decideAs={info.decideAs ?? null}
+          candidateCount={candidateCount}
+        />
       )}
       {!info.canDecide && info.decisionBlockedReason && info.recommendations !== undefined && (
         <p className="text-sm text-zinc-500">
@@ -176,11 +184,13 @@ function DecideForm({
   destinations,
   evidenceOptions,
   decideAs,
+  candidateCount,
 }: {
   triggerId: string
   destinations: { id: string; name: string }[]
   evidenceOptions: { id: string; title: string; stage: string }[]
   decideAs: TriggerDecisionInfo['decideAs']
+  candidateCount: number
 }) {
   const router = useRouter()
   const [outcome, setOutcome] = useState<DecisionOutcome>('approve')
@@ -236,6 +246,12 @@ function DecideForm({
               <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
+          {candidateCount === 1 && (
+            <p className="mt-1 text-xs text-zinc-600">
+              There is one candidate customer. A single customer usually goes straight to Presales, with its account rep named in the handoff,
+              rather than through a Marketing campaign.
+            </p>
+          )}
         </div>
       )}
       {outcome === 'revise' && (

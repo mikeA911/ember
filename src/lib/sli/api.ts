@@ -1,7 +1,7 @@
 import 'server-only'
 import type { createClient } from '@/lib/supabase/server'
 import { sliErrorMessage } from './errors'
-import type { DecisionSettings, HandoffInbox, SliContext, TriggerContributor, TriggerDetail, TriggerSummary, TriggerType } from './types'
+import type { CandidateList, CustomerDetail, CustomerListItem, DecisionSettings, HandoffInbox, SliContext, TriggerContributor, TriggerDetail, TriggerSummary, TriggerType } from './types'
 
 // Reads for SLI pages, as the signed-in person. The SLI functions aren't in
 // the generated Database type, so they are called through an untyped rpc.
@@ -96,4 +96,20 @@ export async function listWorkstreamFindings(supabase: Client, workstreamId: str
     .order('created_at')
   if (error) return []
   return (data ?? []).map((a) => ({ id: a.id, type: a.artifact_type, title: a.title, content: a.content, createdAt: a.created_at }))
+}
+
+export async function listCustomers(supabase: Client, opts: { search?: string; technology?: string; limit?: number } = {}): Promise<CustomerListItem[]> {
+  return sliRpc<CustomerListItem[]>(supabase, 'sli_list_customers', {
+    p_search: opts.search ?? null,
+    p_technology: opts.technology ?? null,
+    p_limit: opts.limit ?? 100,
+  })
+}
+
+export async function getCustomer(supabase: Client, id: string): Promise<CustomerDetail | null> {
+  return sliRpc<CustomerDetail | null>(supabase, 'sli_get_customer', { p_id: id })
+}
+
+export async function listCandidateCustomers(supabase: Client, triggerId: string): Promise<CandidateList | null> {
+  return sliRpc<CandidateList | null>(supabase, 'sli_list_candidate_customers', { p_trigger: triggerId })
 }
