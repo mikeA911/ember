@@ -14,6 +14,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261105100001_sli_concept_and_feasibility_methods.sql',
   'supabase/migrations/20261107100001_sli_recommendations_and_decisions.sql',
   'supabase/migrations/20261108100001_sli_handoffs.sql',
+  'supabase/migrations/20261109100001_sli_customers_and_candidates.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 // Sandz: md and cto are Discovery sponsors, analyst is on the Discovery
@@ -120,7 +121,8 @@ beforeEach(async () => {
     reset role;
     alter table sli_trigger_stage_history disable trigger sli_trigger_stage_history_append_only;
     update sli_departments set workspace_project_id = null;
-    truncate sli_handoff_package_items, sli_handoffs, sli_decision_evidence, sli_decisions, sli_recommendations, sli_decision_authorities, workstream_artifacts,
+    truncate sli_trigger_candidate_customers, sli_customer_technologies, sli_customer_rankings, sli_customer_assignments, sli_customers,
+      sli_handoff_package_items, sli_handoffs, sli_decision_evidence, sli_decisions, sli_recommendations, sli_decision_authorities, workstream_artifacts,
       sli_project_reservations, sli_trigger_contributors, project_members, project_workstreams, projects,
       sli_admin_access_log, sli_trigger_stage_history, sli_triggers, sli_trigger_types, sli_department_members,
       sli_departments, sli_settings, organization_members, organizations, profiles cascade;
@@ -947,5 +949,127 @@ describe('handoffs', () => {
     await call('sli_decide_send_back', sendBack.id, false, 'Our pricing still wins on total cost')
     await as(cto)
     expect((await call('sli_get_trigger', t.code)).stage).toBe('promoted')
+  })
+})
+
+describe('customers and candidates', () => {
+  const rep = id(12)
+  const sales = id(113), presales = id(114)
+  async function setup() {
+    await db.exec(`reset role;
+      insert into profiles(id, email, full_name) values ('${rep}', 'rep@example.test', 'Rita Rep') on conflict do nothing;
+      insert into organization_members(organization_id, user_id) values ('${sandz}', '${rep}') on conflict do nothing;
+      insert into sli_departments(id, organization_id, code, name, accepts_handoffs, sort_order) values
+        ('${sales}', '${sandz}', 'sales', 'Sales', true, 3), ('${presales}', '${sandz}', 'presales', 'Presales', true, 4) on conflict do nothing;
+      update sli_departments set accepts_handoffs = true, requires_candidates = true where id = '${marketing}';
+      insert into sli_department_members(organization_id, department_id, user_id, role) values
+        ('${sandz}', '${sales}', '${rep}', 'member'), ('${sandz}', '${sales}', '${md}', 'lead') on conflict do nothing;
+      insert into sli_decision_authorities(organization_id, user_id, kind) values ('${sandz}', '${md}', 'decider') on conflict do nothing;
+      set role authenticated;`)
+  }
+  async function company(user: string, name: string, website: string | null = null, phone: string | null = null, reason: string | null = null) {
+    await as(user)
+    return (await call<{ id: string }>('sli_save_customer', null, name, website, phone, 'Manufacturing', null, null, null, null, null, reason)).id
+  }
+
+  it('normalises names, domains and phone numbers', async () => {
+    const { rows } = await db.query<Json>(
+      "select sli_normalize_name('ABC Holdings, Inc. (Philippines)') n, sli_normalize_domain('https://www.Example.com/about') d, sli_normalize_phone('+63 2 8888 1234') p"
+    )
+    expect(rows[0]).toEqual({ n: 'abc holdings', d: 'example.com', p: '0288881234' })
+  })
+
+  it('lets Marketing, Sales and Discovery create companies, and blocks duplicate domains', async () => {
+    await setup()
+    await company(isr, 'Acme Logistics Inc.', 'https://acme.ph', '(02) 8888 1234')
+    await as(idle)
+    expect((await errorOf(call('sli_save_customer', null, 'Other Co', null, null, null, null, null, null, null, null, null))).code).toBe('42501')
+    expect((await errorOf(company(analyst, 'Acme Logistics Corp', 'www.acme.ph/contact'))).message).toMatch(/already uses this website/)
+    expect((await errorOf(company(analyst, 'Acme Freight', null, '+63 2 8888 1234'))).message).toMatch(/same main phone number/)
+    await company(analyst, 'Acme Freight', null, '+63 2 8888 1234', 'Shared switchboard with its sister company')
+    await as(rep)
+    const matches = await call<Json[]>('sli_find_customer_duplicates', 'ACME Logistics Philippines', null, null, null)
+    expect(matches.map((m) => [m.name, m.strength])).toEqual([['Acme Logistics Inc.', 'possible']])
+  })
+
+  it('assigns account reps from Sales by a Sales lead, keeping history', async () => {
+    await setup()
+    const acme = await company(isr, 'Acme Logistics', 'acme.ph')
+    await as(isr)
+    expect((await errorOf(call('sli_assign_customer', acme, 'account_rep', rep))).code).toBe('42501')
+    await as(md)
+    expect((await errorOf(call('sli_assign_customer', acme, 'account_rep', isr))).message).toMatch(/member of sales/)
+    await call('sli_assign_customer', acme, 'account_rep', rep)
+    await call('sli_assign_customer', acme, 'account_rep', md)
+    const c = await call('sli_get_customer', acme)
+    expect(c.accountRep).toBe('Maria Director')
+    expect(c.assignments.map((a: Json) => [a.name, a.to === null])).toEqual([['Maria Director', true], ['Rita Rep', false]])
+  })
+
+  it('keeps rankings with the Discovery team and finds companies by what they run', async () => {
+    await setup()
+    const acme = await company(isr, 'Acme Logistics', 'acme.ph')
+    const beta = await company(isr, 'Beta Foods', 'beta.ph')
+    await as(isr)
+    expect((await errorOf(call('sli_record_customer_ranking', acme, 'top1000', 120, null, null, null))).code).toBe('42501')
+    await as(analyst)
+    await call('sli_record_customer_ranking', acme, 'top1000', 120, '2026-06-01', 'BusinessWorld', null)
+    await call('sli_save_customer_technology', acme, null, 'virtualisation', 'VMware', 'vSphere', 'in_use', false, '60 VMs', '2027-03-31', null, false)
+    await call('sli_save_customer_technology', beta, null, 'storage', 'Zadara', null, 'in_use', true, '200 TB', null, null, false)
+    expect((await call<Json[]>('sli_list_customers', null, 'vmware', 100)).map((c) => [c.name, c.top1000, c.technologies])).toEqual([
+      ['Acme Logistics', 120, ['VMware vSphere']],
+    ])
+    expect((await call<Json[]>('sli_list_customers', 'beta', null, 100)).map((c) => c.name)).toEqual(['Beta Foods'])
+  })
+
+  it('builds the candidate list in Targeting; Marketing needs one, Presales does not', async () => {
+    await setup()
+    const acme = await company(isr, 'Acme Logistics', 'acme.ph')
+    await as(md)
+    await call('sli_assign_customer', acme, 'account_rep', rep)
+    const t = await raise(analyst, 'VMware exit offer')
+    for (const stage of ['researching', 'concept', 'feasibility', 'under_review']) await move(cto, t.id, stage)
+    await as(md)
+    await call('sli_record_decision', t.id, 'approve', 'Go ahead', marketing, null, null, [], false)
+    await move(cto, t.id, 'targeting')
+    await as(cto)
+    expect((await errorOf(call('sli_propose_handoff', t.id, null, [], null, null))).message).toMatch(/needs at least one accepted candidate/)
+    await as(isr)
+    expect((await errorOf(call('sli_add_candidate_customer', t.id, acme, 'existing_customer', 'Runs VMware on 60 VMs', 'strong', 'high', null, null, null, null))).code).toBe('42501')
+    await as(analyst)
+    await call('sli_add_candidate_customer', t.id, acme, 'existing_customer', 'Runs VMware on 60 VMs, renewal in March', 'strong', 'high', null, 'Logistics', null, null)
+    const list = await call('sli_list_candidate_customers', t.id)
+    expect(list.candidates[0]).toMatchObject({ name: 'Acme Logistics', tier: 'existing_customer', accountRep: 'Rita Rep', status: 'accepted' })
+    expect((await errorOf(call('sli_set_candidate_status', list.candidates[0].candidateId, 'removed', null))).message).toMatch(/why it is being trimmed/)
+
+    await as(cto)
+    const info = (await call('sli_get_trigger', t.code)).handoffInfo
+    expect(info.proposeTo).toMatchObject({ name: 'Marketing', requiresCandidates: true, acceptedCandidates: 1 })
+    await call('sli_propose_handoff', t.id, 'Tier 1 first', [], null, null)
+    const h = (await call('sli_get_trigger', t.code)).handoffInfo.handoffs[0]
+    expect(h.candidates).toEqual([expect.objectContaining({ name: 'Acme Logistics', accountRep: 'Rita Rep', fitRationale: 'Runs VMware on 60 VMs, renewal in March' })])
+
+    // One customer, straight to Presales: candidates optional.
+    const single = await raise(analyst, 'Acme DR proof of concept')
+    for (const stage of ['researching', 'concept', 'feasibility', 'under_review']) await move(cto, single.id, stage)
+    await as(md)
+    await call('sli_record_decision', single.id, 'approve', 'Go ahead', presales, null, null, [], false)
+    await as(cto)
+    expect(await call('sli_propose_handoff', single.id, null, [], null, null)).toMatchObject({ code: single.code })
+  })
+
+  it('offers Targeting to the sponsor after approval, and back with a reason', async () => {
+    await setup()
+    const t = await raise(analyst, 'Idea')
+    for (const stage of ['researching', 'concept', 'feasibility', 'under_review']) await move(cto, t.id, stage)
+    await as(md)
+    await call('sli_record_decision', t.id, 'approve', 'Go ahead', marketing, null, null, [], false)
+    await as(cto)
+    expect((await call('sli_get_trigger', t.code)).allowedActions.map((a: Json) => a.action + ':' + (a.toStage ?? ''))).toEqual([
+      'start_targeting:targeting', 'archive:',
+    ])
+    await move(cto, t.id, 'targeting')
+    expect((await errorOf(move(cto, t.id, 'approved'))).message).toMatch(/reason/)
+    expect(await move(cto, t.id, 'approved', 'Wait for Marketing’s answers')).toMatchObject({ stage: 'approved' })
   })
 })

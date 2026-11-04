@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { answerHandoffAction, proposeHandoffAction, raiseSendBackAction } from '@/app/actions/sli'
 import type { ResearchFinding } from '@/lib/sli/api'
-import { SEND_BACK_REASONS, STAGE_LABELS, type SendBackReason, type TriggerHandoff, type TriggerHandoffInfo, type TriggerStage } from '@/lib/sli/types'
+import { CANDIDATE_TIERS, SEND_BACK_REASONS, STAGE_LABELS, type SendBackReason, type TriggerHandoff, type TriggerHandoffInfo, type TriggerStage } from '@/lib/sli/types'
 
 // Handoffs on a Trigger (Discovery design §7): the sponsor proposes the
 // approved handoff with a package; the receiving lead accepts (the package
@@ -80,6 +80,22 @@ function HandoffCard({ handoff: h, receivedPackage }: { handoff: TriggerHandoff;
         <div>
           <span className="text-zinc-500">Approved claims:</span>
           <p className="whitespace-pre-wrap">{h.approvedClaims}</p>
+        </div>
+      )}
+      {h.candidates.length > 0 && (
+        <div className="space-y-1">
+          <span className="text-zinc-500">Candidate customers ({h.candidates.length}):</span>
+          <ul className="space-y-1">
+            {h.candidates.map((c) => (
+              <li key={c.id} className="rounded border border-zinc-200 bg-white px-3 py-1.5">
+                <span className="font-medium">{c.name}</span>
+                <span className="text-xs text-zinc-500">
+                  {' '}· {CANDIDATE_TIERS[c.tier]} · {c.accountRep ? `Account rep: ${c.accountRep}` : 'No account rep yet'}
+                </span>
+                <p className="text-zinc-700">{c.fitRationale}</p>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {receivedPackage.length > 0 ? (
@@ -194,6 +210,18 @@ function ProposeForm({
       className="max-w-2xl space-y-3 rounded border border-zinc-300 bg-white p-4"
     >
       <h3 className="text-sm font-medium">Hand off to {proposeTo.name}</h3>
+      {proposeTo.requiresCandidates && proposeTo.acceptedCandidates === 0 ? (
+        <p className="text-sm text-amber-800">
+          A handoff to {proposeTo.name} needs at least one candidate customer. Use Start Targeting and build the list first.
+        </p>
+      ) : (
+        proposeTo.acceptedCandidates > 0 && (
+          <p className="text-xs text-zinc-600">
+            The {proposeTo.acceptedCandidates} accepted candidate customer{proposeTo.acceptedCandidates === 1 ? '' : 's'} go with it, each with
+            their account rep.
+          </p>
+        )
+      )}
       <p className="text-xs text-zinc-500">
         {proposeTo.name}&rsquo;s lead accepts or returns it. They receive copies of what you select, never the research itself.
         {proposeTo.conditions ? ` The decision's conditions go with it: ${proposeTo.conditions}` : ''}
@@ -226,7 +254,11 @@ function ProposeForm({
         <textarea id="ho-claims" rows={3} maxLength={8000} value={approvedClaims} onChange={(e) => setApprovedClaims(e.target.value)} className={field} />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <button type="submit" disabled={pending} className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+      <button
+        type="submit"
+        disabled={pending || (proposeTo.requiresCandidates && proposeTo.acceptedCandidates === 0)}
+        className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+      >
         {pending ? 'Sending…' : `Propose handoff to ${proposeTo.name}`}
       </button>
     </form>

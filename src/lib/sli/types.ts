@@ -98,7 +98,7 @@ export type TriggerSummary = {
 export type TriggerContributor = { userId: string; name: string; departments: string; isMe?: boolean }
 
 export type TriggerAction = {
-  action: 'accept' | 'decline' | 'advance' | 'submit' | 'step_back' | 'withdraw' | 'revisit' | 'archive' | 'unarchive'
+  action: 'accept' | 'decline' | 'advance' | 'submit' | 'step_back' | 'withdraw' | 'revisit' | 'start_targeting' | 'archive' | 'unarchive'
   toStage: TriggerStage | null
   reasonRequired: boolean
 }
@@ -150,6 +150,8 @@ export function actionLabel(a: TriggerAction): string {
       return `Withdraw to ${to}`
     case 'revisit':
       return `Revisit in ${to}`
+    case 'start_targeting':
+      return 'Start Targeting'
     case 'archive':
       return 'Archive'
     case 'unarchive':
@@ -244,6 +246,7 @@ export type TriggerHandoff = {
   destinationWorkstreamId: string | null
   workspaceProjectId: string | null
   items: { title: string; copiedArtifactId: string | null }[]
+  candidates: CandidateSnapshot[]
   canDecide: boolean
   canWithdraw: boolean
 }
@@ -251,7 +254,13 @@ export type TriggerHandoff = {
 export type TriggerHandoffInfo = {
   handoffs?: TriggerHandoff[]
   canPropose?: boolean
-  proposeTo?: { departmentId: string; name: string; conditions: string | null } | null
+  proposeTo?: {
+    departmentId: string
+    name: string
+    conditions: string | null
+    requiresCandidates: boolean
+    acceptedCandidates: number
+  } | null
   canSendBack?: boolean
 }
 
@@ -259,3 +268,91 @@ export type HandoffInbox = {
   toAnswer: { code: string; title: string; kind: 'promote' | 'send_back'; department: string }[]
   received: { code: string; title: string; department: string; acceptedAt: string; stage: TriggerStage }[]
 }
+
+export type CustomerBrief = {
+  id: string
+  name: string
+  domain: string | null
+  industry: string | null
+  subIndustry: string | null
+  group: string | null
+  accountRep: string | null
+  top1000: number | null
+  bsp: number | null
+}
+
+export type CustomerListItem = CustomerBrief & { technologies: string[] }
+
+export type CustomerDetail = CustomerBrief & {
+  website: string | null
+  mainPhone: string | null
+  region: string | null
+  parentId: string | null
+  lifecycleStatus: string | null
+  priority: 'low' | 'medium' | 'high' | null
+  source: string
+  archived: boolean
+  canEdit: boolean
+  canAssign: Record<'account_rep' | 'isr_owner' | 'account_owner', boolean>
+  assignments: { role: 'account_rep' | 'isr_owner' | 'account_owner'; userId: string; name: string; from: string; to: string | null }[]
+  rankings: { type: 'top1000' | 'bsp'; rank: number; asOf: string | null; source: string | null; reference: string | null; recordedBy: string; recordedAt: string }[]
+  technologies: CustomerTechnology[]
+  members: { id: string; name: string }[]
+  triggers: { code: string; title: string; stage: TriggerStage; tier: CandidateTier; status: string }[]
+  salesMembers: { userId: string; name: string; department: 'sales' | 'marketing' }[]
+}
+
+export const TECHNOLOGY_CATEGORIES = {
+  virtualisation: 'Virtualisation',
+  storage: 'Storage',
+  backup_dr: 'Backup and DR',
+  cloud: 'Cloud',
+  network: 'Network',
+  security: 'Security',
+  database: 'Database',
+  other: 'Other',
+} as const
+export type TechnologyCategory = keyof typeof TECHNOLOGY_CATEGORIES
+
+export type CustomerTechnology = {
+  id: string
+  category: TechnologyCategory
+  vendor: string
+  product: string | null
+  status: 'in_use' | 'evaluating' | 'replacing' | 'retired'
+  suppliedBySandz: boolean
+  scale: string | null
+  renewalDate: string | null
+  notes: string | null
+}
+
+export const CANDIDATE_TIERS = {
+  existing_customer: 'Existing customer',
+  related_company: 'Related company',
+  new_prospect: 'New prospect',
+} as const
+export type CandidateTier = keyof typeof CANDIDATE_TIERS
+export type SolutionFit = 'strong' | 'partial' | 'poor' | 'unknown'
+
+export type CandidateSnapshot = CustomerBrief & {
+  tier: CandidateTier
+  solutionFit: SolutionFit
+  fitRationale: string
+  priority: 'low' | 'medium' | 'high' | null
+  relationshipPath: string | null
+  targetIndustry: string | null
+  knownRelationships: string | null
+}
+
+export type CandidateCustomer = CandidateSnapshot & {
+  candidateId: string
+  evidenceReference: string | null
+  status: 'proposed' | 'accepted' | 'removed'
+  trimmedReason: string | null
+  addedBy: string
+  createdVia: 'manual' | 'assistant'
+}
+
+export type CandidateList = { canEdit: boolean; candidates: CandidateCustomer[] }
+
+export type DuplicateMatch = { id: string; name: string; domain: string | null; reason: string; strength: 'blocking' | 'warning' | 'possible' }

@@ -24,6 +24,8 @@ Stages 1–5 complete the registry milestone ("authorized users can create, sear
 
 **Customer core moves to S3.** The handoff from Discovery to Marketing is a list of candidate customers defined by the Discovery team ([Discovery design](dev-request-sandz-sli-discovery-and-triggers.md) §7). So the **customer core** is built in S3: customers (stage 2, without notes), duplicate detection for customers (part of stage 4), rankings, the technology profile and group relationships. Contacts, merge, restricted customers, the Zoho import and Ember tools stay in S4.
 
+**Customer core built early (9 November 2026), as part of Discovery S3:** companies with group links, dated assignments (account rep, ISR owner, account owner), rankings, the technology profile, and duplicate checks on create (`supabase/migrations/20261109100001_sli_customers_and_candidates.sql`, `/sli/customers`). Two simplifications until S4: industry, region and status are free text rather than reference lists, and "similar name" compares normalised names (equal, or one containing the other) instead of `pg_trgm` similarity, which the in-memory test database lacks. Contacts, tags, notes, merge, restricted-customer grants and the Zoho import remain S4.
+
 ## 1. Problem
 
 Sandz keeps customer information in Zoho CRM, alongside files, email and team knowledge. The concept paper's first objective is a **shared customer and contact registry** that every department uses, and which later lifecycle stages build on: Marketing campaigns, Sales leads, Presales requirements, Delivery projects and Maintenance assets.

@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/browser'
 const NAV = [
   { href: '/sli', label: 'Home', exact: true },
   { href: '/sli/discovery', label: 'Discovery', exact: false },
+  { href: '/sli/customers', label: 'Customers', exact: false },
 ]
 
 export function SliHeader({

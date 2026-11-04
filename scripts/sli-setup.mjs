@@ -1,7 +1,8 @@
 // Sets up an Ember SLI organisation (ADR-0005) on an instance, idempotently:
 // the organisation, its SLI settings, departments and Trigger types, and the
 // owner's membership (Discovery team lead, sponsor). With --synthetic it also
-// adds a few fictional Triggers, only if the organisation has none yet.
+// adds a few fictional Triggers and fictional companies (with technology
+// profiles, for trying Targeting), each only if the organisation has none.
 //
 //   node --env-file=.env.local scripts/sli-setup.mjs --owner you@example.com [--synthetic]
 //
@@ -34,13 +35,13 @@ const org = {
 }
 
 const DEPARTMENTS = [
-  { code: 'discovery', name: 'Discovery team', is_discovery_team: true, accepts_handoffs: false },
-  { code: 'marketing', name: 'Marketing', is_discovery_team: false, accepts_handoffs: true },
-  { code: 'sales', name: 'Sales', is_discovery_team: false, accepts_handoffs: true },
-  { code: 'presales', name: 'Presales', is_discovery_team: false, accepts_handoffs: true },
-  { code: 'engineering', name: 'Engineering', is_discovery_team: false, accepts_handoffs: true },
-  { code: 'delivery', name: 'Project Delivery', is_discovery_team: false, accepts_handoffs: true },
-  { code: 'support', name: 'Maintenance & Support', is_discovery_team: false, accepts_handoffs: false },
+  { code: 'discovery', name: 'Discovery team', is_discovery_team: true, accepts_handoffs: false, requires_candidates: false },
+  { code: 'marketing', name: 'Marketing', is_discovery_team: false, accepts_handoffs: true, requires_candidates: true },
+  { code: 'sales', name: 'Sales', is_discovery_team: false, accepts_handoffs: true, requires_candidates: false },
+  { code: 'presales', name: 'Presales', is_discovery_team: false, accepts_handoffs: true, requires_candidates: false },
+  { code: 'engineering', name: 'Engineering', is_discovery_team: false, accepts_handoffs: true, requires_candidates: false },
+  { code: 'delivery', name: 'Project Delivery', is_discovery_team: false, accepts_handoffs: true, requires_candidates: false },
+  { code: 'support', name: 'Maintenance & Support', is_discovery_team: false, accepts_handoffs: false, requires_candidates: false },
 ]
 
 const TRIGGER_TYPES = [
@@ -191,5 +192,43 @@ if (flag('synthetic')) {
     }
     must(await db.from('sli_settings').update({ next_trigger_number: SAMPLES.length + 1 }).eq('organization_id', orgId), 'Counter')
     console.log(`Added ${SAMPLES.length} synthetic Triggers (TRG-001 to TRG-${String(SAMPLES.length).padStart(3, '0')}).`)
+  }
+}
+
+if (flag('synthetic')) {
+  const existingCustomers = must(await db.from('sli_customers').select('id').eq('organization_id', orgId).limit(1), 'Existing companies')
+  if (existingCustomers.length > 0) {
+    console.log('Synthetic companies skipped: the organisation already has companies.')
+  } else {
+    // Fictional companies only. example.ph domains are reserved-looking
+    // placeholders, not real businesses.
+    const insertCompany = async (row) =>
+      must(
+        await db.from('sli_customers').insert({ organization_id: orgId, created_by: owner.id, updated_by: owner.id, source: 'manual', ...row }).select('id').single(),
+        `Company ${row.name}`
+      ).id
+    const group = await insertCompany({ name: 'Bayanihan Holdings (fictional)', website: 'bayanihan-holdings.example.ph', industry: 'Conglomerate' })
+    const companies = [
+      { name: 'Luzon Freight Lines (fictional)', website: 'luzon-freight.example.ph', industry: 'Logistics', parent_customer_id: group,
+        tech: [['virtualisation', 'VMware', 'vSphere', '60 VMs', '2027-03-31', false], ['storage', 'Zadara', 'VPSA', '200 TB', null, true]] },
+      { name: 'Bayanihan Cold Storage (fictional)', website: 'bayanihan-cold.example.ph', industry: 'Logistics', parent_customer_id: group,
+        tech: [['virtualisation', 'VMware', 'vSphere', '25 VMs', '2027-06-30', false]] },
+      { name: 'Visayas Fresh Foods (fictional)', website: 'visayas-fresh.example.ph', industry: 'Manufacturing',
+        tech: [['virtualisation', 'VMware', 'vSphere', '40 VMs', '2026-12-31', false], ['storage', 'Zadara', 'VPSA', '80 TB', null, true]] },
+      { name: 'Pacific Harbor Bank (fictional)', website: 'pacific-harbor-bank.example.ph', industry: 'Banking',
+        tech: [['virtualisation', 'Nutanix', 'AHV', '120 VMs', null, false]] },
+    ]
+    for (const c of companies) {
+      const { tech, ...row } = c
+      const id = await insertCompany(row)
+      for (const [category, vendor, product, scale, renewal_date, supplied] of tech) {
+        must(
+          await db.from('sli_customer_technologies').insert({ organization_id: orgId, customer_id: id, category, vendor, product, scale,
+            renewal_date, supplied_by_sandz: supplied, recorded_by: owner.id }),
+          `Technology for ${row.name}`
+        )
+      }
+    }
+    console.log(`Added ${companies.length + 1} fictional companies with technology profiles.`)
   }
 }
