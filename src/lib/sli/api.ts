@@ -1,7 +1,7 @@
 import 'server-only'
 import type { createClient } from '@/lib/supabase/server'
 import { sliErrorMessage } from './errors'
-import type { DecisionSettings, SliContext, TriggerContributor, TriggerDetail, TriggerSummary, TriggerType } from './types'
+import type { DecisionSettings, HandoffInbox, SliContext, TriggerContributor, TriggerDetail, TriggerSummary, TriggerType } from './types'
 
 // Reads for SLI pages, as the signed-in person. The SLI functions aren't in
 // the generated Database type, so they are called through an untyped rpc.
@@ -80,4 +80,20 @@ export async function listResearchStages(supabase: Client, projectId: string): P
 // Null for anyone outside the Discovery team.
 export async function getDecisionSettings(supabase: Client): Promise<DecisionSettings | null> {
   return sliRpc<DecisionSettings | null>(supabase, 'sli_decision_settings')
+}
+
+export async function getHandoffInbox(supabase: Client): Promise<HandoffInbox | null> {
+  return sliRpc<HandoffInbox | null>(supabase, 'sli_handoff_inbox')
+}
+
+// The copied package in a receiving department's Workstream, read as the
+// caller (a member of that department's workspace).
+export async function listWorkstreamFindings(supabase: Client, workstreamId: string): Promise<ResearchFinding[]> {
+  const { data, error } = await supabase
+    .from('workstream_artifacts')
+    .select('id, artifact_type, title, content, created_at')
+    .eq('workstream_id', workstreamId)
+    .order('created_at')
+  if (error) return []
+  return (data ?? []).map((a) => ({ id: a.id, type: a.artifact_type, title: a.title, content: a.content, createdAt: a.created_at }))
 }

@@ -13,6 +13,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261103100001_sli_research_fit_check_prompt.sql',
   'supabase/migrations/20261105100001_sli_concept_and_feasibility_methods.sql',
   'supabase/migrations/20261107100001_sli_recommendations_and_decisions.sql',
+  'supabase/migrations/20261108100001_sli_handoffs.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 // Sandz: md and cto are Discovery sponsors, analyst is on the Discovery
@@ -77,7 +78,8 @@ beforeAll(async () => {
       name text not null, slug text not null, status text not null default 'draft', goal text, created_by uuid,
       guardrail text, deliverables jsonb not null default '[]', derived_from_method_id uuid, unique (project_id, slug));
     create table workstream_artifacts(id uuid primary key default gen_random_uuid(), workstream_id uuid not null references project_workstreams(id) on delete cascade,
-      artifact_type text not null default 'findings', title text not null, content text, created_at timestamptz not null default now());
+      artifact_type text not null default 'findings', title text not null, content text, external_url text, notes text, created_by uuid,
+      created_at timestamptz not null default now());
     create table methods(id uuid primary key default gen_random_uuid(), name text not null, slug text not null unique, description text,
       requirements text, evidence text, deliverables text, guardrails text, review_points text, status text not null default 'draft',
       published_at timestamptz);
@@ -117,7 +119,8 @@ beforeEach(async () => {
   await db.exec(`
     reset role;
     alter table sli_trigger_stage_history disable trigger sli_trigger_stage_history_append_only;
-    truncate sli_decision_evidence, sli_decisions, sli_recommendations, sli_decision_authorities, workstream_artifacts,
+    update sli_departments set workspace_project_id = null;
+    truncate sli_handoff_package_items, sli_handoffs, sli_decision_evidence, sli_decisions, sli_recommendations, sli_decision_authorities, workstream_artifacts,
       sli_project_reservations, sli_trigger_contributors, project_members, project_workstreams, projects,
       sli_admin_access_log, sli_trigger_stage_history, sli_triggers, sli_trigger_types, sli_department_members,
       sli_departments, sli_settings, organization_members, organizations, profiles cascade;
@@ -770,5 +773,179 @@ describe('recommendations and decisions', () => {
     await db.exec(`reset role; update sli_triggers set raised_by = '${analyst}' where id = '${other.id}'; set role authenticated;`)
     await decide(md, other.id, 'reject', { rationale: 'Confidential reasoning' })
     expect(await info(isr, other.code)).toEqual({})
+  })
+})
+
+describe('handoffs', () => {
+  // isr leads Marketing here; md decides; cto sponsors.
+  async function approved() {
+    await db.exec(`reset role;
+      update sli_departments set accepts_handoffs = true where id = '${marketing}';
+      update sli_department_members set role = 'lead' where department_id = '${marketing}' and user_id = '${isr}';
+      insert into sli_decision_authorities(organization_id, user_id, kind) values ('${sandz}', '${md}', 'decider') on conflict do nothing;
+      set role authenticated;`)
+    const t = await raise(analyst, 'VMware exit offer')
+    for (const stage of ['researching', 'concept', 'feasibility', 'under_review']) await move(cto, t.id, stage)
+    await as(cto)
+    const { projectId } = await call('sli_get_trigger', t.code)
+    await db.exec('reset role')
+    const ws = await db.query<{ id: string }>("select id from project_workstreams where project_id = $1 and slug = 'concept'", [projectId])
+    const art = await db.query<{ id: string }>(
+      "insert into workstream_artifacts (workstream_id, title, content) values ($1, 'Concept paper', 'Exit VMware to Zadara') returning id",
+      [ws.rows[0].id]
+    )
+    const secret = await db.query<{ id: string }>(
+      "insert into workstream_artifacts (workstream_id, title, content) values ($1, 'Pricing notes', 'Confidential margins') returning id",
+      [ws.rows[0].id]
+    )
+    await db.exec('set role authenticated')
+    await as(md)
+    await call('sli_record_decision', t.id, 'approve', 'Strong fit', marketing, null, 'Start with existing customers', [], false)
+    return { ...t, projectId, artifact: art.rows[0].id, secret: secret.rows[0].id }
+  }
+  async function propose(t: { id: string; artifact: string }, user = cto) {
+    await as(user)
+    return call('sli_propose_handoff', t.id, 'Campaign to Tier 1 first', [t.artifact], 'Banking, logistics', 'Assessment is free')
+  }
+  async function handoffs(user: string, code: string) {
+    await as(user)
+    return (await call('sli_get_trigger', code)).handoffInfo
+  }
+
+  it('lets only the sponsor propose the approved handoff, with only this Trigger’s research', async () => {
+    const t = await approved()
+    await as(analyst)
+    expect((await errorOf(call('sli_propose_handoff', t.id, null, [], null, null))).code).toBe('42501')
+    await as(cto)
+    expect((await errorOf(call('sli_propose_handoff', t.id, null, [id(999)], null, null))).message).toMatch(/saved research/)
+    await propose(t)
+    expect((await errorOf(propose(t))).message).toMatch(/already waiting/)
+    const info = await handoffs(cto, t.code)
+    expect(info.handoffs[0]).toMatchObject({
+      kind: 'promote', status: 'proposed', destination: 'Marketing', conditions: 'Start with existing customers',
+      targetIndustries: 'Banking, logistics', approvedClaims: 'Assessment is free', items: [{ title: 'Concept paper', copiedArtifactId: null }],
+    })
+    expect(info.canPropose).toBe(false)
+  })
+
+  it('shows the receiving department the package, not the research or deliberations', async () => {
+    const t = await approved()
+    await propose(t)
+    await as(isr)
+    const seen = await call('sli_get_trigger', t.code)
+    expect(seen).toMatchObject({ access: 'destination', summary: expect.any(String), history: [], decisionInfo: {} })
+    expect(seen).not.toHaveProperty('projectId')
+    expect(seen.handoffInfo.handoffs[0]).toMatchObject({ canDecide: true, canWithdraw: false })
+  })
+
+  it('accepts: copies the package into the department workspace and promotes the Trigger', async () => {
+    const t = await approved()
+    await propose(t)
+    await as(analyst)
+    const notLead = await errorOf(call('sli_decide_handoff', (await handoffs(cto, t.code)).handoffs[0].id, true, null))
+    expect(notLead.code).toBe('42501')
+    const handoffId = (await handoffs(cto, t.code)).handoffs[0].id
+    await as(isr)
+    const result = await call('sli_decide_handoff', handoffId, true, null)
+    expect(result).toMatchObject({ status: 'accepted', workstreamId: expect.any(String) })
+    await db.exec('reset role')
+    const ws = await db.query<Json>(
+      `select w.name, w.project_id, p.name as project, p.approval_status, p.owner_id from project_workstreams w join projects p on p.id = w.project_id where w.id = $1`,
+      [result.workstreamId]
+    )
+    const copies = await db.query<Json>('select title, content, notes from workstream_artifacts where workstream_id = $1', [result.workstreamId])
+    const members = await db.query<Json>('select user_id, role, status from project_members where project_id = $1', [ws.rows[0].project_id])
+    const ref = await db.query<Json>('select workspace_project_id from sli_departments where id = $1', [marketing])
+    await db.exec('set role authenticated')
+    expect(ws.rows[0]).toMatchObject({ name: 'TRG-001 · VMware exit offer', project: 'Sandz · Marketing workspace', approval_status: 'approved', owner_id: isr })
+    expect(ref.rows[0].workspace_project_id).toBe(ws.rows[0].project_id)
+    // Only the package: the concept paper, not the pricing notes.
+    expect(copies.rows).toEqual([{ title: 'Concept paper', content: 'Exit VMware to Zadara', notes: 'Copied from TRG-001 (Discovery) when the handoff was accepted.' }])
+    expect(members.rows.map((m: Json) => [m.user_id, m.role, m.status])).toEqual([[isr, 'owner', 'active']])
+    await as(cto)
+    const after = await call('sli_get_trigger', t.code)
+    expect(after.stage).toBe('promoted')
+    expect(after.handoffInfo.handoffs[0]).toMatchObject({ status: 'accepted', decidedBy: 'Ivy Rep', destinationWorkstreamId: result.workstreamId })
+  })
+
+  it('returns with a reason, keeps the Trigger approved, and links the next proposal', async () => {
+    const t = await approved()
+    await propose(t)
+    const first = (await handoffs(cto, t.code)).handoffs[0].id
+    await as(isr)
+    expect((await errorOf(call('sli_decide_handoff', first, false, null))).message).toMatch(/why you are returning/)
+    await call('sli_decide_handoff', first, false, 'Value proposition too vague')
+    await as(cto)
+    const t2 = await call('sli_get_trigger', t.code)
+    expect(t2.stage).toBe('approved')
+    expect(t2.history.at(-1)).toMatchObject({ event: 'handoff_returned', reason: 'Marketing: Value proposition too vague' })
+    expect(t2.handoffInfo.canPropose).toBe(true)
+    await propose(t)
+    await db.exec('reset role')
+    const { rows } = await db.query<{ previous_handoff_id: string }>("select previous_handoff_id from sli_handoffs where status = 'proposed'")
+    await db.exec('set role authenticated')
+    expect(rows[0].previous_handoff_id).toBe(first)
+  })
+
+  it('lets the sponsor withdraw an open proposal', async () => {
+    const t = await approved()
+    await propose(t)
+    const h = (await handoffs(cto, t.code)).handoffs[0].id
+    await as(isr)
+    expect((await errorOf(call('sli_withdraw_handoff', h, null))).code).toBe('42501')
+    await as(cto)
+    await call('sli_withdraw_handoff', h, 'Package needs the feasibility assessment')
+    expect((await handoffs(cto, t.code)).handoffs[0].status).toBe('withdrawn')
+  })
+
+  it('sends back: the department asks, the sponsor accepts, the Trigger reopens and the approval is superseded', async () => {
+    const t = await approved()
+    await propose(t)
+    const promoteId = (await handoffs(cto, t.code)).handoffs[0].id
+    await as(isr)
+    const { workstreamId } = await call('sli_decide_handoff', promoteId, true, null)
+    await as(cto)
+    expect((await errorOf(call('sli_raise_send_back', t.id, 'feasibility', 'customer_feedback', 'Prospects want DR too', 'pause'))).code).toBe('42501')
+    await as(isr)
+    expect((await errorOf(call('sli_raise_send_back', t.id, 'feasibility', 'whim', 'x x x', 'pause'))).message).toMatch(/why it is being sent back/)
+    await call('sli_raise_send_back', t.id, 'feasibility', 'solution_inadequate', 'Prospects need features Zadara lacks', 'close')
+    const sendBack = (await handoffs(cto, t.code)).handoffs.find((h: Json) => h.kind === 'send_back')
+    expect(sendBack).toMatchObject({ status: 'proposed', canDecide: true, toStage: 'feasibility', downstreamAction: 'close' })
+    await as(isr)
+    expect((await errorOf(call('sli_decide_send_back', sendBack.id, true, null))).code).toBe('42501')
+    await as(cto)
+    expect(await call('sli_decide_send_back', sendBack.id, true, null)).toMatchObject({ stage: 'feasibility' })
+    const after = await call('sli_get_trigger', t.code)
+    expect(after.decisionInfo.decisions[0]).toMatchObject({ superseded: true, supersededReason: 'Sent back: Prospects need features Zadara lacks' })
+    await db.exec('reset role')
+    const ws = await db.query<{ status: string }>('select status from project_workstreams where id = $1', [workstreamId])
+    await db.exec('set role authenticated')
+    expect(ws.rows[0].status).toBe('archived')
+    // A new decision is needed again.
+    await move(cto, t.id, 'under_review')
+    await as(md)
+    await call('sli_record_decision', t.id, 'approve', 'Revised: add DR', marketing, null, null, [], false)
+    await as(cto)
+    const decisions = (await call('sli_get_trigger', t.code)).decisionInfo.decisions
+    expect(decisions.map((d: Json) => d.superseded)).toEqual([true, false])
+  })
+
+  it('declines a send-back with a reason, and lists what waits for whom', async () => {
+    const t = await approved()
+    await propose(t)
+    await as(isr)
+    expect((await call('sli_handoff_inbox')).toAnswer).toEqual([{ code: 'TRG-001', title: 'VMware exit offer', kind: 'promote', department: 'Marketing' }])
+    const promoteId = (await handoffs(cto, t.code)).handoffs[0].id
+    await as(isr)
+    await call('sli_decide_handoff', promoteId, true, null)
+    expect((await call('sli_handoff_inbox')).received).toEqual([expect.objectContaining({ code: 'TRG-001', department: 'Marketing', stage: 'promoted' })])
+    await call('sli_raise_send_back', t.id, 'concept', 'market_changed', 'A competitor cut prices', 'pause')
+    await as(md)
+    expect((await call('sli_handoff_inbox')).toAnswer).toEqual([expect.objectContaining({ kind: 'send_back' })])
+    const sendBack = (await handoffs(md, t.code)).handoffs.find((h: Json) => h.kind === 'send_back')
+    expect((await errorOf(call('sli_decide_send_back', sendBack.id, false, null))).message).toMatch(/why you are declining/)
+    await call('sli_decide_send_back', sendBack.id, false, 'Our pricing still wins on total cost')
+    await as(cto)
+    expect((await call('sli_get_trigger', t.code)).stage).toBe('promoted')
   })
 })

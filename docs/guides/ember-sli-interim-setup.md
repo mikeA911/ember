@@ -21,6 +21,7 @@ node --env-file=.env.local scripts/run-migrations.mjs 20261104100001_anthropic_p
 node --env-file=.env.local scripts/run-migrations.mjs 20261105100001_sli_concept_and_feasibility_methods.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261106100001_speech_to_text_models.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261107100001_sli_recommendations_and_decisions.sql
+node --env-file=.env.local scripts/run-migrations.mjs 20261108100001_sli_handoffs.sql
 ```
 
 This one also gives Triggers already in research their research space.
