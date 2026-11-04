@@ -20,6 +20,7 @@
     "methods:export": "node --env-file=.env.local scripts/export-approved-wikis.mjs --methods-only"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.4.0",
     "@google/genai": "^1.30.0",
     "@langchain/langgraph": "^1.4.9",
     "@modelcontextprotocol/sdk": "^1.30.0",

@@ -17,6 +17,7 @@ Later migrations, in order:
 ```sh
 node --env-file=.env.local scripts/run-migrations.mjs 20261102100001_sli_trigger_research_projects.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261103100001_sli_research_fit_check_prompt.sql
+node --env-file=.env.local scripts/run-migrations.mjs 20261104100001_anthropic_provider.sql
 ```
 
 This one also gives Triggers already in research their research space.
@@ -64,3 +65,12 @@ Supabase's built-in email can't reach staff addresses, so people get a temporary
 To give everyone the same temporary password instead, add `--shared-password`: the script asks you for it (typed hidden, never printed). It is easier to hand out, but until each person changes it, anyone who knows it can sign in as them, so ask everyone to sign in the same day.
 
 Re-running is safe: existing accounts keep their password and role, and their memberships are updated. `--reset-passwords` issues new temporary passwords to everyone in the list (for someone who lost theirs, use a list with just that person).
+
+## 6. Claude as a model
+
+Claude is available as a provider (switched off until it has a key):
+
+1. Create an API key at [platform.claude.com](https://platform.claude.com) and add it to the Vercel project as `ANTHROPIC_API_KEY` (Sensitive), then redeploy.
+2. In Ember, go to **Admin → AI providers → Claude (Anthropic)** and turn it on.
+3. Set its **maximum sensitivity** to *Confidential*: Trigger research is confidential, and Ember only sends confidential material to providers approved for it.
+4. Under **Model assignments**, make Claude Opus 5.5 the default generation model if you want Ember to use it everywhere. Keep the embedding default on OpenAI or Gemini: Claude has no embedding models.

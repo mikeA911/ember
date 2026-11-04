@@ -5,6 +5,7 @@ import { env } from '@/lib/env'
 import type { AIProvider } from './provider'
 import { OpenAIProvider } from './openai-provider'
 import { GeminiProvider } from './gemini-provider'
+import { AnthropicProvider } from './anthropic-provider'
 import { OpenAICompatibleProvider } from './openai-compatible-provider'
 import { withLogging, type LogContext } from './logging'
 
@@ -185,7 +186,7 @@ function resolveApiKey(provider: AIProviderRow): string | undefined {
 // only two DB-backed callers (buildProviderClient below) resolve the row and
 // its env-var-referenced key first, then delegate here.
 export function instantiateProvider(
-  providerType: 'openai' | 'gemini' | 'groq' | 'openai_compatible',
+  providerType: 'openai' | 'gemini' | 'groq' | 'openai_compatible' | 'anthropic',
   name: string,
   apiKey: string,
   baseUrl: string | null,
@@ -203,6 +204,10 @@ export function instantiateProvider(
       return defaultTextModel || defaultEmbedModel
         ? new GeminiProvider(apiKey, defaultTextModel, defaultEmbedModel)
         : new GeminiProvider(apiKey)
+    // Claude: generation only; embedding stays with another provider's
+    // embedding default (AnthropicProvider.embed explains why it refuses).
+    case 'anthropic':
+      return defaultTextModel ? new AnthropicProvider(apiKey, defaultTextModel, name) : new AnthropicProvider(apiKey, undefined, name)
     case 'groq':
     case 'openai_compatible': {
       if (!baseUrl) throw new AIConfigError(`Provider "${name}" has no base_url configured`)

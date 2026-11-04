@@ -2227,7 +2227,7 @@ export type FailureClassification =
 // AI provider/model registry
 // ============================================
 
-export type AIProviderType = 'openai' | 'gemini' | 'groq' | 'openai_compatible'
+export type AIProviderType = 'openai' | 'gemini' | 'groq' | 'openai_compatible' | 'anthropic'
 export type AIModelType = 'generation' | 'embedding' | 'speech' | 'multimodal'
 export type AIModelStatus = 'active' | 'deprecated' | 'disabled' | 'unavailable'
 
