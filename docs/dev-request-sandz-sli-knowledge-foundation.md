@@ -184,8 +184,21 @@ Marketing returned the inventory with six documents and answered all five questi
 | Lead endorsement form (with BANT questions) | `KB-MKT-OPS` | Confidential, personal data | Upload the **blank template** only; filled-in forms are lead records, not knowledge |
 | Campaign post-mortem | `KB-MKT-OPS` | Confidential, personal data | Spread across Zoho, spreadsheets and presentations. Upload a template and a summary with contact details removed |
 
+**Received: the Marketing End-to-End Process (priority 1), 4 November 2026.** A nine-slide PDF marked *Sandz PH Confidential* (`KB-MKT-OPS`, Confidential). It covers:
+- the five stages, each with its steps, outputs and tools;
+- the telemarketing call flow for campaign follow-up;
+- government bidding (direct bid);
+- accreditation (renewal, new, and through a third party).
+
+Its text extracts cleanly, but the flowcharts' branches and arrows don't survive text extraction. So besides uploading the PDF, the curator should write approved Wiki articles from it (§4, class B):
+- one per stage;
+- the telemarketing call flow and its outcomes;
+- a government bid document checklist (`KB-CORP`);
+- an accreditation document checklist (`KB-CORP`).
+
+The documents those checklists name (SEC registration, GIS, permits, tax clearance, audited financial statements, bank details) confirm the restricted classification in §13. Like the other files, it stays off the interim instance.
+
 **Still missing from the priority list:**
-- The Marketing End-to-End Process document (priority 1). It exists as an image of the workflow, still to be sent.
 - Sandz's company and solution profiles (priority 2). These are pending from Presales, which owns `KB-ENT-SOL`.
 - Vendor brochures and approved product descriptions (priority 3).
 - Nothing yet for `KB-CORP` (priorities 6–7).

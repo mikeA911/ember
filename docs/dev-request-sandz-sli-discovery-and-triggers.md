@@ -161,6 +161,10 @@ A handoff to Marketing is **the list of candidate customers defined by the Disco
 - **Marketing can push back.** If the list is too thin, poorly targeted or missing contacts, Marketing **returns** the handoff with a reason, and the Discovery team revises the list.
 - **Confidentiality.** Marketing sees the candidates and their fit rationale, but not the Discovery research, financial assumptions or decision deliberations behind them.
 
+**Fit with Marketing's own process (received 4 November 2026).** Marketing's process starts with its own *Discovery & Insight* and *Strategy & Positioning* stages: reviewing past campaigns and the sales pipeline, scanning the market, choosing use cases, target industries and personas, segmenting the database, and defining the value proposition and channels. SLI does not replace them:
+- The Discovery handoff feeds Marketing's *strategic focus* and *messaging* steps. The candidate customers, target industries, approved claims and value proposition arrive as inputs, and Marketing decides the channels and campaign.
+- Findings from Marketing's market scans and campaign post-mortems that suggest a new or changed solution are raised as **Triggers**.
+
 Handoffs to Presales, Sales or Delivery may also carry candidate customers (for example a specific customer for a proof of concept), but for them it is optional.
 
 ### Return (before acceptance)
