@@ -137,6 +137,23 @@ export interface EmbedResult {
   usage: TokenUsage
 }
 
+// Speech to text (dictation). The audio is passed through and never
+// stored; only the returned text is kept by the caller.
+export interface TranscribeInput {
+  audio: Uint8Array
+  fileName: string
+  mimeType: string
+  model?: string
+  // ISO-639-1 hint, e.g. 'en' or 'tl'; omitted to let the model detect it
+  // (mixed English and Filipino is common).
+  language?: string
+}
+
+export interface TranscribeResult {
+  text: string
+  model: string
+}
+
 export type ProviderErrorCode =
   | 'rate_limit'
   | 'quota_exceeded'
@@ -148,7 +165,7 @@ export type ProviderErrorCode =
 export class AIProviderError extends Error {
   constructor(
     public readonly provider: string,
-    public readonly operation: 'generate_text' | 'generate_structured' | 'generate_chat' | 'embed',
+    public readonly operation: 'generate_text' | 'generate_structured' | 'generate_chat' | 'embed' | 'transcribe',
     message: string,
     public readonly cause?: unknown,
     public readonly errorCode: ProviderErrorCode = classifyProviderError(cause)
@@ -207,4 +224,6 @@ export interface AIProvider {
   generateStructured<T>(input: GenerateStructuredInput<T>): Promise<GenerateStructuredResult<T>>
   generateChat(input: GenerateChatInput): Promise<GenerateChatResult>
   embed(input: EmbedInput): Promise<EmbedResult>
+  // Only providers with speech-to-text models implement this.
+  transcribe?(input: TranscribeInput): Promise<TranscribeResult>
 }

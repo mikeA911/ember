@@ -1,5 +1,6 @@
 'use client'
 
+import { DictationButton } from '@/components/chat/DictationButton'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -1598,6 +1599,14 @@ export function ChatSession({
             </button>
           </>
         )}
+        <DictationButton
+          projectId={projectId}
+          disabled={isPending || showFeedbackChooser}
+          onText={(text) => {
+            setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${text}` : text))
+            composerRef.current?.focus()
+          }}
+        />
         <textarea
           ref={composerRef}
           value={input}

@@ -134,7 +134,7 @@ export async function resolveModel(
 // what makes generation and embedding defaults genuinely independent.
 export async function getDefaultModel(
   supabase: SupabaseClient<Database>,
-  modelType: 'generation' | 'embedding'
+  modelType: 'generation' | 'embedding' | 'speech'
 ): Promise<{ provider: AIProviderRow; model: AIModelRow }> {
   const { data: model, error: modelError } = await supabase
     .from('ai_models')
@@ -404,9 +404,19 @@ export async function listChatCapableModels(supabase: SupabaseClient<Database>):
 // offering a supports_embeddings generation model here would silently move
 // the conversational default instead.
 export async function listEmbeddingCapableModels(supabase: SupabaseClient<Database>): Promise<ChatModelOption[]> {
+  return listModelsOfType(supabase, 'embedding')
+}
+
+// The speech-to-text role (dictation): enabled 'speech' models of enabled
+// providers, for the admin "Model assignments" summary.
+export async function listSpeechCapableModels(supabase: SupabaseClient<Database>): Promise<ChatModelOption[]> {
+  return listModelsOfType(supabase, 'speech')
+}
+
+async function listModelsOfType(supabase: SupabaseClient<Database>, modelType: 'embedding' | 'speech'): Promise<ChatModelOption[]> {
   const [providers, models] = await Promise.all([
     listProviders(supabase, { enabledOnly: true }),
-    listModels(supabase, { modelType: 'embedding', enabledOnly: true }),
+    listModels(supabase, { modelType, enabledOnly: true }),
   ])
   const providerById = new Map(providers.map((p) => [p.id, p]))
   const options: ChatModelOption[] = []
@@ -454,4 +464,22 @@ export async function listStructuredOutputCapableModels(supabase: SupabaseClient
     })
   }
   return options
+}
+
+// The speech-to-text default (dictation), ready to call: its provider must
+// be enabled, have its key set and be able to transcribe. Null when any of
+// that is missing, so the microphone simply isn't offered.
+export async function getSpeechProvider(
+  supabase: SupabaseClient<Database>
+): Promise<{ client: AIProvider & Required<Pick<AIProvider, 'transcribe'>>; provider: AIProviderRow; model: AIModelRow } | null> {
+  let resolved: { provider: AIProviderRow; model: AIModelRow }
+  try {
+    resolved = await getDefaultModel(supabase, 'speech')
+  } catch {
+    return null
+  }
+  if (!resolved.provider.enabled || resolved.model.status !== 'active' || !resolved.model.enabled || !resolveApiKey(resolved.provider)) return null
+  const client = buildProviderClient(resolved.provider)
+  if (!client.transcribe) return null
+  return { client: client as AIProvider & Required<Pick<AIProvider, 'transcribe'>>, provider: resolved.provider, model: resolved.model }
 }

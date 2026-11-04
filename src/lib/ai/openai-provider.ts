@@ -12,8 +12,11 @@ import type {
   GenerateTextInput,
   GenerateTextResult,
   ToolCall,
+  TranscribeInput,
+  TranscribeResult,
 } from './provider'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
+import { transcribeWithOpenAI } from './openai-transcribe'
 import { AIProviderError, describeError, openAIUsage } from './provider'
 import { extractJsonObject, parseToolArguments } from './json-extract'
 
@@ -166,5 +169,9 @@ export class OpenAIProvider implements AIProvider {
     } catch (err) {
       throw new AIProviderError('openai', 'embed', `OpenAI embed failed: ${describeError(err)}`, err)
     }
+  }
+
+  async transcribe(input: TranscribeInput): Promise<TranscribeResult> {
+    return transcribeWithOpenAI(this.client, 'openai', 'gpt-4o-transcribe', input)
   }
 }

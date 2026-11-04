@@ -15,14 +15,16 @@ export interface ModelAssignmentsSummaryProps {
   conversational: { current: RoleOption | null; options: RoleOption[] }
   structuredOutput: { current: RoleOption | null; options: RoleOption[] }
   embedding: { current: RoleOption | null; options: RoleOption[] }
+  speech: { current: RoleOption | null; options: RoleOption[] }
 }
 
-type Role = 'conversational' | 'structuredOutput' | 'embedding'
+type Role = 'conversational' | 'structuredOutput' | 'embedding' | 'speech'
 
 const ROLE_LABEL: Record<Role, string> = {
   conversational: 'Conversational AI',
   structuredOutput: 'Structured-output',
   embedding: 'Embedding',
+  speech: 'Speech-to-text',
 }
 
 function optionKey(o: RoleOption): string {
@@ -40,11 +42,11 @@ function optionLabel(o: RoleOption): string {
 // the owning provider's own page.
 // Rendered above AIProvidersList on /admin (AI Config tab) and above
 // ProviderDetail on each provider's own page.
-export function ModelAssignmentsSummary({ conversational, structuredOutput, embedding }: ModelAssignmentsSummaryProps) {
+export function ModelAssignmentsSummary({ conversational, structuredOutput, embedding, speech }: ModelAssignmentsSummaryProps) {
   return (
     <section className="flex flex-col gap-3 rounded border border-zinc-200 bg-white p-4">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Model assignments</h2>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <RoleCard
           role="conversational"
           label="Conversational AI default"
@@ -75,6 +77,17 @@ export function ModelAssignmentsSummary({ conversational, structuredOutput, embe
           whereUsed={[
             'Chunk approval, including auto-approval when a project source submission is approved.',
             'Knowledge search -- the Assistant, project knowledge and evaluations embed each query with this model.',
+          ]}
+        />
+        <RoleCard
+          role="speech"
+          label="Speech-to-text default"
+          description="Turns dictation into text in the message box, for the person to check before sending. No audio is kept."
+          current={speech.current}
+          options={speech.options}
+          whereUsed={[
+            'Dictate button in the Assistant chat, including the research conversation on an Ember SLI Trigger.',
+            'A Project’s sensitivity applies: a confidential Project’s audio goes only to a provider approved for confidential information.',
           ]}
         />
       </div>
@@ -120,7 +133,9 @@ function RoleCard({
         ? 'This changes the application-wide default used by the Workbench Assistant when no per-message model is selected.'
         : role === 'structuredOutput'
           ? `This changes the application-wide default used when a feature requires validated, schema-constrained AI output, and ${optionLabel(selected)} is confirmed to support structured output.`
-          : 'This changes the model that embeds newly approved chunks and every search query. Chunks already approved keep their old vectors, which are not comparable with the new model -- re-approve them (or re-run their embedding) so search keeps finding them.'
+          : role === 'speech'
+            ? 'This changes the model that transcribes dictation everywhere in Ember.'
+            : 'This changes the model that embeds newly approved chunks and every search query. Chunks already approved keep their old vectors, which are not comparable with the new model -- re-approve them (or re-run their embedding) so search keeps finding them.'
     const confirmed = window.confirm(`Change the ${roleLabel} default from ${currentLabel} to ${optionLabel(selected)}? ${scopeExplanation}`)
     if (!confirmed) return
 
@@ -130,6 +145,8 @@ function RoleCard({
           await setDefaultModelAction(selected.modelDbId, selected.providerDbId, 'generation')
         } else if (role === 'embedding') {
           await setDefaultModelAction(selected.modelDbId, selected.providerDbId, 'embedding')
+        } else if (role === 'speech') {
+          await setDefaultModelAction(selected.modelDbId, selected.providerDbId, 'speech')
         } else {
           await setDefaultStructuredOutputModelAction(selected.modelDbId, selected.providerDbId)
         }
