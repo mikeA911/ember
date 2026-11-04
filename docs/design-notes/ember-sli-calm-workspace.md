@@ -33,7 +33,7 @@ The aim is a peaceful experience that makes people more creative instead of stre
 
 ## 4. Speech input
 
-- **Dictation:** tap the microphone, speak, and the words appear in the input box to read and correct. **It never sends on its own**, so a misheard word cannot become a record. Sent messages show "Spoken · edited by you before sending".
+- **Dictation (built 6 November 2026, Ember-wide):** tap the microphone, speak, and the words appear in the input box to read and correct. **It never sends on its own**, so a misheard word cannot become a record. Sent messages show "Spoken · edited by you before sending".
 - **Thinking aloud:** a longer mode with a timer and a **Done** button. The person speaks freely; Ember turns the speech into organised notes in an artifact, not a wall of chat.
 - **Languages:** English, Filipino and Taglish (Cebuano later). Browser speech recognition handles Taglish poorly, so transcription runs **on the server** through Ember's configured AI providers.
 - **Privacy:** audio is treated as confidential. It goes only to providers approved for confidential data (the sensitivity gate), is deleted after transcription, and is never used for training. The transcript is what is kept.

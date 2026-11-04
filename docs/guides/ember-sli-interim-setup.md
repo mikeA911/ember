@@ -19,6 +19,7 @@ node --env-file=.env.local scripts/run-migrations.mjs 20261102100001_sli_trigger
 node --env-file=.env.local scripts/run-migrations.mjs 20261103100001_sli_research_fit_check_prompt.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261104100001_anthropic_provider.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261105100001_sli_concept_and_feasibility_methods.sql
+node --env-file=.env.local scripts/run-migrations.mjs 20261106100001_speech_to_text_models.sql
 ```
 
 This one also gives Triggers already in research their research space.
@@ -75,3 +76,11 @@ Claude is available as a provider (switched off until it has a key):
 2. In Ember, go to **Admin → AI providers → Claude (Anthropic)** and turn it on.
 3. Set its **maximum sensitivity** to *Confidential*: Trigger research is confidential, and Ember only sends confidential material to providers approved for it.
 4. Under **Model assignments**, make Claude Opus 5.5 the default generation model if you want Ember to use it everywhere. Keep the embedding default on OpenAI or Gemini: Claude has no embedding models.
+
+## 7. Dictation
+
+The **Dictate** button in Ember's chat (including a Trigger's research conversation) records speech and puts the words in the message box to check before sending. No audio is kept.
+
+1. It uses the **Speech-to-text default** under Admin → AI Config → Model assignments. The migration makes OpenAI's GPT-4o Transcribe the default, so `OPENAI_API_KEY` must be set and the OpenAI provider enabled.
+2. Set the OpenAI provider's **maximum sensitivity** to *Confidential* so dictation works on Trigger research, which is confidential.
+3. The browser asks for microphone access the first time. Recordings stop at three minutes.

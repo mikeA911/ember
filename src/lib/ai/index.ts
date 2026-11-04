@@ -28,6 +28,8 @@ export {
   listChatCapableModels,
   listStructuredOutputCapableModels,
   listEmbeddingCapableModels,
+  listSpeechCapableModels,
+  getSpeechProvider,
   instantiateProvider,
 } from './registry'
 export type { ChatProviderInfo, ChatModelOption, ProviderResolutionOptions } from './registry'

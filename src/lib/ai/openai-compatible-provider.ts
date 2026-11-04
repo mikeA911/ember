@@ -12,8 +12,11 @@ import type {
   GenerateTextInput,
   GenerateTextResult,
   ToolCall,
+  TranscribeInput,
+  TranscribeResult,
 } from './provider'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
+import { transcribeWithOpenAI } from './openai-transcribe'
 import { AIProviderError, describeError, openAIUsage } from './provider'
 import { extractJsonObject, parseToolArguments } from './json-extract'
 
@@ -226,5 +229,9 @@ export class OpenAICompatibleProvider implements AIProvider {
       throw new AIProviderError(this.name, 'generate_text', `${this.name} call made with no model specified and no default configured`, undefined, 'invalid_request')
     }
     return resolved
+  }
+
+  async transcribe(input: TranscribeInput): Promise<TranscribeResult> {
+    return transcribeWithOpenAI(this.client, this.name, 'gpt-4o-transcribe', input)
   }
 }

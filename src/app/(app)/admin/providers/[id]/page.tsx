@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { listProviders, listModels, listChatCapableModels, listStructuredOutputCapableModels, listEmbeddingCapableModels, toRoleOption } from '@/lib/ai'
+import { listProviders, listModels, listChatCapableModels, listStructuredOutputCapableModels, listEmbeddingCapableModels, listSpeechCapableModels, toRoleOption } from '@/lib/ai'
 import { env } from '@/lib/env'
 import { ProviderDetail } from '@/components/admin/ProviderDetail'
 import { ModelAssignmentsSummary } from '@/components/admin/ModelAssignmentsSummary'
@@ -23,7 +23,7 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
   // §1: "must show assignments across all providers, even when viewing one
   // provider's detail page"), so this fetches everything rather than just
   // this provider's own models.
-  const [models, allProviders, allModels, conversationalOptions, structuredOutputOptions, sensitivityEligibility, embeddingOptions] = await Promise.all([
+  const [models, allProviders, allModels, conversationalOptions, structuredOutputOptions, sensitivityEligibility, embeddingOptions, speechOptions] = await Promise.all([
     listModels(supabase, { providerId: id }),
     listProviders(supabase),
     listModels(supabase),
@@ -31,6 +31,7 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
     listStructuredOutputCapableModels(supabase),
     supabase.from('ai_provider_sensitivity_eligibility').select('max_sensitivity').eq('provider_id', id).maybeSingle(),
     listEmbeddingCapableModels(supabase),
+    listSpeechCapableModels(supabase),
   ])
   const configured = Boolean(env.byName(provider.api_key_env_var))
 
@@ -40,6 +41,8 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
   const currentStructuredOutput = currentStructuredOutputModel ? toRoleOption(currentStructuredOutputModel, allProviders) : null
   const currentEmbeddingModel = allModels.find((m) => m.model_type === 'embedding' && m.is_default)
   const currentEmbedding = currentEmbeddingModel ? toRoleOption(currentEmbeddingModel, allProviders) : null
+  const currentSpeechModel = allModels.find((m) => m.model_type === 'speech' && m.is_default)
+  const currentSpeech = currentSpeechModel ? toRoleOption(currentSpeechModel, allProviders) : null
 
   return (
     <div className="flex flex-col gap-6">
@@ -47,6 +50,7 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
         conversational={{ current: currentConversational, options: conversationalOptions }}
         structuredOutput={{ current: currentStructuredOutput, options: structuredOutputOptions }}
         embedding={{ current: currentEmbedding, options: embeddingOptions }}
+        speech={{ current: currentSpeech, options: speechOptions }}
       />
       <ProviderDetail
         provider={provider}
