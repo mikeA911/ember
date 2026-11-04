@@ -10,6 +10,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261101100001_sli_organizations_and_departments.sql',
   'supabase/migrations/20261101100002_sli_triggers.sql',
   'supabase/migrations/20261102100001_sli_trigger_research_projects.sql',
+  'supabase/migrations/20261103100001_sli_research_fit_check_prompt.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 // Sandz: md and cto are Discovery sponsors, analyst is on the Discovery
@@ -67,7 +68,7 @@ beforeAll(async () => {
       status text not null default 'draft', owner_id uuid references profiles(id), visibility text not null default 'private',
       discoverability text not null default 'members_only', information_sensitivity text, portfolio_category text not null default 'other',
       details jsonb not null default '{}', approval_status text not null default 'approved', approval_decided_by uuid,
-      approval_decided_at timestamptz, approval_decision_reason text, pending_members jsonb not null default '[]');
+      approval_decided_at timestamptz, approval_decision_reason text, pending_members jsonb not null default '[]', starter_prompt text);
     create table project_members(id uuid primary key default gen_random_uuid(), project_id uuid not null references projects(id) on delete cascade,
       user_id uuid not null references profiles(id), role text not null, status text not null default 'active', unique (project_id, user_id));
     create table project_workstreams(id uuid primary key default gen_random_uuid(), project_id uuid not null references projects(id) on delete cascade,
@@ -429,6 +430,9 @@ describe('research spaces', () => {
       approval_status: 'approved', visibility: 'private', information_sensitivity: 'confidential', owner_id: cto, portfolio_category: 'sandz',
     })
     expect(rows[0].name).toBe('TRG-001 · VMware licensing changes')
+    // The research conversation offers the fit check first.
+    expect(rows[0].starter_prompt).toMatch(/^Run a fit check on this Trigger\./)
+    expect(rows[0].starter_prompt).toMatch(/Findings artifact titled "Fit check" in the Research workstream/)
     const ws = await db.query<Json>('select name, slug, status, project_id from project_workstreams where id = $1', [detail.workstreamId])
     expect(ws.rows[0]).toMatchObject({ name: 'Research', slug: 'research', status: 'active', project_id: detail.projectId })
     await db.exec('set role authenticated')

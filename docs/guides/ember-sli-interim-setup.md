@@ -16,6 +16,7 @@ Later migrations, in order:
 
 ```sh
 node --env-file=.env.local scripts/run-migrations.mjs 20261102100001_sli_trigger_research_projects.sql
+node --env-file=.env.local scripts/run-migrations.mjs 20261103100001_sli_research_fit_check_prompt.sql
 ```
 
 This one also gives Triggers already in research their research space.

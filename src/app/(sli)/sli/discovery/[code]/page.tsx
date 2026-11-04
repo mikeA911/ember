@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getSliContext, getTrigger, listContributorCandidates } from '@/lib/sli/api'
+import { getSliContext, getTrigger, listContributorCandidates, listResearchFindings } from '@/lib/sli/api'
 import { StageBadge } from '@/components/sli/StageBadge'
 import { TriggerActions } from '@/components/sli/TriggerActions'
 import { TriggerContributors } from '@/components/sli/TriggerContributors'
+import { TriggerResearchChat } from '@/components/sli/TriggerResearchChat'
 import { STAGE_LABELS, type TriggerHistoryEntry } from '@/lib/sli/types'
 
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }) {
@@ -37,7 +38,11 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
   const supabase = await createClient()
   const [trigger, ctx] = await Promise.all([getTrigger(supabase, code), getSliContext(supabase)])
   if (!trigger) notFound()
-  const candidates = trigger.canManageContributors ? await listContributorCandidates(supabase, trigger.id) : []
+  const hasResearch = (trigger.access === 'full' || trigger.access === 'contributor') && !!trigger.projectId
+  const [candidates, findings] = await Promise.all([
+    trigger.canManageContributors ? listContributorCandidates(supabase, trigger.id) : Promise.resolve([]),
+    hasResearch && trigger.workstreamId ? listResearchFindings(supabase, trigger.workstreamId) : Promise.resolve([]),
+  ])
 
   const limited = trigger.access === 'summary'
 
@@ -84,36 +89,6 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
                 <p className="mt-2 text-sm text-zinc-800">{trigger.archiveReason}</p>
               </div>
             )}
-            <div className="space-y-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Research</h2>
-              {trigger.projectId ? (
-                <>
-                  <p className="text-sm text-zinc-600">
-                    This Trigger has its own private research space, open to the Discovery team and the colleagues invited below. Working with
-                    Ember, sources and the fit check here comes next.
-                    {ctx?.isPlatformAdmin && trigger.workstreamId && (
-                      <>
-                        {' '}
-                        <a href={`/projects/${trigger.projectId}/workstreams/${trigger.workstreamId}`} className="underline">
-                          Open in Ember
-                        </a>
-                      </>
-                    )}
-                  </p>
-                  <h3 className="text-sm font-medium">Invited colleagues</h3>
-                  <TriggerContributors
-                    triggerId={trigger.id}
-                    contributors={trigger.contributors ?? []}
-                    candidates={candidates}
-                    canManage={!!trigger.canManageContributors}
-                  />
-                </>
-              ) : (
-                <p className="rounded border border-dashed border-zinc-300 p-4 text-sm text-zinc-500">
-                  The research space opens when a Discovery sponsor accepts this Trigger.
-                </p>
-              )}
-            </div>
           </section>
           <aside className="space-y-3 text-sm">
             {trigger.eventDate && (
@@ -138,6 +113,68 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
             </p>
           </aside>
         </div>
+      )}
+
+      {!limited && (
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Research</h2>
+            {ctx?.isPlatformAdmin && trigger.projectId && trigger.workstreamId && (
+              <a href={`/projects/${trigger.projectId}/workstreams/${trigger.workstreamId}`} className="text-sm text-zinc-600 underline">
+                Open in Ember
+              </a>
+            )}
+          </div>
+          {hasResearch && trigger.projectId ? (
+            <>
+              <p className="max-w-3xl text-sm text-zinc-600">
+                Talk the idea through with Ember. Start with the fit check: Ember answers from Sandz&rsquo;s knowledge and the web, cites its
+                sources and lists what it couldn&rsquo;t find. Attach files to bring in your own material. Only the Discovery team and the
+                colleagues invited below can see this.
+              </p>
+              {trigger.archived ? (
+                <p className="text-sm text-zinc-500">This Trigger is archived. Unarchive it to continue the research.</p>
+              ) : (
+                <TriggerResearchChat projectId={trigger.projectId} projectName={`${trigger.code} · ${trigger.title}`} />
+              )}
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">Saved to the research</h3>
+                {findings.length === 0 ? (
+                  <p className="text-sm text-zinc-500">Nothing saved yet. Ask Ember to save the fit check, or save attached files when you send them.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {findings.map((f) => (
+                      <li key={f.id} className="rounded border border-zinc-200 bg-white text-sm">
+                        <details>
+                          <summary className="flex cursor-pointer flex-wrap justify-between gap-2 px-3 py-2">
+                            <span className="font-medium">{f.title}</span>
+                            <span className="text-xs text-zinc-500">{when(f.createdAt)}</span>
+                          </summary>
+                          {f.content && <div className="whitespace-pre-wrap border-t border-zinc-100 px-3 py-2 text-zinc-800">{f.content}</div>}
+                        </details>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">Invited colleagues</h3>
+                <TriggerContributors
+                  triggerId={trigger.id}
+                  contributors={trigger.contributors ?? []}
+                  candidates={candidates}
+                  canManage={!!trigger.canManageContributors}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="rounded border border-dashed border-zinc-300 p-4 text-sm text-zinc-500">
+              {trigger.access === 'raiser'
+                ? 'The Discovery team researches this Trigger in a private space. You’ll see its stage and the outcome here.'
+                : 'The research space opens when a Discovery sponsor accepts this Trigger.'}
+            </p>
+          )}
+        </section>
       )}
 
       {trigger.history.length > 0 && (
