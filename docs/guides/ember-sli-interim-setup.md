@@ -12,6 +12,14 @@ node --env-file=.env.local scripts/run-migrations.mjs 20261101100001_sli_organiz
 
 Then paste `supabase/migration_status_check_recent.sql` into the Supabase SQL Editor: every row should read `applied`.
 
+Later migrations, in order:
+
+```sh
+node --env-file=.env.local scripts/run-migrations.mjs 20261102100001_sli_trigger_research_projects.sql
+```
+
+This one also gives Triggers already in research their research space.
+
 ## 2. Your account
 
 ```sh

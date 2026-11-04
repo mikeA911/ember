@@ -59,7 +59,8 @@ export const STAGE_LABELS: Record<TriggerStage, string> = {
 export const BOARD_STAGES: TriggerStage[] = ['new', 'researching', 'concept', 'feasibility', 'under_review', 'approved', 'targeting', 'promoted']
 export const SHELF_STAGES: TriggerStage[] = ['deferred', 'declined', 'rejected']
 
-export type TriggerAccess = 'full' | 'raiser' | 'summary'
+// contributor: invited to this Trigger's research (sees it, takes no stage actions).
+export type TriggerAccess = 'full' | 'contributor' | 'raiser' | 'summary'
 
 export type TriggerSummary = {
   id: string
@@ -86,7 +87,13 @@ export type TriggerSummary = {
   informationSensitivity?: string
   archivedAt?: string | null
   archiveReason?: string | null
+  // Present for 'full' and 'contributor' access only.
+  projectId?: string | null
+  workstreamId?: string | null
+  contributors?: TriggerContributor[]
 }
+
+export type TriggerContributor = { userId: string; name: string; departments: string; isMe?: boolean }
 
 export type TriggerAction = {
   action: 'accept' | 'decline' | 'advance' | 'submit' | 'step_back' | 'withdraw' | 'revisit' | 'archive' | 'unarchive'
@@ -95,7 +102,7 @@ export type TriggerAction = {
 }
 
 export type TriggerHistoryEntry = {
-  event: 'raised' | 'stage_change' | 'archived' | 'unarchived'
+  event: 'raised' | 'stage_change' | 'archived' | 'unarchived' | 'contributor_added' | 'contributor_removed'
   fromStage: TriggerStage | null
   toStage: TriggerStage
   reason: string | null
@@ -105,6 +112,7 @@ export type TriggerHistoryEntry = {
 
 export type TriggerDetail = TriggerSummary & {
   allowedActions: TriggerAction[]
+  canManageContributors?: boolean
   history: TriggerHistoryEntry[]
 }
 

@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getTrigger } from '@/lib/sli/api'
+import { getSliContext, getTrigger, listContributorCandidates } from '@/lib/sli/api'
 import { StageBadge } from '@/components/sli/StageBadge'
 import { TriggerActions } from '@/components/sli/TriggerActions'
+import { TriggerContributors } from '@/components/sli/TriggerContributors'
 import { STAGE_LABELS, type TriggerHistoryEntry } from '@/lib/sli/types'
 
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }) {
@@ -22,6 +23,10 @@ function describe(h: TriggerHistoryEntry): string {
       return 'Archived'
     case 'unarchived':
       return 'Unarchived'
+    case 'contributor_added':
+      return 'Colleague invited'
+    case 'contributor_removed':
+      return 'Colleague removed'
     default:
       return `${h.fromStage ? STAGE_LABELS[h.fromStage] : ''} → ${STAGE_LABELS[h.toStage]}`
   }
@@ -30,8 +35,9 @@ function describe(h: TriggerHistoryEntry): string {
 export default async function TriggerPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const supabase = await createClient()
-  const trigger = await getTrigger(supabase, code)
+  const [trigger, ctx] = await Promise.all([getTrigger(supabase, code), getSliContext(supabase)])
   if (!trigger) notFound()
+  const candidates = trigger.canManageContributors ? await listContributorCandidates(supabase, trigger.id) : []
 
   const limited = trigger.access === 'summary'
 
@@ -78,8 +84,35 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
                 <p className="mt-2 text-sm text-zinc-800">{trigger.archiveReason}</p>
               </div>
             )}
-            <div className="rounded border border-dashed border-zinc-300 p-4 text-sm text-zinc-500">
-              Research, concept and feasibility work will appear here (the next part of this stage).
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Research</h2>
+              {trigger.projectId ? (
+                <>
+                  <p className="text-sm text-zinc-600">
+                    This Trigger has its own private research space, open to the Discovery team and the colleagues invited below. Working with
+                    Ember, sources and the fit check here comes next.
+                    {ctx?.isPlatformAdmin && trigger.workstreamId && (
+                      <>
+                        {' '}
+                        <a href={`/projects/${trigger.projectId}/workstreams/${trigger.workstreamId}`} className="underline">
+                          Open in Ember
+                        </a>
+                      </>
+                    )}
+                  </p>
+                  <h3 className="text-sm font-medium">Invited colleagues</h3>
+                  <TriggerContributors
+                    triggerId={trigger.id}
+                    contributors={trigger.contributors ?? []}
+                    candidates={candidates}
+                    canManage={!!trigger.canManageContributors}
+                  />
+                </>
+              ) : (
+                <p className="rounded border border-dashed border-zinc-300 p-4 text-sm text-zinc-500">
+                  The research space opens when a Discovery sponsor accepts this Trigger.
+                </p>
+              )}
             </div>
           </section>
           <aside className="space-y-3 text-sm">
