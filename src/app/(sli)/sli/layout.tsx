@@ -1,5 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { FIRST_SIGN_IN_PATH, mustChangePassword } from '@/lib/password-change'
 import { getBrandingUrls } from '@/lib/branding'
 import { SliHeader } from '@/components/sli/SliHeader'
 import { getSliContext } from '@/lib/sli/api'
@@ -19,6 +20,8 @@ export default async function SliLayout({ children }: { children: React.ReactNod
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+  // Temporary password (scripts/sli-add-members.mjs): choose your own first.
+  if (mustChangePassword(user)) redirect(FIRST_SIGN_IN_PATH)
 
   const [{ data: profile }, brandingUrls] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),

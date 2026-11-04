@@ -46,3 +46,5 @@ outputs/
 # internal commercial/business documents, not meant for version control
 /deliverables/
 /docs/commercial/
+# Real people lists for scripts/sli-add-members.mjs
+*.local.json
