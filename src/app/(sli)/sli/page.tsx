@@ -2,12 +2,14 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getSliContext, listTriggers } from '@/lib/sli/api'
 import { TriggerCard } from '@/components/sli/TriggerCard'
-import type { TriggerSummary } from '@/lib/sli/types'
+import type { TriggerStage, TriggerSummary } from '@/lib/sli/types'
 
 export const metadata = { title: 'Home' }
 
-// SLI Home: my work. What waits on me in Discovery, what I sponsor, and
-// the Triggers I raised.
+const IN_PROGRESS: TriggerStage[] = ['researching', 'concept', 'feasibility', 'under_review', 'approved', 'targeting']
+
+// SLI Home: my work. What waits on me in Discovery, what I sponsor, the
+// Discovery team's other work in progress, and the Triggers I raised.
 export default async function SliHomePage() {
   const supabase = await createClient()
   const ctx = await getSliContext(supabase)
@@ -16,6 +18,11 @@ export default async function SliHomePage() {
   const waiting = ctx?.canSponsor ? triggers.filter((t) => t.stage === 'new') : []
   const sponsoring = triggers.filter((t) => t.sponsoredByMe && !['declined', 'rejected', 'promoted'].includes(t.stage))
   const raised = triggers.filter((t) => t.raisedByMe)
+  // The Discovery team's work in progress that isn't already listed above.
+  const listed = new Set([...waiting, ...sponsoring].map((t) => t.id))
+  const inProgress = ctx?.isDiscoveryMember
+    ? triggers.filter((t) => IN_PROGRESS.includes(t.stage) && !listed.has(t.id))
+    : []
 
   return (
     <div className="space-y-8">
@@ -42,6 +49,9 @@ export default async function SliHomePage() {
 
       {ctx?.canSponsor && <Section title="Waiting for a sponsor" empty="No new Triggers waiting." triggers={waiting} />}
       {ctx?.canSponsor && <Section title="You sponsor" empty="You don’t sponsor any open Triggers." triggers={sponsoring} showStage />}
+      {ctx?.isDiscoveryMember && (
+        <Section title="In progress with the Discovery team" empty="No other Triggers are in research or review." triggers={inProgress} showStage />
+      )}
       {ctx?.isDepartmentMember && (
         <Section title="You raised" empty="You haven’t raised any Triggers yet. Anyone in a department can raise one." triggers={raised} showStage />
       )}
