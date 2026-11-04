@@ -25,6 +25,7 @@ export function CalmWorkspace({
   projectId,
   stagePrompt,
   fitCheckPrompt,
+  taskChips = [],
   panels,
 }: {
   code: string
@@ -35,6 +36,9 @@ export function CalmWorkspace({
   // The stage's own task (the research Project's starter prompt).
   stagePrompt: string | null
   fitCheckPrompt: string
+  // What Ember can propose here for the person to confirm (Recommend,
+  // Find candidates), when they may.
+  taskChips?: { label: string; prompt: string; title?: string }[]
   panels: WorkspacePanel[]
 }) {
   const router = useRouter()
@@ -65,6 +69,7 @@ export function CalmWorkspace({
     ...(stagePrompt && stagePrompt !== fitCheckPrompt
       ? [{ label: stagePrompt.startsWith('Draft the feasibility') ? 'Draft the feasibility assessment' : 'Draft the concept paper', prompt: stagePrompt }]
       : []),
+    ...taskChips,
   ]
 
   const glass = 'border border-white/60 bg-white/75 shadow-sm backdrop-blur-xl backdrop-saturate-150'

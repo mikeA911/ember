@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/browser'
 // and curators also get a way back to the full Ember navigation.
 const NAV = [
   { href: '/sli', label: 'Home', exact: true },
+  { href: '/sli/my-work', label: 'My work', exact: false },
   { href: '/sli/discovery', label: 'Discovery', exact: false },
   { href: '/sli/customers', label: 'Customers', exact: false },
 ]

@@ -8,6 +8,8 @@ import { extractCreatedRecordRef, resolveCreatedRecord, type CreatedRecordRef, t
 import { GATEWAY_TOOL_PREFIX } from '@/lib/mcp-gateway/discovery'
 import { SEARCH_WEB_TOOL_NAME } from './web-search-tool'
 import { resolvePendingInvocation, type PendingGatewayInvocation } from '@/lib/mcp-gateway/execute'
+import { getSliProposals, proposalIdFromToolRow } from './sli-tools'
+import type { SliProposal } from '@/lib/sli/types'
 
 // projectId binds this conversation to a project at creation time. Only ever
 // set once -- see the immutability trigger in
@@ -69,6 +71,8 @@ export interface DisplayMessage {
   structured?: VerifiedAssistantEnvelope
   createdRecords?: ResolvedCreatedRecord[]
   pendingGatewayInvocations?: PendingGatewayInvocation[]
+  // Ember SLI proposals made in this reply, as they stand now (src/lib/chat/sli-tools.ts).
+  sliProposals?: SliProposal[]
   // The persisted assistant row -- what "Report a problem with this answer"
   // points at (Ember Readiness, Stage 3).
   messageId?: string
@@ -116,6 +120,13 @@ export async function toDisplayMessages(
   let pendingCreatedRefs: CreatedRecordRef[] = []
   let pendingInvocationIds: string[] = []
   let pendingWebQueries: string[] = []
+  let pendingProposalIds: string[] = []
+
+  // Every SLI proposal in the conversation, read once.
+  const allProposalIds = rows.flatMap((r) => (r.role === 'tool' && r.tool_name && r.content ? [proposalIdFromToolRow(r.tool_name, r.content)] : [])).filter(
+    (x): x is string => x !== null
+  )
+  const proposalsById = new Map((await getSliProposals(ctx.supabase, allProposalIds)).map((p) => [p.id, p]))
 
   for (const row of rows) {
     if (row.role === 'user') {
@@ -126,6 +137,8 @@ export async function toDisplayMessages(
     if (row.role === 'tool') {
       if (row.tool_name && row.content) {
         pendingCreatedRefs.push(...extractCreatedRecordRef(row.tool_name, row.content))
+        const proposalId = proposalIdFromToolRow(row.tool_name, row.content)
+        if (proposalId) pendingProposalIds.push(proposalId)
         if (row.tool_name === SEARCH_WEB_TOOL_NAME) {
           const query = sentWebSearchQuery(row.content)
           if (query) pendingWebQueries.push(query)
@@ -166,6 +179,7 @@ export async function toDisplayMessages(
     const resolvedCreatedRecords = (await Promise.all(pendingCreatedRefs.map((ref) => resolveCreatedRecord(ctx, ref)))).filter(
       (r): r is ResolvedCreatedRecord => r !== null
     )
+    const sliProposals = pendingProposalIds.map((id) => proposalsById.get(id)).filter((p): p is SliProposal => p !== undefined)
     const resolvedPendingInvocations = (await Promise.all(pendingInvocationIds.map((id) => resolvePendingInvocation(ctx, id)))).filter(
       (r): r is PendingGatewayInvocation => r !== null
     )
@@ -182,11 +196,13 @@ export async function toDisplayMessages(
       structured,
       createdRecords: resolvedCreatedRecords.length > 0 ? resolvedCreatedRecords : undefined,
       pendingGatewayInvocations: resolvedPendingInvocations.length > 0 ? resolvedPendingInvocations : undefined,
+      ...(sliProposals.length > 0 ? { sliProposals } : {}),
     })
     pendingTools = new Set()
     pendingCreatedRefs = []
     pendingInvocationIds = []
     pendingWebQueries = []
+    pendingProposalIds = []
   }
 
   return out

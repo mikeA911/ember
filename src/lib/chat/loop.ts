@@ -99,6 +99,8 @@ import {
 import { env } from '@/lib/env'
 import { listAvailableTools, GATEWAY_TOOL_PREFIX } from '@/lib/mcp-gateway/discovery'
 import { runGatewayToolCall, type PendingGatewayInvocation } from '@/lib/mcp-gateway/execute'
+import { buildSliPromptAddendum, isSliToolName, loadSliChatContext, runSliTool, sliToolSpecs } from './sli-tools'
+import type { SliProposal } from '@/lib/sli/types'
 import type { FeedbackType } from '@/types/database'
 
 // Version string stamped onto anything the Assistant creates
@@ -106,7 +108,7 @@ import type { FeedbackType } from '@/types/database'
 // changes meaningfully enough that old provenance is worth distinguishing
 // from new. Not tied to a package/app version; this is specifically about
 // "which assistant behavior produced this row."
-export const ASSISTANT_PROMPT_VERSION = 'm7-v13'
+export const ASSISTANT_PROMPT_VERSION = 'm7-v14'
 
 const SYSTEM_PROMPT = `You are the Ember Workbench Assistant. You help users navigate and operate the platform: search the Wiki, look up project notes, create projects and workstreams, and attach evidence artifacts.
 
@@ -343,6 +345,9 @@ export interface AssistantTurnResult {
   // simple navigational chip, so kept separate from createdRecords. See
   // src/lib/mcp-gateway/execute.ts.
   pendingGatewayInvocations: PendingGatewayInvocation[]
+  // Ember SLI changes proposed this turn, each shown as a confirm/cancel
+  // card (src/lib/chat/sli-tools.ts). Absent when there were none.
+  sliProposals?: SliProposal[]
   // The persisted assistant row this reply was saved as -- lets the UI point
   // a "Report a problem with this answer" at the exact message (Ember
   // Readiness, Stage 3). Absent when nothing was persisted (provider error,
@@ -550,11 +555,16 @@ export async function runAssistantTurn(
   // would just teach the model to hallucinate calling it.
   const webSearchAvailable = Boolean(env.tavilyApiKey())
   const webSearchTools = webSearchAvailable ? [SEARCH_WEB_TOOL] : []
+  // Ember SLI: offered to SLI department members (never in feedback
+  // intake); Trigger tools only in a Trigger's research conversation.
+  const sliChat = feedbackContext ? null : await loadSliChatContext(ctx.supabase, resolvedProjectId)
+  const sliTools = sliChat ? sliToolSpecs(sliChat) : []
+  const sliAddendum = sliChat ? buildSliPromptAddendum(sliChat) : ''
   const systemPrompt = feedbackContext
     ? buildFeedbackSystemPrompt(feedbackContext)
     : projectContext
-      ? SYSTEM_PROMPT + buildProjectPromptAddendum(projectContext, describeProjectKnowledgeScope(projectContext), webSearchAvailable)
-      : SYSTEM_PROMPT
+      ? SYSTEM_PROMPT + buildProjectPromptAddendum(projectContext, describeProjectKnowledgeScope(projectContext), webSearchAvailable) + sliAddendum
+      : SYSTEM_PROMPT + sliAddendum
   const tools = feedbackContext
     ? [PRESENT_RESPONSE_TOOL, SUBMIT_FEEDBACK_REPORT_TOOL]
     : projectContext
@@ -578,9 +588,10 @@ export async function runAssistantTurn(
           SAVE_WORKING_KNOWLEDGE_TOOL,
           ...webSearchTools,
           ...gatewayDiscovery.toolSpecs,
+          ...sliTools,
           PRESENT_RESPONSE_TOOL,
         ]
-      : [...getToolSpecs(), PRESENT_RESPONSE_TOOL]
+      : [...getToolSpecs(), ...sliTools, PRESENT_RESPONSE_TOOL]
   const toolsUsed = new Set<string>()
   const webSearchQueries: string[] = []
   try {
@@ -612,6 +623,7 @@ export async function runAssistantTurn(
   const retrievedWorkingKnowledgeIds = new Map<string, RetrievedWorkingKnowledgeHitInfo>()
   const createdRecordRefs: CreatedRecordRef[] = []
   const pendingGatewayInvocations: PendingGatewayInvocation[] = []
+  const sliProposals: SliProposal[] = []
   // Stage 4 gap detection: whether search_project_knowledge ran this turn
   // and how relevant its best Project-layer hit was.
   let projectSearchRan = false
@@ -667,6 +679,7 @@ export async function runAssistantTurn(
       structured,
       createdRecords: resolvedCreatedRecords,
       pendingGatewayInvocations,
+      ...(sliProposals.length > 0 ? { sliProposals } : {}),
       messageId,
       knowledgeGap,
     }
@@ -1154,6 +1167,22 @@ export async function runAssistantTurn(
             })
             toolResultText = JSON.stringify(outcome.resultForModel)
             if (outcome.pending) pendingGatewayInvocations.push(outcome.pending)
+          } catch (err) {
+            toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
+          }
+        }
+      } else if (isSliToolName(toolCall.name)) {
+        if (!sliChat) {
+          toolResultText = JSON.stringify({ error: 'SLI tools are not available in this conversation.' })
+        } else {
+          try {
+            const outcome = await runSliTool(ctx.supabase, toolCall.name, toolCall.arguments, {
+              conversationId: conversation.id,
+              toolCallId: toolCall.id,
+              context: sliChat,
+            })
+            toolResultText = JSON.stringify(outcome.resultForModel)
+            if (outcome.proposal) sliProposals.push(outcome.proposal)
           } catch (err) {
             toolResultText = JSON.stringify({ error: toolErrorMessage(err) })
           }

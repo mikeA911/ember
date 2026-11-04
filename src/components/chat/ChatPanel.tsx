@@ -41,6 +41,7 @@ import {
 import { defaultNoteTitle } from '@/lib/chat/transcript'
 import { QuickSummary, RequirementsList, NextStepsList, LinksList, DocumentsList, CitationsList, KnowledgeUsedSummary, WebSearchQueries, SuggestedPrompts } from './StructuredResponse'
 import { GatewayInvocationCard } from './GatewayInvocationCard'
+import { SliProposalCard } from './SliProposalCard'
 import { ReportAnswerForm } from './ReportAnswerForm'
 import { KnowledgeGapNotice } from './KnowledgeGapNotice'
 
@@ -520,6 +521,7 @@ export function ChatSession({
           structured: result.structured ?? undefined,
           createdRecords: result.createdRecords.length > 0 ? result.createdRecords : undefined,
           pendingGatewayInvocations: result.pendingGatewayInvocations.length > 0 ? result.pendingGatewayInvocations : undefined,
+          sliProposals: result.sliProposals,
           messageId: result.messageId,
           knowledgeGap: result.knowledgeGap ? { occurrenceId: result.knowledgeGap.occurrenceId, createdAt: new Date().toISOString(), hasDetails: false } : undefined,
         },
@@ -1440,6 +1442,7 @@ export function ChatSession({
                 <SuggestedPrompts prompts={m.structured?.suggestedPrompts} onSelect={setInput} />
               </div>
               {m.pendingGatewayInvocations?.map((inv) => <GatewayInvocationCard key={inv.invocationId} invocation={inv} />)}
+              {m.sliProposals?.map((p) => <SliProposalCard key={p.id} proposal={p} />)}
               {m.knowledgeGap && (
                 <KnowledgeGapNotice
                   key={m.knowledgeGap.occurrenceId}

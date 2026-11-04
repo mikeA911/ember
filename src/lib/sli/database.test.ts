@@ -15,6 +15,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261107100001_sli_recommendations_and_decisions.sql',
   'supabase/migrations/20261108100001_sli_handoffs.sql',
   'supabase/migrations/20261109100001_sli_customers_and_candidates.sql',
+  'supabase/migrations/20261110100001_sli_assistant_proposals.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 // Sandz: md and cto are Discovery sponsors, analyst is on the Discovery
@@ -107,6 +108,9 @@ beforeAll(async () => {
       return new;
     end; $$;
     create trigger projects_create_owner_membership after insert on projects for each row execute function create_owner_membership();
+    create table conversations(id uuid primary key default gen_random_uuid(), user_id uuid not null references profiles(id) on delete cascade);
+    create table chat_messages(id uuid primary key default gen_random_uuid(), conversation_id uuid not null references conversations(id) on delete cascade,
+      user_id uuid not null, role text not null, content text, tool_call_id text, tool_name text);
   `)
   for (const file of MIGRATIONS) {
     const migration = readFileSync(file, 'utf8')
@@ -121,7 +125,7 @@ beforeEach(async () => {
     reset role;
     alter table sli_trigger_stage_history disable trigger sli_trigger_stage_history_append_only;
     update sli_departments set workspace_project_id = null;
-    truncate sli_trigger_candidate_customers, sli_customer_technologies, sli_customer_rankings, sli_customer_assignments, sli_customers,
+    truncate sli_assistant_proposals, chat_messages, conversations, sli_trigger_candidate_customers, sli_customer_technologies, sli_customer_rankings, sli_customer_assignments, sli_customers,
       sli_handoff_package_items, sli_handoffs, sli_decision_evidence, sli_decisions, sli_recommendations, sli_decision_authorities, workstream_artifacts,
       sli_project_reservations, sli_trigger_contributors, project_members, project_workstreams, projects,
       sli_admin_access_log, sli_trigger_stage_history, sli_triggers, sli_trigger_types, sli_department_members,
@@ -1071,5 +1075,106 @@ describe('customers and candidates', () => {
     await move(cto, t.id, 'targeting')
     expect((await errorOf(move(cto, t.id, 'approved'))).message).toMatch(/reason/)
     expect(await move(cto, t.id, 'approved', 'Wait for Marketing’s answers')).toMatchObject({ stage: 'approved' })
+  })
+})
+
+describe('proposals Ember makes and the person confirms', () => {
+  async function conversation(user: string, toolCall: string) {
+    await db.exec('reset role')
+    const { rows } = await db.query<{ id: string }>('insert into conversations(user_id) values ($1) returning id', [user])
+    await db.query("insert into chat_messages(conversation_id, user_id, role, content, tool_call_id, tool_name) values ($1, $2, 'tool', '{}', $3, 'sli_propose_trigger')", [
+      rows[0].id, user, toolCall,
+    ])
+    await db.exec('set role authenticated')
+    return rows[0].id
+  }
+
+  it('raises a Trigger only when the person confirms, and tells the conversation', async () => {
+    const conv = await conversation(analyst, 'call-1')
+    await as(analyst)
+    const p = await call('sli_create_proposal', 'raise_trigger', { title: 'Hyperscaler price rise', triggerType: 'market_event', summary: 'Cloud prices up 12%' }, conv, 'call-1', null)
+    expect(p).toMatchObject({ status: 'proposed', summary: expect.stringMatching(/Raise “Hyperscaler price rise”/) })
+    expect((await call<Json[]>('sli_list_triggers', false, null)).length).toBe(0)
+    expect((await call<Json[]>('sli_list_pending_proposals', null)).map((x) => x.id)).toEqual([p.id])
+
+    await as(md)
+    expect((await errorOf(call('sli_confirm_proposal', p.id))).code).toBe('42501')
+    expect(await call<Json[]>('sli_get_proposals', [p.id])).toEqual([])
+
+    await as(analyst)
+    const done = await call('sli_confirm_proposal', p.id)
+    expect(done).toMatchObject({ status: 'confirmed', result: { code: 'TRG-001' } })
+    expect(await call('sli_confirm_proposal', p.id)).toMatchObject({ status: 'confirmed' })
+    expect((await call<Json[]>('sli_list_triggers', false, null)).map((t) => t.code)).toEqual(['TRG-001'])
+    await db.exec('reset role')
+    const { rows } = await db.query<{ content: string }>("select content from chat_messages where tool_call_id = 'call-1'")
+    expect(JSON.parse(rows[0].content)).toMatchObject({ status: 'confirmed', result: { code: 'TRG-001' } })
+  })
+
+  it('checks what it can up front, and records a refusal at confirmation as failed', async () => {
+    await as(analyst)
+    expect((await errorOf(call('sli_create_proposal', 'raise_trigger', { title: 'X y z', triggerType: 'nope' }, null, null, null))).message).toMatch(/Unknown Trigger type. Use one of: .*market_event/)
+    await as(idle)
+    expect((await errorOf(call('sli_create_proposal', 'raise_trigger', { title: 'Idea', triggerType: 'market_event' }, null, null, null))).message).toMatch(/department/)
+    await as(rival)
+    const conv = await conversation(analyst, 'call-2')
+    await as(rival)
+    expect((await errorOf(call('sli_create_proposal', 'raise_trigger', { title: 'Idea', triggerType: 'market_event' }, conv, null, null))).code).toBe('42501')
+
+    await as(analyst)
+    const p = await call('sli_create_proposal', 'raise_trigger', { title: 'Idea', triggerType: 'market_event' }, null, null, null)
+    await db.exec(`reset role; delete from sli_department_members where user_id = '${analyst}'; set role authenticated;`)
+    await as(analyst)
+    const failed = await call('sli_confirm_proposal', p.id)
+    expect(failed).toMatchObject({ status: 'failed', error: expect.stringMatching(/Only members of an SLI department/) })
+    expect((await errorOf(call('sli_cancel_proposal', id(999)))).code).toBe('42501')
+  })
+
+  it('adds a candidate, a new company and a recommendation on the Trigger in the conversation', async () => {
+    await db.exec(`reset role;
+      update sli_departments set accepts_handoffs = true where id = '${marketing}';
+      set role authenticated;`)
+    const t = await raise(analyst, 'VMware exit offer')
+    await move(cto, t.id, 'researching')
+    await as(isr)
+    const acme = (await call<{ id: string }>('sli_save_customer', null, 'Acme Logistics', 'acme.ph', null, null, null, null, null, null, null, null)).id
+
+    await as(isr)
+    expect((await errorOf(call('sli_create_proposal', 'add_candidate', { customerId: acme, tier: 'existing_customer', fitRationale: 'Runs VMware' }, null, null, t.id))).code).toBe('42501')
+    await as(analyst)
+    expect((await errorOf(call('sli_create_proposal', 'add_candidate', { customerId: 'not-a-uuid', tier: 'existing_customer', fitRationale: 'Runs VMware' }, null, null, t.id))).message).toMatch(/Unknown company/)
+    const c = await call('sli_create_proposal', 'add_candidate', { customerId: acme, tier: 'existing_customer', fitRationale: 'Runs VMware' }, null, null, t.id)
+    expect(c.summary).toBe(`Add Acme Logistics to ${t.code}’s candidate customers (existing customer)`)
+    expect((await call<Json[]>('sli_list_pending_proposals', t.id)).length).toBe(1)
+    await call('sli_confirm_proposal', c.id)
+    expect((await call('sli_list_candidate_customers', t.id)).candidates[0]).toMatchObject({ name: 'Acme Logistics', createdVia: 'assistant' })
+
+    expect((await errorOf(call('sli_create_proposal', 'create_customer', { name: 'ACME Logistics Inc.' }, null, null, t.id))).message).toMatch(/already in the registry/)
+    const n = await call('sli_create_proposal', 'create_customer', { name: 'Beta Foods', website: 'beta.ph', candidate: { tier: 'new_prospect', fitRationale: 'Expanding to Cebu' } }, null, null, t.id)
+    expect(n.summary).toMatch(/registry and to .*candidate customers \(new prospect\)/)
+    expect(await call('sli_confirm_proposal', n.id)).toMatchObject({ status: 'confirmed', result: { customerId: expect.any(String), code: t.code } })
+    expect((await call('sli_list_candidate_customers', t.id)).candidates.map((x: Json) => x.name)).toEqual(['Acme Logistics', 'Beta Foods'])
+
+    expect((await errorOf(call('sli_create_proposal', 'record_recommendation', { recommendation: 'approve' }, null, null, t.id))).message).toMatch(/under review/)
+    for (const stage of ['concept', 'feasibility', 'under_review']) await move(cto, t.id, stage)
+    await as(analyst)
+    expect((await errorOf(call('sli_create_proposal', 'record_recommendation', { recommendation: 'approve', destination: 'Nowhere' }, null, null, t.id))).message).toMatch(/Use one of: Marketing/)
+    const r = await call('sli_create_proposal', 'record_recommendation', { recommendation: 'approve', destination: 'marketing', comments: 'Strong fit' }, null, null, t.id)
+    expect(r.summary).toBe(`Record your recommendation on ${t.code}: approve, hand to Marketing`)
+    const cancelled = await call('sli_cancel_proposal', r.id)
+    expect(cancelled.status).toBe('cancelled')
+    expect((await call('sli_confirm_proposal', r.id)).status).toBe('cancelled')
+  })
+
+  it('finds the Trigger behind a research Project for people with full access', async () => {
+    const t = await raise(analyst, 'VMware exit offer')
+    await move(cto, t.id, 'researching')
+    await db.exec('reset role')
+    const { rows } = await db.query<{ project_id: string }>('select project_id from sli_triggers where id = $1', [t.id])
+    await db.exec('set role authenticated')
+    await as(analyst)
+    expect(await call('sli_trigger_for_project', rows[0].project_id)).toMatchObject({ code: t.code, stage: 'researching' })
+    await as(rival)
+    expect(await call('sli_trigger_for_project', rows[0].project_id)).toBeNull()
   })
 })
