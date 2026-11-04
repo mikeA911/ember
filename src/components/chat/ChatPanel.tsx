@@ -155,6 +155,7 @@ export function ChatSession({
   currentPageProjectId,
   onClose,
   className,
+  promptChips,
 }: {
   projectId?: string
   projects: MemberProjectOption[]
@@ -162,6 +163,10 @@ export function ChatSession({
   currentPageProjectId?: string
   onClose?: () => void
   className?: string
+  // Always-available suggestions above the composer (the calm workspace's
+  // mode chips: Brainstorm, Test it, the stage's task). Clicking one sends
+  // its prompt.
+  promptChips?: { label: string; prompt: string; title?: string }[]
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -1573,9 +1578,25 @@ export function ChatSession({
           )}
         </div>
       )}
+      {promptChips && promptChips.length > 0 && !feedbackCategory && (
+        <div className="flex flex-wrap gap-1.5 border-t border-zinc-200/70 px-2 pt-2">
+          {promptChips.map((chip) => (
+            <button
+              key={chip.label}
+              type="button"
+              onClick={() => send(chip.prompt)}
+              disabled={isPending}
+              title={chip.title ?? chip.prompt}
+              className="rounded-full border border-zinc-300 bg-white/70 px-3 py-1 text-xs text-zinc-700 hover:bg-white disabled:opacity-50"
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
       <form
         onSubmit={handleSubmit}
-        className={`flex items-end gap-2 p-2 ${attachments.length > 0 || attachNotice ? '' : 'border-t border-zinc-200'}`}
+        className={`flex items-end gap-2 p-2 ${attachments.length > 0 || attachNotice || (promptChips && promptChips.length > 0) ? '' : 'border-t border-zinc-200'}`}
       >
         {!feedbackCategory && (
           <>

@@ -1,6 +1,6 @@
 # Ember SLI: the calm workspace
 
-**Status:** proposed. Design direction for SLI's user interface, from Mike (30 October 2026), with a clickable prototype (an HTML artifact, synthetic data, simulated speech). Waiting for the Sandz team's reactions before it changes the delivery plan.
+**Status:** step 1 built (9 November 2026); the rest proposed. Design direction for SLI's user interface, from Mike (30 October 2026), with a clickable prototype (an HTML artifact, synthetic data, simulated speech). Waiting for the Sandz team's reactions before it changes the delivery plan.
 **Applies to:** Discovery and Marketing screens in Ember SLI ([ADR-0002](../architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md), "UI per audience"; [Discovery design](../dev-request-sandz-sli-discovery-and-triggers.md) §3).
 **Does not change:** the tenant, Trigger, permission and history layer built in S2 (`supabase/migrations/20261101100001_*`, `20261101100002_*`). Every action in the conversation goes through the same database functions.
 
@@ -74,3 +74,13 @@ The app samples the picture's brightness and picks light or dark glass and text 
 1. Share the prototype with the Sandz team and collect reactions, especially to the brainstorm/test split and the voice flow.
 2. Then update the Discovery design (§3) and ADR-0002, and rework S2 stage 3 so a Trigger's research is the conversation.
 3. Build order: the conversation shell with artifacts panel and confirmation cards on the existing SLI functions; dictation; thinking aloud; the view.
+
+## 9. Built so far
+
+**Step 1 (9 November 2026): the calm workspace for a Trigger** (`/sli/discovery/[code]/workspace`, opened with **Open the calm workspace** on the Trigger page; the classic page stays until the team has reacted).
+
+- The conversation fills the centre: Ember's chat bound to the Trigger's research Project, with always-available mode chips: **Brainstorm** (one question at a time, ideas collected as grouped notes, no judging, saved as "Brainstorm notes" on request), **Test it** (the fit check) and the stage's task (draft the concept paper or the feasibility assessment).
+- Artifacts open beside it on request and close again: **Trigger** (summary and stage actions), **Saved** (research by stage, with what is still to write), **Candidates**, **Decision**, **Handoff** and **Colleagues**. A dot marks an artifact waiting for the person. They are the classic page's own components, loaded by the same loader (`src/lib/sli/trigger-view.ts`), so both views always agree. On a phone an artifact covers the conversation until closed.
+- **View**: garden at dusk, morning mist, plain, or the person's own photo, with dim and soften; kept on the device for now. Built-in photos are left out until their licensing is clear.
+
+**Step 2 (next):** Ember SLI tools with confirmation cards (raise a Trigger, add a candidate, record a recommendation, propose a handoff, save brainstorm notes), and Home as the calm greeting with a general conversation.
