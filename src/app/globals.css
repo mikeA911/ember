@@ -12,11 +12,13 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Ember's screens are designed light only (zinc-50 pages, white cards).
+   A dark-mode swap here turned text near-white on those white cards: the
+   unlayered body rule below beats Tailwind's text-* utilities, so typed
+   text on the sign-in form became invisible on Macs in dark mode.
+   color-scheme keeps native form controls light as well. */
+:root {
+  color-scheme: light;
 }
 
 body {

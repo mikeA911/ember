@@ -51,9 +51,9 @@ Created per instance by a setup script (data, not a migration, because other SLI
 
 | Code | Name | Owner (curator) | Attached to | Contents | Becomes later |
 |---|---|---|---|---|---|
-| `KB-ENT-SOL` | **Enterprise Solutions Knowledge** | Marketing curator for the pilot; Presales co-curator later | Marketing workspace, Discovery Project; later Sales, Presales, Maintenance | Sandz company and solution profiles, vendor and partner product descriptions, approved value propositions, use cases, differentiators | Stays shared; may split by solution area |
+| `KB-ENT-SOL` | **Enterprise Solutions Knowledge** | **Presales** (Sandz's answer); the Marketing curator helps during the pilot | Marketing workspace, Discovery Project; later Sales, Presales, Maintenance | Sandz company and solution profiles, vendor and partner product descriptions, approved value propositions, use cases, differentiators | Stays shared; may split by solution area |
 | `KB-MKT-OPS` | **Marketing Operations Knowledge** | Marketing curator | Marketing workspace | The Marketing process, campaign plans and reports, messaging and approved copy, personas and segments, telemarketing guides, qualification criteria, endorsement procedures | Market & Customer Intelligence; Campaigns & Content; Lead Qualification & Handoffs |
-| `KB-CORP` | **Corporate & Compliance Knowledge** | Marketing curator, with restricted access | Marketing workspace | Government bidding procedures and checklists, accreditation procedures and renewal requirements, corporate credentials | Government Bidding; Accreditation & Corporate Credentials |
+| `KB-CORP` | **Corporate & Compliance Knowledge** | Marketing curator (with the bid specialist), with restricted access | Marketing workspace; visible to Management | Government bidding procedures and checklists, accreditation procedures and renewal requirements, corporate credentials | Government Bidding; Accreditation & Corporate Credentials |
 
 **Sensitivity defaults:** `KB-ENT-SOL` and `KB-MKT-OPS` are **internal**. `KB-CORP` is **confidential**, and its tax, banking and financial records are **restricted** and visible only to an access group (for example *Corporate documents*) inside the Marketing workspace, using Ember's evidence access controls.
 
@@ -171,6 +171,48 @@ At least two further questions have **no supported answer** in the knowledge bas
 
 The Marketing process document sets the process baseline but not all the operational detail. Endorsement forms, field definitions, targets and approval responsibilities still have to be collected.
 
+### First inventory (4 November 2026)
+
+Marketing returned the inventory with six documents and answered all five questions (§13). The files themselves are still to come.
+
+| Document | Proposed collection | Sensitivity | Handling |
+|---|---|---|---|
+| Company database (Zoho CRM company module) | — | Confidential, personal data | **Not a knowledge source.** Customer and contact records belong to the customer registry (S4), imported from Zoho |
+| Campaign plan | `KB-MKT-OPS` | Confidential | Upload |
+| Call script | `KB-MKT-OPS` | Confidential | Upload; one per campaign |
+| Discovery, profiling and positioning guide | `KB-MKT-OPS` | Confidential | Still a draft: the curator reviews it before upload |
+| Lead endorsement form (with BANT questions) | `KB-MKT-OPS` | Confidential, personal data | Upload the **blank template** only; filled-in forms are lead records, not knowledge |
+| Campaign post-mortem | `KB-MKT-OPS` | Confidential, personal data | Spread across Zoho, spreadsheets and presentations. Upload a template and a summary with contact details removed |
+
+**Received: the Marketing End-to-End Process (priority 1), 4 November 2026.** A nine-slide PDF marked *Sandz PH Confidential* (`KB-MKT-OPS`, Confidential). It covers:
+- the five stages, each with its steps, outputs and tools;
+- the telemarketing call flow for campaign follow-up;
+- government bidding (direct bid);
+- accreditation (renewal, new, and through a third party).
+
+Its text extracts cleanly, but the flowcharts' branches and arrows don't survive text extraction. So besides uploading the PDF, the curator should write approved Wiki articles from it (§4, class B):
+- one per stage;
+- the telemarketing call flow and its outcomes;
+- a government bid document checklist (`KB-CORP`);
+- an accreditation document checklist (`KB-CORP`).
+
+The documents those checklists name (SEC registration, GIS, permits, tax clearance, audited financial statements, bank details) confirm the restricted classification in §13. Like the other files, it stays off the interim instance.
+
+**Still missing from the priority list:**
+- Sandz's company and solution profiles (priority 2). These are pending from Presales, which owns `KB-ENT-SOL`.
+- Vendor brochures and approved product descriptions (priority 3).
+- Nothing yet for `KB-CORP` (priorities 6–7).
+
+**Where documents live today:** Zoho CRM, Canva, Google Drive, the Sandz drive, email and laptops. Laptop and email copies need the owner's confirmation that they are the current version before upload.
+
+**Hosting constraint:** every document listed so far is Confidential. The interim `ember-sli` instance (Vercel and Supabase Cloud) holds **synthetic data only** ([ADR-0003](architecture-decisions/ADR-0003-source-hosting-and-zadara-deployment.md)). Real documents wait for the Zadara lab, or for a management decision to allow Confidential material on the interim instance.
+
+**Until the documents arrive:**
+- Discovery and the SLI screens are not blocked.
+- The fit check answers "Strategic fit" and "Capability fit" mainly from web research, and lists what it could not find in Sandz's own knowledge.
+- `KB-ENT-SOL` can start from **public** material (the Sandz website, partners' public product pages).
+- Synthetic stand-ins for the call script and lead form can be used to test the Marketing flow.
+
 ## 11. What is configuration and what is build
 
 | Work | Type |
@@ -197,15 +239,21 @@ Planning assumption, not a committed estimate.
 | 3 | Curate key Wiki articles and procedures | Approved Marketing knowledge |
 | 4 | Run the benchmark; review knowledge gaps | Readiness report and improvement backlog |
 
+**Marketing's answers and first inventory (4 November 2026)** are recorded in §10 and §13.
+
 Weeks 1–4 need the lab (or production) Supabase stack and the setup script. The purpose-built screens can follow; in the meantime the curator and platform admin use Ember Core's knowledge pages, which is acceptable for those two technical roles but not for Marketing staff in general.
 
-## 13. Open questions for Sandz
+## 13. Questions for Sandz
 
-1. Who is Marketing's knowledge curator for the pilot?
-2. Who owns Enterprise Solutions Knowledge long term: Marketing, Presales, or product management?
-3. Where do Marketing's documents live today (shared drive, Zoho, email), and can the curator produce the inventory?
-4. Which accreditation and bidding documents count as restricted (tax, banking, financial statements, others)?
-5. Who besides Marketing should see Corporate & Compliance Knowledge (for example Presales for technical compliance)?
+**Answered by Marketing (4 November 2026):**
+
+| Question | Answer | Effect on this design |
+|---|---|---|
+| Who is Marketing's knowledge curator for the pilot? | The Marketing manager | Workspace curator for `KB-MKT-OPS` and `KB-CORP` |
+| Who owns Enterprise Solutions Knowledge long term? | **Presales** | Presales curates `KB-ENT-SOL` (§3); Marketing contributes |
+| Where do Marketing's documents live today? | Zoho CRM, Canva, Google Drive, the Sandz drive, email, laptops | The inventory records the location of each document; scattered copies are confirmed before upload (§10) |
+| Which accreditation and bidding documents are restricted? | Legal documents such as SEC registration, the General Information Sheet (GIS) and permits. They are handled by **Finance**; Marketing's bid specialist keeps soft copies of some | Classified **restricted** in `KB-CORP`. Finance's originals stay the source of truth; Marketing's copies are versions of them and must be kept current. Finance is not yet an SLI department, so Finance's ownership is recorded in the source metadata for now |
+| Who besides Marketing should see Corporate & Compliance Knowledge? | **Management** | `KB-CORP` is visible to the Marketing workspace and to Management (the Discovery team's members), not to Presales or Sales |
 
 ## 14. Acceptance criteria
 
