@@ -4,7 +4,9 @@
 
 ## Status
 
-**Proposed, not built.** Discovery becomes the **first stage** of Solution Lifecycle Intelligence (SLI), before Marketing. This document covers milestones **S2** (Discovery workspace and Triggers) and **S3** (management decisions, handoffs and send-backs). It follows [ADR-0002](architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md): Discovery is part of the SLI module and is switched on with it.
+**S2 stages 1 and 2 built (29 October 2026); the rest proposed.** Built: the tenant and departments (ADR-0005), the SLI shell, and the Trigger registry with stages, history and archiving (`supabase/migrations/20261101100001_sli_organizations_and_departments.sql`, `20261101100002_sli_triggers.sql`, `src/app/(sli)/`, tests in `src/lib/sli/database.test.ts`). Next: the research workspace on Workstreams (stage 3) and the two Methods (stage 4).
+
+Discovery becomes the **first stage** of Solution Lifecycle Intelligence (SLI), before Marketing. This document covers milestones **S2** (Discovery workspace and Triggers) and **S3** (management decisions, handoffs and send-backs). It follows [ADR-0002](architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md): Discovery is part of the SLI module and is switched on with it.
 
 The customer registry ([design](dev-request-sandz-sli-customer-and-contact-registry.md)) is mostly S4, but its **customer core** (customers, duplicate checks, rankings) moves into S3, because the handoff to Marketing is a list of **candidate customers** defined by the Discovery team (§7).
 
@@ -66,6 +68,8 @@ Discovery (Triggers) → Marketing → Sales & Presales → Project Delivery →
 - **Platform admins and knowledge curators** keep the full Ember navigation for administration, knowledge curation and evaluations.
 
 The shell itself applies to every SLI stage; what differs per stage is whether its screens are purpose-built or reused from Ember Core.
+
+**Proposed direction (30 October 2026):** a chat-first *calm workspace*, where the conversation is the main screen and Triggers, the board and papers appear as artifacts beside it, with speech input. See [the design note](design-notes/ember-sli-calm-workspace.md). Pending the Sandz team's reactions; the permission and history rules in this document are unchanged.
 
 ## 4. Trigger lifecycle
 

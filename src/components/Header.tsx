@@ -31,9 +31,12 @@ const CLASSIC_NAV_ROLES = new Set(['curator', 'admin'])
 export function Header({
   profile,
   logoUrl,
+  sliLabel = null,
 }: {
   profile: Profile
   logoUrl: string
+  // The SLI module's name (e.g. "Ember Sandz") when this person can open it.
+  sliLabel?: string | null
 }) {
   const router = useRouter()
   const hasClassicNav = CLASSIC_NAV_ROLES.has(profile.role)
@@ -64,6 +67,7 @@ export function Header({
                 <Link href="/trending" className="hover:text-zinc-900">Trending</Link>
                 <NavDropdown label="Explore" items={profile.role === 'admin' ? [EVALS_ITEM, ...EXPLORE_ITEMS] : EXPLORE_ITEMS} />
                 <Link href="/agency" className="hover:text-zinc-900">Agency</Link>
+                {sliLabel && <Link href="/sli" className="hover:text-zinc-900">{sliLabel}</Link>}
               </>
             ) : (
               <>
@@ -71,6 +75,7 @@ export function Header({
                 <Link href="/projects" className="hover:text-zinc-900">Projects</Link>
                 <Link href="/wiki" className="hover:text-zinc-900">Wiki</Link>
                 <Link href="/blog" className="hover:text-zinc-900">Blog</Link>
+                {sliLabel && <Link href="/sli" className="hover:text-zinc-900">{sliLabel}</Link>}
               </>
             )}
           </nav>
