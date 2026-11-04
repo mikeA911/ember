@@ -4,7 +4,7 @@
 // profile (role member; an existing role is never changed), organisation
 // membership and department membership. Safe to re-run.
 //
-//   node --env-file=.env.local scripts/sli-add-members.mjs sli-members.local.json [--org sandz] [--reset-passwords]
+//   node --env-file=.env.local scripts/sli-add-members.mjs sli-members.local.json [--org sandz] [--reset-passwords] [--shared-password]
 //
 // The list (keep real lists out of git: *.local.json is ignored):
 //   [{ "email": "...", "name": "...", "department": "discovery", "role": "lead" | "member", "sponsor": true }]
@@ -15,6 +15,11 @@
 // Temporary passwords are printed once, here, for you to hand over privately.
 // They are not stored anywhere else. --reset-passwords gives existing
 // accounts in the list a new temporary password too.
+//
+// --shared-password asks you (typed hidden, never printed) for one temporary
+// password used for every new account instead. Simpler to hand out, but
+// until each person changes it, anyone who knows it can sign in as them, so
+// ask everyone to sign in and change it the same day.
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -28,6 +33,44 @@ if (!file || file.startsWith('--')) throw new Error('Usage: node --env-file=.env
 const orgIndex = process.argv.indexOf('--org')
 const orgSlug = orgIndex > -1 ? process.argv[orgIndex + 1] : 'sandz'
 const resetPasswords = process.argv.includes('--reset-passwords')
+const useSharedPassword = process.argv.includes('--shared-password')
+
+function askHidden(prompt) {
+  return new Promise((resolve, reject) => {
+    const stdin = process.stdin
+    if (!stdin.isTTY) return reject(new Error('Run this in a terminal so the password can be typed hidden.'))
+    process.stdout.write(prompt)
+    let value = ''
+    stdin.setRawMode(true)
+    stdin.resume()
+    stdin.setEncoding('utf8')
+    const onData = (ch) => {
+      if (ch === '\r' || ch === '\n' || ch === '\u0004') {
+        stdin.setRawMode(false)
+        stdin.pause()
+        stdin.off('data', onData)
+        process.stdout.write('\n')
+        resolve(value)
+      } else if (ch === '\u0003') {
+        stdin.setRawMode(false)
+        process.stdout.write('\n')
+        process.exit(130)
+      } else if (ch === '\u007f' || ch === '\b') {
+        value = value.slice(0, -1)
+      } else {
+        value += ch
+      }
+    }
+    stdin.on('data', onData)
+  })
+}
+
+let sharedPassword = null
+if (useSharedPassword) {
+  sharedPassword = await askHidden('Shared temporary password (at least 12 characters): ')
+  if (sharedPassword.length < 12) throw new Error('Use at least 12 characters.')
+  if ((await askHidden('Type it again: ')) !== sharedPassword) throw new Error('The two entries differ. Nothing changed.')
+}
 
 const people = JSON.parse(fs.readFileSync(file, 'utf8'))
 if (!Array.isArray(people) || people.length === 0) throw new Error('The members file must be a non-empty JSON array')
@@ -39,6 +82,7 @@ for (const p of people) {
 
 // Readable but strong: three groups of five from an unambiguous alphabet.
 function temporaryPassword() {
+  if (sharedPassword) return sharedPassword
   const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
   const group = () => Array.from(crypto.randomBytes(5), (b) => alphabet[b % alphabet.length]).join('')
   return `${group()}-${group()}-${group()}`
@@ -135,9 +179,13 @@ for (const p of people) {
 
 console.log(`\n${org.name}: ${handout.length} people set up.\n`)
 for (const h of handout) {
-  console.log(`${h.email.padEnd(36)} ${`${h.department} (${h.role})`.padEnd(28)} ${h.password ? `temporary password: ${h.password}` : 'existing account, password unchanged'}`)
+  const status = !h.password ? 'existing account, password unchanged' : sharedPassword ? 'shared temporary password' : `temporary password: ${h.password}`
+  console.log(`${h.email.padEnd(36)} ${`${h.department} (${h.role})`.padEnd(28)} ${status}`)
 }
-if (handout.some((h) => h.password)) {
+if (sharedPassword && handout.some((h) => h.password)) {
+  console.log('\nEveryone listed as "shared temporary password" signs in with the password you typed and chooses their own at first sign-in.')
+  console.log('Ask them to do it today: until they do, anyone who knows the shared password can sign in as them.')
+} else if (handout.some((h) => h.password)) {
   console.log('\nGive each person their temporary password privately. They choose their own at first sign-in.')
   console.log('Don\'t paste this output into chats, tickets or documents.')
 }

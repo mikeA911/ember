@@ -52,4 +52,6 @@ Supabase's built-in email can't reach staff addresses, so people get a temporary
 3. The script prints each new person's temporary password once. Give it to them privately.
 4. At first sign-in Ember asks them to choose their own password before anything else.
 
+To give everyone the same temporary password instead, add `--shared-password`: the script asks you for it (typed hidden, never printed). It is easier to hand out, but until each person changes it, anyone who knows it can sign in as them, so ask everyone to sign in the same day.
+
 Re-running is safe: existing accounts keep their password and role, and their memberships are updated. `--reset-passwords` issues new temporary passwords to everyone in the list (for someone who lost theirs, use a list with just that person).
