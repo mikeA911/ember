@@ -1,5 +1,5 @@
 [
-  { "email": "md@example.com", "name": "Example Managing Director", "department": "discovery", "role": "lead", "sponsor": true },
+  { "email": "md@example.com", "name": "Example Managing Director", "department": "discovery", "role": "lead", "sponsor": true, "decides": true },
   { "email": "cto@example.com", "name": "Example CTO", "department": "discovery", "role": "member", "sponsor": true },
   { "email": "marketing.lead@example.com", "name": "Example Marketing Manager", "department": "marketing", "role": "lead" },
   { "email": "isr@example.com", "name": "Example Marketing Staff", "department": "marketing", "role": "member" },

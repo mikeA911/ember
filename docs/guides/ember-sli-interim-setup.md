@@ -20,6 +20,7 @@ node --env-file=.env.local scripts/run-migrations.mjs 20261103100001_sli_researc
 node --env-file=.env.local scripts/run-migrations.mjs 20261104100001_anthropic_provider.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261105100001_sli_concept_and_feasibility_methods.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261106100001_speech_to_text_models.sql
+node --env-file=.env.local scripts/run-migrations.mjs 20261107100001_sli_recommendations_and_decisions.sql
 ```
 
 This one also gives Triggers already in research their research space.
@@ -84,3 +85,7 @@ The **Dictate** button in Ember's chat (including a Trigger's research conversat
 1. It uses the **Speech-to-text default** under Admin → AI Config → Model assignments. The migration makes OpenAI's GPT-4o Transcribe the default, so `OPENAI_API_KEY` must be set and the OpenAI provider enabled.
 2. Set the OpenAI provider's **maximum sensitivity** to *Confidential* so dictation works on Trigger research, which is confidential.
 3. The browser asks for microphone access the first time. Recordings stop at three minutes.
+
+## 8. Who decides on Triggers
+
+Add `"decides": true` to the decider's entry in your members list (one person per organisation) and re-run `scripts/sli-add-members.mjs`. The decider then names a dated delegate on SLI Home when they are away; the delegate decides only between those dates and never on a Trigger they sponsor.

@@ -12,6 +12,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261102100001_sli_trigger_research_projects.sql',
   'supabase/migrations/20261103100001_sli_research_fit_check_prompt.sql',
   'supabase/migrations/20261105100001_sli_concept_and_feasibility_methods.sql',
+  'supabase/migrations/20261107100001_sli_recommendations_and_decisions.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 // Sandz: md and cto are Discovery sponsors, analyst is on the Discovery
@@ -75,6 +76,8 @@ beforeAll(async () => {
     create table project_workstreams(id uuid primary key default gen_random_uuid(), project_id uuid not null references projects(id) on delete cascade,
       name text not null, slug text not null, status text not null default 'draft', goal text, created_by uuid,
       guardrail text, deliverables jsonb not null default '[]', derived_from_method_id uuid, unique (project_id, slug));
+    create table workstream_artifacts(id uuid primary key default gen_random_uuid(), workstream_id uuid not null references project_workstreams(id) on delete cascade,
+      artifact_type text not null default 'findings', title text not null, content text, created_at timestamptz not null default now());
     create table methods(id uuid primary key default gen_random_uuid(), name text not null, slug text not null unique, description text,
       requirements text, evidence text, deliverables text, guardrails text, review_points text, status text not null default 'draft',
       published_at timestamptz);
@@ -114,7 +117,8 @@ beforeEach(async () => {
   await db.exec(`
     reset role;
     alter table sli_trigger_stage_history disable trigger sli_trigger_stage_history_append_only;
-    truncate sli_project_reservations, sli_trigger_contributors, project_members, project_workstreams, projects,
+    truncate sli_decision_evidence, sli_decisions, sli_recommendations, sli_decision_authorities, workstream_artifacts,
+      sli_project_reservations, sli_trigger_contributors, project_members, project_workstreams, projects,
       sli_admin_access_log, sli_trigger_stage_history, sli_triggers, sli_trigger_types, sli_department_members,
       sli_departments, sli_settings, organization_members, organizations, profiles cascade;
     alter table sli_trigger_stage_history enable trigger sli_trigger_stage_history_append_only;
@@ -606,5 +610,165 @@ describe('concept and feasibility', () => {
       { slug: 'sli-concept-development', status: 'published' },
       { slug: 'sli-feasibility-assessment', status: 'published' },
     ])
+  })
+})
+
+describe('recommendations and decisions', () => {
+  // md decides (the MD); analyst is a dated delegate in some tests.
+  async function underReview(sponsor = cto) {
+    await db.exec(`reset role;
+      update sli_departments set accepts_handoffs = true where id = '${marketing}';
+      insert into sli_decision_authorities(organization_id, user_id, kind) values ('${sandz}', '${md}', 'decider') on conflict do nothing;
+      set role authenticated;`)
+    const t = await raise(isr)
+    await move(sponsor, t.id, 'researching')
+    await move(sponsor, t.id, 'concept')
+    await move(sponsor, t.id, 'feasibility')
+    await move(sponsor, t.id, 'under_review')
+    return t
+  }
+  async function decide(user: string, trigger: string, outcome: string, opts: Partial<Record<string, unknown>> = {}) {
+    await as(user)
+    return call(
+      'sli_record_decision',
+      trigger,
+      outcome,
+      opts.rationale ?? 'Strong fit with existing Zadara customers',
+      opts.destination ?? null,
+      opts.returnTo ?? null,
+      opts.conditions ?? null,
+      opts.evidence ?? [],
+      opts.share ?? false
+    )
+  }
+  async function info(user: string, code: string) {
+    await as(user)
+    return (await call('sli_get_trigger', code)).decisionInfo
+  }
+
+  it('lets the Discovery team recommend, keeping the latest per person current', async () => {
+    const t = await underReview()
+    await as(cto)
+    await call('sli_record_recommendation', t.id, 'revise', null, 'Costs unclear')
+    await call('sli_record_recommendation', t.id, 'approve', marketing, 'Costs now checked')
+    await as(analyst)
+    await call('sli_record_recommendation', t.id, 'defer', marketing, null)
+    const recs = (await info(md, t.code)).recommendations
+    expect(recs.map((r: Json) => [r.by, r.recommendation, r.destination, r.current])).toEqual([
+      ['Carlos Tech', 'revise', null, false],
+      ['Carlos Tech', 'approve', 'Marketing', true],
+      // A destination only counts with an approval.
+      ['Ana Lyst', 'defer', null, true],
+    ])
+  })
+
+  it('refuses recommendations from the decider, outsiders, or before review', async () => {
+    const t = await underReview()
+    await as(md)
+    expect((await errorOf(call('sli_record_recommendation', t.id, 'approve', marketing, null))).message).toMatch(/records a decision/)
+    await as(isr)
+    expect((await errorOf(call('sli_record_recommendation', t.id, 'approve', marketing, null))).code).toBe('42501')
+    const early = await raise(isr, 'Early idea')
+    await as(cto)
+    expect((await errorOf(call('sli_record_recommendation', early.id, 'approve', null, null))).message).toMatch(/under review/)
+  })
+
+  it('records an approval with its destination, conditions and evidence', async () => {
+    const t = await underReview()
+    await as(cto)
+    const { projectId } = await call('sli_get_trigger', t.code)
+    await db.exec('reset role')
+    const ws = await db.query<{ id: string }>("select id from project_workstreams where project_id = $1 and slug = 'feasibility'", [projectId])
+    const art = await db.query<{ id: string }>(
+      "insert into workstream_artifacts (workstream_id, title) values ($1, 'Feasibility assessment') returning id",
+      [ws.rows[0].id]
+    )
+    await db.exec('set role authenticated')
+    const result = await decide(md, t.id, 'approve', { destination: marketing, conditions: 'Start with existing customers', evidence: [art.rows[0].id] })
+    expect(result).toMatchObject({ stage: 'approved' })
+    const d = (await info(md, t.code)).decisions[0]
+    expect(d).toMatchObject({
+      outcome: 'approve', destination: 'Marketing', conditions: 'Start with existing customers', decidedBy: 'Maria Director',
+      decidedAs: 'authority', superseded: false, evidence: [{ id: art.rows[0].id, title: 'Feasibility assessment' }],
+    })
+    await as(md)
+    const history = (await call('sli_get_trigger', t.code)).history.at(-1)
+    expect(history).toMatchObject({ fromStage: 'under_review', toStage: 'approved', reason: 'Management decision: approve' })
+  })
+
+  it('checks what each outcome needs', async () => {
+    const t = await underReview()
+    expect((await errorOf(decide(md, t.id, 'approve'))).message).toMatch(/where the approved Trigger goes/)
+    expect((await errorOf(decide(md, t.id, 'revise'))).message).toMatch(/stage to revise in/)
+    expect((await errorOf(decide(md, t.id, 'reject', { rationale: '' }))).message).toMatch(/rationale/)
+    expect((await errorOf(decide(md, t.id, 'defer', { evidence: [id(999)] }))).message).toMatch(/this Trigger's research/)
+    expect((await errorOf(decide(cto, t.id, 'reject'))).code).toBe('42501')
+  })
+
+  it('sends a revision back to a stage, and a new decision supersedes the old one', async () => {
+    const t = await underReview()
+    await decide(md, t.id, 'revise', { returnTo: 'concept', rationale: 'Target market too broad' })
+    await as(cto)
+    const { projectId, stage } = await call('sli_get_trigger', t.code)
+    expect(stage).toBe('concept')
+    await db.exec('reset role')
+    const prompt = await db.query<{ starter_prompt: string }>('select starter_prompt from projects where id = $1', [projectId])
+    await db.exec('set role authenticated')
+    expect(prompt.rows[0].starter_prompt).toMatch(/^Draft the concept paper/)
+    await move(cto, t.id, 'feasibility')
+    await move(cto, t.id, 'under_review')
+    await decide(md, t.id, 'reject', { rationale: 'Margins too thin' })
+    const decisions = (await info(md, t.code)).decisions
+    expect(decisions.map((d: Json) => [d.outcome, d.superseded])).toEqual([['revise', true], ['reject', false]])
+  })
+
+  it('lets a dated delegate decide, but not a Trigger they sponsor or outside their dates', async () => {
+    const t = await underReview(cto)
+    await as(md)
+    await call('sli_set_decision_delegate', cto, '2000-01-01', '2999-12-31')
+    expect((await errorOf(decide(cto, t.id, 'reject'))).message).toMatch(/Trigger you sponsor/)
+    await as(md)
+    await call('sli_set_decision_delegate', analyst, '2000-01-01', '2000-12-31')
+    expect((await errorOf(decide(analyst, t.id, 'reject'))).code).toBe('42501')
+    await as(md)
+    await call('sli_set_decision_delegate', analyst, '2000-01-01', '2999-12-31')
+    expect(await decide(analyst, t.id, 'defer', { rationale: 'Wait for the partner roadmap' })).toMatchObject({ stage: 'deferred' })
+    expect((await info(md, t.code)).decisions[0]).toMatchObject({ decidedAs: 'delegate', decidedBy: 'Ana Lyst' })
+  })
+
+  it('lets only the decider or an owner name a delegate, from the Discovery team', async () => {
+    await underReview()
+    await as(cto)
+    expect((await errorOf(call('sli_set_decision_delegate', analyst, '2000-01-01', '2999-12-31'))).code).toBe('42501')
+    await as(md)
+    expect((await errorOf(call('sli_set_decision_delegate', isr, '2000-01-01', '2999-12-31'))).message).toMatch(/Discovery team/)
+    expect((await errorOf(call('sli_set_decision_delegate', analyst, '2000-02-01', '2000-01-01'))).message).toMatch(/dates/)
+    await call('sli_set_decision_delegate', analyst, '2000-01-01', '2999-12-31')
+    const settings = await call('sli_decision_settings')
+    expect(settings).toMatchObject({ myRole: 'authority', canSetDelegate: true, decider: { isMe: true }, delegate: { name: 'Ana Lyst', activeToday: true } })
+    expect(settings.waitingForMe).toEqual([{ code: 'TRG-001', title: 'VMware licensing changes' }])
+    await call('sli_set_decision_delegate', null, null, null)
+    expect((await call('sli_decision_settings')).delegate).toBeNull()
+  })
+
+  it('shows the raiser the outcome, and the rationale only when shared; contributors see neither', async () => {
+    const t = await underReview()
+    await as(cto)
+    await call('sli_set_trigger_contributor', t.id, isr, false)
+    await decide(md, t.id, 'reject', { rationale: 'Not our market' })
+    let raiser = await info(isr, t.code)
+    expect(raiser.decisions).toEqual([expect.objectContaining({ outcome: 'reject', rationale: null })])
+    expect(raiser).not.toHaveProperty('recommendations')
+    await db.exec(`reset role; update sli_decisions set share_rationale_with_raiser = true; set role authenticated;`)
+    raiser = await info(isr, t.code)
+    expect(raiser.decisions[0].rationale).toBe('Not our market')
+
+    const other = await underReview()
+    await as(cto)
+    await call('sli_set_trigger_contributor', other.id, isr, true)
+    // isr raised it too, but contributor access takes precedence: no decision details.
+    await db.exec(`reset role; update sli_triggers set raised_by = '${analyst}' where id = '${other.id}'; set role authenticated;`)
+    await decide(md, other.id, 'reject', { rationale: 'Confidential reasoning' })
+    expect(await info(isr, other.code)).toEqual({})
   })
 })

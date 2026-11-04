@@ -141,3 +141,86 @@ export async function setTriggerContributorAction(input: z.input<typeof Contribu
     return failure(err)
   }
 }
+
+const OUTCOMES = ['approve', 'revise', 'defer', 'reject'] as const
+
+const RecommendationSchema = z.object({
+  triggerId: z.string().uuid(),
+  recommendation: z.enum(OUTCOMES),
+  destinationId: z.string().uuid().optional().or(z.literal('')).transform((v) => (v ? v : null)),
+  comments: optionalText(4000),
+})
+
+export async function recordRecommendationAction(input: z.input<typeof RecommendationSchema>): Promise<Result> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  const parsed = RecommendationSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Check the recommendation.' }
+  try {
+    const { supabase } = await requireUser()
+    const { code } = await sliRpc<{ code: string }>(supabase, 'sli_record_recommendation', {
+      p_trigger: parsed.data.triggerId,
+      p_recommendation: parsed.data.recommendation,
+      p_destination: parsed.data.destinationId,
+      p_comments: parsed.data.comments,
+    })
+    refresh(code)
+    return { ok: true }
+  } catch (err) {
+    return failure(err)
+  }
+}
+
+const DecisionSchema = z.object({
+  triggerId: z.string().uuid(),
+  outcome: z.enum(OUTCOMES),
+  rationale: z.string().trim().min(3, 'Give the rationale for the decision').max(8000),
+  destinationId: z.string().uuid().optional().or(z.literal('')).transform((v) => (v ? v : null)),
+  returnToStage: z.enum(['researching', 'concept', 'feasibility']).optional().or(z.literal('')).transform((v) => (v ? v : null)),
+  conditions: optionalText(4000),
+  evidence: z.array(z.string().uuid()).max(50).default([]),
+  shareWithRaiser: z.boolean().default(false),
+})
+
+export async function recordDecisionAction(input: z.input<typeof DecisionSchema>): Promise<Result> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  const parsed = DecisionSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the decision.' }
+  try {
+    const { supabase } = await requireUser()
+    const v = parsed.data
+    const { code } = await sliRpc<{ code: string }>(supabase, 'sli_record_decision', {
+      p_trigger: v.triggerId,
+      p_outcome: v.outcome,
+      p_rationale: v.rationale,
+      p_destination: v.destinationId,
+      p_return_to_stage: v.returnToStage,
+      p_conditions: v.conditions,
+      p_evidence: v.evidence,
+      p_share_with_raiser: v.shareWithRaiser,
+    })
+    refresh(code)
+    return { ok: true }
+  } catch (err) {
+    return failure(err)
+  }
+}
+
+const DelegateSchema = z.object({
+  userId: z.string().uuid().nullable(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+})
+
+export async function setDecisionDelegateAction(input: z.input<typeof DelegateSchema>): Promise<Result> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  const parsed = DelegateSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Choose a delegate and both dates.' }
+  try {
+    const { supabase } = await requireUser()
+    await sliRpc(supabase, 'sli_set_decision_delegate', { p_user: parsed.data.userId, p_from: parsed.data.from, p_until: parsed.data.until })
+    refresh()
+    return { ok: true }
+  } catch (err) {
+    return failure(err)
+  }
+}

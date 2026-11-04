@@ -7,10 +7,12 @@
 //   node --env-file=.env.local scripts/sli-add-members.mjs sli-members.local.json [--org sandz] [--reset-passwords] [--shared-password]
 //
 // The list (keep real lists out of git: *.local.json is ignored):
-//   [{ "email": "...", "name": "...", "department": "discovery", "role": "lead" | "member", "sponsor": true }]
+//   [{ "email": "...", "name": "...", "department": "discovery", "role": "lead" | "member", "sponsor": true, "decides": true }]
 // department is a department code from sli-setup.mjs: discovery, marketing,
 // sales, presales, engineering, delivery, support. sponsor only matters for
-// the Discovery team.
+// the Discovery team. "decides": true makes that person the organisation's
+// decision authority on Triggers (one per organisation; it replaces any
+// other). A dated delegate is named by the decider on SLI Home.
 //
 // Temporary passwords are printed once, here, for you to hand over privately.
 // They are not stored anywhere else. --reset-passwords gives existing
@@ -174,7 +176,17 @@ for (const p of people) {
     ),
     `Department ${email}`
   )
-  handout.push({ email, department: dept.name, role: p.role ?? 'member', password })
+  if (p.decides === true) {
+    must(await db.from('sli_decision_authorities').delete().eq('organization_id', org.id).eq('kind', 'decider').neq('user_id', user.id), 'Decider')
+    const existing = must(
+      await db.from('sli_decision_authorities').select('id').eq('organization_id', org.id).eq('kind', 'decider').eq('user_id', user.id),
+      'Decider'
+    )
+    if (existing.length === 0) {
+      must(await db.from('sli_decision_authorities').insert({ organization_id: org.id, user_id: user.id, kind: 'decider' }), `Decider ${email}`)
+    }
+  }
+  handout.push({ email, department: dept.name, role: `${p.role ?? 'member'}${p.decides === true ? ', decides' : ''}`, password })
 }
 
 console.log(`\n${org.name}: ${handout.length} people set up.\n`)

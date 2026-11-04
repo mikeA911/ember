@@ -112,6 +112,7 @@ export type TriggerHistoryEntry = {
 
 export type TriggerDetail = TriggerSummary & {
   allowedActions: TriggerAction[]
+  decisionInfo?: TriggerDecisionInfo
   canManageContributors?: boolean
   history: TriggerHistoryEntry[]
 }
@@ -140,4 +141,60 @@ export function actionLabel(a: TriggerAction): string {
     case 'unarchive':
       return 'Unarchive'
   }
+}
+
+export type DecisionOutcome = 'approve' | 'revise' | 'defer' | 'reject'
+export type DecisionRole = 'authority' | 'delegate' | 'platform_admin'
+
+export const OUTCOME_LABELS: Record<DecisionOutcome, string> = {
+  approve: 'Approve',
+  revise: 'Revise',
+  defer: 'Defer',
+  reject: 'Reject',
+}
+
+export type TriggerRecommendation = {
+  by: string
+  byMe: boolean
+  recommendation: DecisionOutcome
+  destination: string | null
+  comments: string | null
+  recordedAt: string
+  current: boolean
+}
+
+export type TriggerDecision = {
+  id: string
+  outcome: DecisionOutcome
+  destination: string | null
+  returnToStage: TriggerStage | null
+  rationale: string | null
+  conditions?: string | null
+  decidedBy?: string
+  decidedAs?: DecisionRole
+  decidedAt: string
+  sharedWithRaiser?: boolean
+  superseded: boolean
+  supersededReason?: string | null
+  evidence?: { id: string; title: string }[]
+}
+
+// Present for 'full' access (everything) and 'raiser' (decisions only).
+export type TriggerDecisionInfo = {
+  recommendations?: TriggerRecommendation[]
+  decisions?: TriggerDecision[]
+  canRecommend?: boolean
+  canDecide?: boolean
+  decideAs?: DecisionRole | null
+  decisionBlockedReason?: string | null
+  destinations?: { id: string; name: string }[]
+}
+
+export type DecisionSettings = {
+  decider: { userId: string; name: string; isMe: boolean } | null
+  delegate: { userId: string; name: string; isMe: boolean; from: string; until: string; activeToday: boolean } | null
+  myRole: DecisionRole | null
+  canSetDelegate: boolean
+  candidates: { userId: string; name: string }[]
+  waitingForMe: { code: string; title: string }[]
 }
