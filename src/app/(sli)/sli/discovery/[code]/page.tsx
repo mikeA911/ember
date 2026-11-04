@@ -1,14 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import {
-  getSliContext,
-  getTrigger,
-  listCandidateCustomers,
-  listContributorCandidates,
-  listResearchStages,
-  listWorkstreamFindings,
-} from '@/lib/sli/api'
+import { loadTriggerView } from '@/lib/sli/trigger-view'
 import { CandidateCustomers } from '@/components/sli/CandidateCustomers'
 import { StageBadge } from '@/components/sli/StageBadge'
 import { TriggerActions } from '@/components/sli/TriggerActions'
@@ -56,22 +49,22 @@ function describe(h: TriggerHistoryEntry): string {
 export default async function TriggerPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   const supabase = await createClient()
-  const [trigger, ctx] = await Promise.all([getTrigger(supabase, code), getSliContext(supabase)])
-  if (!trigger) notFound()
-  const hasResearch = (trigger.access === 'full' || trigger.access === 'contributor') && !!trigger.projectId
-  const acceptedHandoff = [...(trigger.handoffInfo?.handoffs ?? [])].reverse().find((h) => h.kind === 'promote' && h.status === 'accepted')
-  const [candidates, stages, receivedPackage, candidateList] = await Promise.all([
-    trigger.canManageContributors ? listContributorCandidates(supabase, trigger.id) : Promise.resolve([]),
-    hasResearch && trigger.projectId ? listResearchStages(supabase, trigger.projectId) : Promise.resolve([]),
-    acceptedHandoff?.destinationWorkstreamId ? listWorkstreamFindings(supabase, acceptedHandoff.destinationWorkstreamId) : Promise.resolve([]),
-    trigger.access === 'full' ? listCandidateCustomers(supabase, trigger.id) : Promise.resolve(null),
-  ])
-  const acceptedCandidateCount = candidateList?.candidates.filter((c) => c.status === 'accepted').length ?? 0
-  const showCandidates = !!candidateList && (candidateList.canEdit || candidateList.candidates.length > 0)
-  const researchOptions = stages.flatMap((st) => st.findings.map((f) => ({ id: f.id, title: f.title, stage: st.name })))
-  const showHandoffs =
-    !!trigger.handoffInfo &&
-    ((trigger.handoffInfo.handoffs?.length ?? 0) > 0 || !!trigger.handoffInfo.canPropose || !!trigger.handoffInfo.canSendBack)
+  const view = await loadTriggerView(supabase, code)
+  if (!view) notFound()
+  const {
+    trigger,
+    ctx,
+    hasResearch,
+    contributorCandidates: candidates,
+    stages,
+    receivedPackage,
+    candidateList,
+    acceptedCandidateCount,
+    showCandidates,
+    showHandoffs,
+    showDecision,
+    researchOptions,
+  } = view
 
   const limited = trigger.access === 'summary'
 
@@ -92,6 +85,15 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
           {trigger.sponsorName ? ` · Sponsor: ${trigger.sponsoredByMe ? 'you' : trigger.sponsorName}` : ' · No sponsor yet'}
         </p>
       </div>
+
+      {hasResearch && (
+        <a
+          href={`/sli/discovery/${trigger.code}/workspace`}
+          className="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-white px-4 py-1.5 text-sm hover:border-zinc-500"
+        >
+          <span aria-hidden="true" className="h-2 w-2 rounded-full bg-orange-500" /> Open the calm workspace
+        </a>
+      )}
 
       <TriggerActions triggerId={trigger.id} actions={trigger.allowedActions} />
 
@@ -144,9 +146,7 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
         </div>
       )}
 
-      {trigger.decisionInfo &&
-        (trigger.stage === 'under_review' || (trigger.decisionInfo.decisions?.length ?? 0) > 0) &&
-        (trigger.access === 'full' || (trigger.decisionInfo.decisions?.length ?? 0) > 0) && (
+      {showDecision && trigger.decisionInfo && (
           <section className="space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Decision</h2>
             <TriggerDecision
