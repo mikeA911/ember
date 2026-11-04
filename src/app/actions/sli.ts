@@ -224,3 +224,93 @@ export async function setDecisionDelegateAction(input: z.input<typeof DelegateSc
     return failure(err)
   }
 }
+
+const ProposeSchema = z.object({
+  triggerId: z.string().uuid(),
+  message: optionalText(4000),
+  artifacts: z.array(z.string().uuid()).max(50).default([]),
+  targetIndustries: optionalText(2000),
+  approvedClaims: optionalText(8000),
+})
+
+export async function proposeHandoffAction(input: z.input<typeof ProposeSchema>): Promise<Result> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  const parsed = ProposeSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Check the handoff.' }
+  try {
+    const { supabase } = await requireUser()
+    const v = parsed.data
+    const { code } = await sliRpc<{ code: string }>(supabase, 'sli_propose_handoff', {
+      p_trigger: v.triggerId,
+      p_message: v.message,
+      p_artifacts: v.artifacts,
+      p_target_industries: v.targetIndustries,
+      p_approved_claims: v.approvedClaims,
+    })
+    refresh(code)
+    return { ok: true }
+  } catch (err) {
+    return failure(err)
+  }
+}
+
+const HandoffAnswerSchema = z.object({
+  handoffId: z.string().uuid(),
+  accept: z.boolean(),
+  reason: optionalText(4000),
+})
+
+// Accept or return a proposed handoff, accept or decline a send-back, or
+// withdraw a proposal (accept false, withdraw true).
+export async function answerHandoffAction(
+  input: z.input<typeof HandoffAnswerSchema> & { kind: 'promote' | 'send_back' | 'withdraw' }
+): Promise<Result> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  const parsed = HandoffAnswerSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Check your answer.' }
+  try {
+    const { supabase } = await requireUser()
+    const v = parsed.data
+    const result =
+      input.kind === 'withdraw'
+        ? await sliRpc<{ code: string }>(supabase, 'sli_withdraw_handoff', { p_handoff: v.handoffId, p_reason: v.reason })
+        : await sliRpc<{ code: string }>(supabase, input.kind === 'promote' ? 'sli_decide_handoff' : 'sli_decide_send_back', {
+            p_handoff: v.handoffId,
+            p_accept: v.accept,
+            p_reason: v.reason,
+          })
+    refresh(result.code)
+    return { ok: true }
+  } catch (err) {
+    return failure(err)
+  }
+}
+
+const SendBackSchema = z.object({
+  triggerId: z.string().uuid(),
+  toStage: z.enum(['researching', 'concept', 'feasibility']),
+  reasonCategory: z.enum(['solution_inadequate', 'insufficient_evidence', 'market_changed', 'customer_feedback', 'cost_or_risk_higher']),
+  reason: z.string().trim().min(3, 'Describe what you found').max(4000),
+  downstreamAction: z.enum(['pause', 'close']),
+})
+
+export async function raiseSendBackAction(input: z.input<typeof SendBackSchema>): Promise<Result> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  const parsed = SendBackSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the send-back.' }
+  try {
+    const { supabase } = await requireUser()
+    const v = parsed.data
+    const { code } = await sliRpc<{ code: string }>(supabase, 'sli_raise_send_back', {
+      p_trigger: v.triggerId,
+      p_to_stage: v.toStage,
+      p_reason_category: v.reasonCategory,
+      p_reason: v.reason,
+      p_downstream_action: v.downstreamAction,
+    })
+    refresh(code)
+    return { ok: true }
+  } catch (err) {
+    return failure(err)
+  }
+}

@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getSliContext, getTrigger, listContributorCandidates, listResearchStages } from '@/lib/sli/api'
+import { getSliContext, getTrigger, listContributorCandidates, listResearchStages, listWorkstreamFindings } from '@/lib/sli/api'
 import { StageBadge } from '@/components/sli/StageBadge'
 import { TriggerActions } from '@/components/sli/TriggerActions'
 import { TriggerContributors } from '@/components/sli/TriggerContributors'
 import { TriggerDecision } from '@/components/sli/TriggerDecision'
+import { TriggerHandoffs } from '@/components/sli/TriggerHandoffs'
 import { TriggerResearchChat } from '@/components/sli/TriggerResearchChat'
 import { STAGE_LABELS, type TriggerHistoryEntry } from '@/lib/sli/types'
 
@@ -29,6 +30,16 @@ function describe(h: TriggerHistoryEntry): string {
       return 'Colleague invited'
     case 'contributor_removed':
       return 'Colleague removed'
+    case 'handoff_proposed':
+      return 'Handoff proposed'
+    case 'handoff_withdrawn':
+      return 'Handoff withdrawn'
+    case 'handoff_returned':
+      return 'Handoff returned'
+    case 'send_back_raised':
+      return 'Send-back raised'
+    case 'send_back_declined':
+      return 'Send-back declined'
     default:
       return `${h.fromStage ? STAGE_LABELS[h.fromStage] : ''} → ${STAGE_LABELS[h.toStage]}`
   }
@@ -40,10 +51,16 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
   const [trigger, ctx] = await Promise.all([getTrigger(supabase, code), getSliContext(supabase)])
   if (!trigger) notFound()
   const hasResearch = (trigger.access === 'full' || trigger.access === 'contributor') && !!trigger.projectId
-  const [candidates, stages] = await Promise.all([
+  const acceptedHandoff = [...(trigger.handoffInfo?.handoffs ?? [])].reverse().find((h) => h.kind === 'promote' && h.status === 'accepted')
+  const [candidates, stages, receivedPackage] = await Promise.all([
     trigger.canManageContributors ? listContributorCandidates(supabase, trigger.id) : Promise.resolve([]),
     hasResearch && trigger.projectId ? listResearchStages(supabase, trigger.projectId) : Promise.resolve([]),
+    acceptedHandoff?.destinationWorkstreamId ? listWorkstreamFindings(supabase, acceptedHandoff.destinationWorkstreamId) : Promise.resolve([]),
   ])
+  const researchOptions = stages.flatMap((st) => st.findings.map((f) => ({ id: f.id, title: f.title, stage: st.name })))
+  const showHandoffs =
+    !!trigger.handoffInfo &&
+    ((trigger.handoffInfo.handoffs?.length ?? 0) > 0 || !!trigger.handoffInfo.canPropose || !!trigger.handoffInfo.canSendBack)
 
   const limited = trigger.access === 'summary'
 
@@ -124,12 +141,19 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
             <TriggerDecision
               triggerId={trigger.id}
               info={trigger.decisionInfo}
-              evidenceOptions={stages.flatMap((st) => st.findings.map((f) => ({ id: f.id, title: f.title, stage: st.name })))}
+              evidenceOptions={researchOptions}
             />
           </section>
         )}
 
-      {!limited && (
+      {showHandoffs && trigger.handoffInfo && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Handoff</h2>
+          <TriggerHandoffs triggerId={trigger.id} info={trigger.handoffInfo} researchOptions={researchOptions} receivedPackage={receivedPackage} />
+        </section>
+      )}
+
+      {(trigger.access === 'full' || trigger.access === 'contributor' || trigger.access === 'raiser') && (
         <section className="space-y-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Research</h2>

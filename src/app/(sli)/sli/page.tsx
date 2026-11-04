@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getDecisionSettings, getSliContext, listTriggers } from '@/lib/sli/api'
+import { getDecisionSettings, getHandoffInbox, getSliContext, listTriggers } from '@/lib/sli/api'
 import { DecisionPanel } from '@/components/sli/DecisionPanel'
 import { TriggerCard } from '@/components/sli/TriggerCard'
 import type { TriggerStage, TriggerSummary } from '@/lib/sli/types'
@@ -14,7 +14,7 @@ const IN_PROGRESS: TriggerStage[] = ['researching', 'concept', 'feasibility', 'u
 export default async function SliHomePage() {
   const supabase = await createClient()
   const ctx = await getSliContext(supabase)
-  const [triggers, decisionSettings] = await Promise.all([listTriggers(supabase), getDecisionSettings(supabase)])
+  const [triggers, decisionSettings, inbox] = await Promise.all([listTriggers(supabase), getDecisionSettings(supabase), getHandoffInbox(supabase)])
 
   const waiting = ctx?.canSponsor ? triggers.filter((t) => t.stage === 'new') : []
   const sponsoring = triggers.filter((t) => t.sponsoredByMe && !['declined', 'rejected', 'promoted'].includes(t.stage))
@@ -48,6 +48,36 @@ export default async function SliHomePage() {
         </p>
       )}
 
+      {inbox && inbox.toAnswer.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Handoffs waiting for your answer</h2>
+          <ul className="mt-2 flex flex-wrap gap-2 text-sm">
+            {inbox.toAnswer.map((h) => (
+              <li key={h.code + h.kind}>
+                <Link href={`/sli/discovery/${h.code}`} className="block rounded border border-amber-200 bg-amber-50 px-3 py-1.5 hover:border-amber-400">
+                  <span className="font-mono text-xs">{h.code}</span> {h.title}
+                  <span className="text-xs text-zinc-500"> · {h.kind === 'promote' ? `handoff to ${h.department}` : `sent back by ${h.department}`}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {inbox && inbox.received.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Received from Discovery</h2>
+          <ul className="mt-2 space-y-1 text-sm">
+            {inbox.received.map((r) => (
+              <li key={r.code}>
+                <Link href={`/sli/discovery/${r.code}`} className="underline">
+                  {r.code} · {r.title}
+                </Link>
+                <span className="text-xs text-zinc-500"> · {r.department}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {decisionSettings && <DecisionPanel settings={decisionSettings} />}
       {ctx?.canSponsor && <Section title="Waiting for a sponsor" empty="No new Triggers waiting." triggers={waiting} />}
       {ctx?.canSponsor && <Section title="You sponsor" empty="You don’t sponsor any open Triggers." triggers={sponsoring} showStage />}

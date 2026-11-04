@@ -60,7 +60,9 @@ export const BOARD_STAGES: TriggerStage[] = ['new', 'researching', 'concept', 'f
 export const SHELF_STAGES: TriggerStage[] = ['deferred', 'declined', 'rejected']
 
 // contributor: invited to this Trigger's research (sees it, takes no stage actions).
-export type TriggerAccess = 'full' | 'contributor' | 'raiser' | 'summary'
+// destination: a member of the department a handoff goes to (sees the
+// package, not the research).
+export type TriggerAccess = 'full' | 'contributor' | 'destination' | 'raiser' | 'summary'
 
 export type TriggerSummary = {
   id: string
@@ -102,7 +104,18 @@ export type TriggerAction = {
 }
 
 export type TriggerHistoryEntry = {
-  event: 'raised' | 'stage_change' | 'archived' | 'unarchived' | 'contributor_added' | 'contributor_removed'
+  event:
+    | 'raised'
+    | 'stage_change'
+    | 'archived'
+    | 'unarchived'
+    | 'contributor_added'
+    | 'contributor_removed'
+    | 'handoff_proposed'
+    | 'handoff_withdrawn'
+    | 'handoff_returned'
+    | 'send_back_raised'
+    | 'send_back_declined'
   fromStage: TriggerStage | null
   toStage: TriggerStage
   reason: string | null
@@ -113,6 +126,7 @@ export type TriggerHistoryEntry = {
 export type TriggerDetail = TriggerSummary & {
   allowedActions: TriggerAction[]
   decisionInfo?: TriggerDecisionInfo
+  handoffInfo?: TriggerHandoffInfo
   canManageContributors?: boolean
   history: TriggerHistoryEntry[]
 }
@@ -197,4 +211,51 @@ export type DecisionSettings = {
   canSetDelegate: boolean
   candidates: { userId: string; name: string }[]
   waitingForMe: { code: string; title: string }[]
+}
+
+export const SEND_BACK_REASONS = {
+  solution_inadequate: 'Solution inadequate',
+  insufficient_evidence: 'Insufficient evidence',
+  market_changed: 'Market changed',
+  customer_feedback: 'Customer feedback',
+  cost_or_risk_higher: 'Cost or risk higher than assessed',
+} as const
+export type SendBackReason = keyof typeof SEND_BACK_REASONS
+
+export type TriggerHandoff = {
+  id: string
+  kind: 'promote' | 'send_back'
+  status: 'proposed' | 'accepted' | 'returned' | 'withdrawn' | 'declined'
+  destination: string
+  destinationDepartmentId: string
+  toStage: TriggerStage | null
+  reasonCategory: SendBackReason | null
+  downstreamAction: 'pause' | 'close' | null
+  message: string | null
+  conditions: string | null
+  targetIndustries: string | null
+  approvedClaims: string | null
+  reason: string | null
+  decisionReason: string | null
+  proposedBy: string
+  proposedAt: string
+  decidedBy: string | null
+  decidedAt: string | null
+  destinationWorkstreamId: string | null
+  workspaceProjectId: string | null
+  items: { title: string; copiedArtifactId: string | null }[]
+  canDecide: boolean
+  canWithdraw: boolean
+}
+
+export type TriggerHandoffInfo = {
+  handoffs?: TriggerHandoff[]
+  canPropose?: boolean
+  proposeTo?: { departmentId: string; name: string; conditions: string | null } | null
+  canSendBack?: boolean
+}
+
+export type HandoffInbox = {
+  toAnswer: { code: string; title: string; kind: 'promote' | 'send_back'; department: string }[]
+  received: { code: string; title: string; department: string; acceptedAt: string; stage: TriggerStage }[]
 }
