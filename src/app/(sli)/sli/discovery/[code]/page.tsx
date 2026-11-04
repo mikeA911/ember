@@ -5,6 +5,7 @@ import { getSliContext, getTrigger, listContributorCandidates, listResearchStage
 import { StageBadge } from '@/components/sli/StageBadge'
 import { TriggerActions } from '@/components/sli/TriggerActions'
 import { TriggerContributors } from '@/components/sli/TriggerContributors'
+import { TriggerDecision } from '@/components/sli/TriggerDecision'
 import { TriggerResearchChat } from '@/components/sli/TriggerResearchChat'
 import { STAGE_LABELS, type TriggerHistoryEntry } from '@/lib/sli/types'
 
@@ -114,6 +115,19 @@ export default async function TriggerPage({ params }: { params: Promise<{ code: 
           </aside>
         </div>
       )}
+
+      {trigger.decisionInfo &&
+        (trigger.stage === 'under_review' || (trigger.decisionInfo.decisions?.length ?? 0) > 0) &&
+        (trigger.access === 'full' || (trigger.decisionInfo.decisions?.length ?? 0) > 0) && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Decision</h2>
+            <TriggerDecision
+              triggerId={trigger.id}
+              info={trigger.decisionInfo}
+              evidenceOptions={stages.flatMap((st) => st.findings.map((f) => ({ id: f.id, title: f.title, stage: st.name })))}
+            />
+          </section>
+        )}
 
       {!limited && (
         <section className="space-y-4">

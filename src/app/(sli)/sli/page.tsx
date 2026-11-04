@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getSliContext, listTriggers } from '@/lib/sli/api'
+import { getDecisionSettings, getSliContext, listTriggers } from '@/lib/sli/api'
+import { DecisionPanel } from '@/components/sli/DecisionPanel'
 import { TriggerCard } from '@/components/sli/TriggerCard'
 import type { TriggerStage, TriggerSummary } from '@/lib/sli/types'
 
@@ -13,7 +14,7 @@ const IN_PROGRESS: TriggerStage[] = ['researching', 'concept', 'feasibility', 'u
 export default async function SliHomePage() {
   const supabase = await createClient()
   const ctx = await getSliContext(supabase)
-  const triggers = await listTriggers(supabase)
+  const [triggers, decisionSettings] = await Promise.all([listTriggers(supabase), getDecisionSettings(supabase)])
 
   const waiting = ctx?.canSponsor ? triggers.filter((t) => t.stage === 'new') : []
   const sponsoring = triggers.filter((t) => t.sponsoredByMe && !['declined', 'rejected', 'promoted'].includes(t.stage))
@@ -47,6 +48,7 @@ export default async function SliHomePage() {
         </p>
       )}
 
+      {decisionSettings && <DecisionPanel settings={decisionSettings} />}
       {ctx?.canSponsor && <Section title="Waiting for a sponsor" empty="No new Triggers waiting." triggers={waiting} />}
       {ctx?.canSponsor && <Section title="You sponsor" empty="You don’t sponsor any open Triggers." triggers={sponsoring} showStage />}
       {ctx?.isDiscoveryMember && (
