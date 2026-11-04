@@ -9,13 +9,20 @@ function fakeCtx(supabase: unknown): WorkbenchCallerContext {
 }
 
 describe('runListWorkstreams', () => {
-  it('returns each workstream with its real id, name, slug, and status', async () => {
+  it('returns each workstream with its real id, name, slug, status, goal and guidance', async () => {
     const supabase = createFakeSupabase({
       project_workstreams: [
         {
           data: [
-            { id: 'ws-1', name: 'Phase 1 -- Showcase', slug: 'phase-1-showcase', status: 'draft' },
-            { id: 'ws-2', name: 'Phase 2 -- Design Partner', slug: 'phase-2-design-partner', status: 'active' },
+            { id: 'ws-1', name: 'Phase 1 -- Showcase', slug: 'phase-1-showcase', status: 'draft', goal: null, guardrail: null },
+            {
+              id: 'ws-2',
+              name: 'Concept',
+              slug: 'concept',
+              status: 'active',
+              goal: 'Concept paper for TRG-001',
+              guardrail: 'Write the concept paper with these sections',
+            },
           ],
           error: null,
         },
@@ -26,10 +33,27 @@ describe('runListWorkstreams', () => {
 
     expect(result).toEqual({
       workstreams: [
-        { id: 'ws-1', name: 'Phase 1 -- Showcase', slug: 'phase-1-showcase', status: 'draft' },
-        { id: 'ws-2', name: 'Phase 2 -- Design Partner', slug: 'phase-2-design-partner', status: 'active' },
+        { id: 'ws-1', name: 'Phase 1 -- Showcase', slug: 'phase-1-showcase', status: 'draft', goal: null, guidance: null },
+        {
+          id: 'ws-2',
+          name: 'Concept',
+          slug: 'concept',
+          status: 'active',
+          goal: 'Concept paper for TRG-001',
+          guidance: 'Write the concept paper with these sections',
+        },
       ],
     })
+  })
+
+  it('caps long guidance', async () => {
+    const supabase = createFakeSupabase({
+      project_workstreams: [{ data: [{ id: 'ws-1', name: 'A', slug: 'a', status: 'active', goal: null, guardrail: 'x'.repeat(5000) }], error: null }],
+    })
+
+    const result = await runListWorkstreams(fakeCtx(supabase), 'proj-1')
+
+    expect(result.workstreams[0].guidance).toHaveLength(4000)
   })
 
   it('returns an empty list when the project has no workstreams', async () => {
