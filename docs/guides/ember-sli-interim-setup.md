@@ -48,11 +48,11 @@ Supabase's built-in email sender is for testing only: it sends a few emails an h
 node --env-file=.env.local scripts/sli-setup.mjs --owner you@example.com --synthetic
 ```
 
-This creates the Sandz organisation ("Ember Sandz", "Solution Lifecycle Intelligence"), its departments (Discovery team, Marketing, Sales, Presales, Engineering, Project Delivery, Maintenance & Support) and Trigger types, makes you its owner and Discovery team lead, and adds four fictional Triggers. It is safe to re-run; the synthetic Triggers are added only once.
+This creates the Sandz organisation (shown as "Ember", "Solution Lifecycle Intelligence"), its departments (Discovery team, Marketing, Sales, Presales, Engineering, Project Delivery, Maintenance & Support) and Trigger types, makes you its owner and Discovery team lead, and adds four fictional Triggers. It is safe to re-run; the synthetic Triggers are added only once.
 
 ## 4. Turn the module on
 
-In Vercel, `EMBER_SLI_ENABLED=true` (already set on `ember-sli`), then redeploy. Admins and curators see an **Ember Sandz** link in Ember's navigation; people whose access is only through SLI departments see the SLI screens only.
+In Vercel, `EMBER_SLI_ENABLED=true` (already set on `ember-sli`), then redeploy. Admins and curators see a link named after the product (**Ember**) in Ember's navigation; people whose access is only through SLI departments see the SLI screens only.
 
 ## 5. Add people
 

@@ -7,7 +7,7 @@
 //   node --env-file=.env.local scripts/sli-setup.mjs --owner you@example.com [--synthetic]
 //
 // Options (defaults are Sandz's): --name "Sandz" --slug sandz
-//   --product "Ember Sandz" --byline "Solution Lifecycle Intelligence"
+//   --product "Ember" --byline "Solution Lifecycle Intelligence"
 //   --visibility all_members|own
 // The owner must already have an account (a profiles row). Synthetic data
 // only: never put real customer, staff or partner details in --synthetic.
@@ -29,7 +29,7 @@ if (!ownerEmail) throw new Error('Give the owner with --owner <email> (or SLI_OW
 const org = {
   name: arg('name', 'Sandz'),
   slug: arg('slug', 'sandz'),
-  product: arg('product', 'Ember Sandz'),
+  product: arg('product', 'Ember'),
   byline: arg('byline', 'Solution Lifecycle Intelligence'),
   visibility: arg('visibility', 'all_members'),
 }
