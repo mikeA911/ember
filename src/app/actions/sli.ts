@@ -48,6 +48,12 @@ const ArchiveSchema = z.object({
   reason: optionalText(1000),
 })
 
+const ContributorSchema = z.object({
+  triggerId: z.string().uuid(),
+  userId: z.string().uuid(),
+  add: z.boolean(),
+})
+
 function failure(err: unknown): { ok: false; error: string } {
   if (err instanceof SliError || err instanceof AuthError) return { ok: false, error: err.message }
   return { ok: false, error: 'Something went wrong. Try again in a moment.' }
@@ -110,6 +116,24 @@ export async function setTriggerArchivedAction(input: z.input<typeof ArchiveSche
       p_trigger: parsed.data.triggerId,
       p_archived: parsed.data.archived,
       p_reason: parsed.data.reason,
+    })
+    refresh(code)
+    return { ok: true }
+  } catch (err) {
+    return failure(err)
+  }
+}
+
+export async function setTriggerContributorAction(input: z.input<typeof ContributorSchema>): Promise<Result> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  const parsed = ContributorSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'That change isn’t valid.' }
+  try {
+    const { supabase } = await requireUser()
+    const { code } = await sliRpc<{ code: string }>(supabase, 'sli_set_trigger_contributor', {
+      p_trigger: parsed.data.triggerId,
+      p_user: parsed.data.userId,
+      p_add: parsed.data.add,
     })
     refresh(code)
     return { ok: true }

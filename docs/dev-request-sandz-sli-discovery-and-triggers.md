@@ -4,7 +4,7 @@
 
 ## Status
 
-**S2 stages 1 and 2 built (29 October 2026); the rest proposed.** Built: the tenant and departments (ADR-0005), the SLI shell, and the Trigger registry with stages, history and archiving (`supabase/migrations/20261101100001_sli_organizations_and_departments.sql`, `20261101100002_sli_triggers.sql`, `src/app/(sli)/`, tests in `src/lib/sli/database.test.ts`). Next: the research workspace on Workstreams (stage 3) and the two Methods (stage 4).
+**S2 stages 1 and 2 built (29 October 2026); the rest proposed.** Built: the tenant and departments (ADR-0005), the SLI shell, and the Trigger registry with stages, history and archiving (`supabase/migrations/20261101100001_sli_organizations_and_departments.sql`, `20261101100002_sli_triggers.sql`, `src/app/(sli)/`, tests in `src/lib/sli/database.test.ts`). Stage 3, part 1 built (4 November 2026): each accepted Trigger gets its own private research Project, and colleagues can be invited to one Trigger (`20261102100001_sli_trigger_research_projects.sql`). Next: the Research tab itself (the assistant, sources and fit check on the Trigger page) and the two Methods (stage 4).
 
 Discovery becomes the **first stage** of Solution Lifecycle Intelligence (SLI), before Marketing. This document covers milestones **S2** (Discovery workspace and Triggers) and **S3** (management decisions, handoffs and send-backs). It follows [ADR-0002](architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md): Discovery is part of the SLI module and is switched on with it.
 
@@ -102,13 +102,15 @@ Every stage change is recorded in an append-only history (who, when, from, to, r
 
 | Need | Ember feature used underneath |
 |---|---|
-| A private space per Trigger | One **Discovery Project** per instance (confidential, management and appointed analysts). Each Trigger gets its own **Workstream** in it |
+| A private space per Trigger | **One Ember Project per Trigger** (private, confidential), created when a sponsor accepts the Trigger, with a **Research** Workstream. The sponsor owns it; the Discovery team are curators of every Trigger Project |
 | Research and brainstorming | The assistant in the Trigger's Research tab, Tavily web search (ADR-0002, "Web search"), source uploads to the Workstream's own knowledge base, working knowledge notes |
 | Concept and feasibility work | Two published **Methods** written for Sandz: *Concept development* and *Feasibility assessment*. Starting a Trigger's concept stage instantiates the Method in its Workstream |
 | Outputs | **Workstream artifacts**: research dossier, concept paper, feasibility assessment, presentation |
 | Using Sandz knowledge | Enterprise, market and technical knowledge bases attached read-only to the Discovery Project (shared, not copied) |
 | Keeping speculation contained | Project privacy, evidence access groups and the sensitivity gate. The Discovery Project is **confidential**, so financial assumptions go only to AI providers approved for confidential data |
-| Contributors outside management | Added to a single Trigger through an evidence access group, without seeing other Triggers |
+| Contributors outside management | Invited to a single Trigger by its sponsor or the Discovery team, and added to that Trigger's Project only |
+
+**Why a Project per Trigger (decided 4 November 2026).** In Ember, every member of a Project sees all of its Workstreams, notes and the assistant's context; evidence access groups only protect individual documents. A single Discovery Project could not keep one Trigger's research from a colleague invited to another, so each Trigger gets its own Project, the privacy boundary Ember already enforces. SLI users never see these Projects as Projects: the research appears on the Trigger. Project approval is skipped for them only through a reservation written by the SLI functions, so ordinary Projects still need a curator's approval.
 
 ### Fit check
 

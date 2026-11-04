@@ -4,10 +4,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 // Real PostgreSQL, in memory: the SLI migrations run against a small
 // stand-in for the Core objects they reference (profiles, is_admin,
-// set_updated_at, auth). Never reads .env.local or contacts Supabase.
+// set_updated_at, auth, and Projects with their approval and owner
+// membership rules as in 20261004100001 and 20260810120001). Never reads .env.local or contacts Supabase.
 const MIGRATIONS = [
   'supabase/migrations/20261101100001_sli_organizations_and_departments.sql',
   'supabase/migrations/20261101100002_sli_triggers.sql',
+  'supabase/migrations/20261102100001_sli_trigger_research_projects.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 // Sandz: md and cto are Discovery sponsors, analyst is on the Discovery
@@ -59,6 +61,40 @@ beforeAll(async () => {
     create function is_admin(uid uuid) returns boolean language sql stable security definer set search_path = public as $$
       select exists (select 1 from profiles where id = uid and role = 'admin' and is_active) $$;
     create function set_updated_at() returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end; $$;
+    create function is_curator_or_admin(uid uuid) returns boolean language sql stable security definer set search_path = public as $$
+      select exists (select 1 from profiles where id = uid and role in ('curator', 'admin') and is_active) $$;
+    create table projects(id uuid primary key default gen_random_uuid(), name text not null, project_type text not null, objective text,
+      status text not null default 'draft', owner_id uuid references profiles(id), visibility text not null default 'private',
+      discoverability text not null default 'members_only', information_sensitivity text, portfolio_category text not null default 'other',
+      details jsonb not null default '{}', approval_status text not null default 'approved', approval_decided_by uuid,
+      approval_decided_at timestamptz, approval_decision_reason text, pending_members jsonb not null default '[]');
+    create table project_members(id uuid primary key default gen_random_uuid(), project_id uuid not null references projects(id) on delete cascade,
+      user_id uuid not null references profiles(id), role text not null, status text not null default 'active', unique (project_id, user_id));
+    create table project_workstreams(id uuid primary key default gen_random_uuid(), project_id uuid not null references projects(id) on delete cascade,
+      name text not null, slug text not null, status text not null default 'draft', goal text, created_by uuid, unique (project_id, slug));
+    -- Replaced by the SLI migration (which adds the reservation exemption).
+    create function enforce_project_approval() returns trigger language plpgsql as $$ begin return new; end; $$;
+    create trigger projects_enforce_approval before insert or update on projects for each row execute function enforce_project_approval();
+    create function enforce_project_approval_membership() returns trigger language plpgsql security definer set search_path = public as $$
+    declare p record;
+    begin
+      if new.status <> 'active' then return new; end if;
+      select approval_status, owner_id into p from projects where id = new.project_id;
+      if found and p.approval_status <> 'approved' and new.user_id is distinct from p.owner_id then
+        raise exception 'This project is awaiting approval -- members can be added once a curator or admin approves it';
+      end if;
+      return new;
+    end; $$;
+    create trigger project_members_enforce_approval before insert or update on project_members for each row execute function enforce_project_approval_membership();
+    create function create_owner_membership() returns trigger language plpgsql security definer set search_path = public as $$
+    begin
+      if new.owner_id is not null then
+        insert into project_members (project_id, user_id, role, status) values (new.id, new.owner_id, 'owner', 'active')
+        on conflict (project_id, user_id) do nothing;
+      end if;
+      return new;
+    end; $$;
+    create trigger projects_create_owner_membership after insert on projects for each row execute function create_owner_membership();
   `)
   for (const file of MIGRATIONS) {
     const migration = readFileSync(file, 'utf8')
@@ -72,7 +108,8 @@ beforeEach(async () => {
   await db.exec(`
     reset role;
     alter table sli_trigger_stage_history disable trigger sli_trigger_stage_history_append_only;
-    truncate sli_admin_access_log, sli_trigger_stage_history, sli_triggers, sli_trigger_types, sli_department_members,
+    truncate sli_project_reservations, sli_trigger_contributors, project_members, project_workstreams, projects,
+      sli_admin_access_log, sli_trigger_stage_history, sli_triggers, sli_trigger_types, sli_department_members,
       sli_departments, sli_settings, organization_members, organizations, profiles cascade;
     alter table sli_trigger_stage_history enable trigger sli_trigger_stage_history_append_only;
     insert into profiles(id, email, full_name, role, is_active) values
@@ -365,5 +402,138 @@ describe('archiving', () => {
     const t = await raise(isr)
     await as(isr)
     expect((await errorOf(call('sli_set_trigger_archived', t.id, true, 'Mine anyway'))).code).toBe('42501')
+  })
+})
+
+async function members(projectId: string): Promise<Record<string, string>> {
+  await db.exec('reset role')
+  const { rows } = await db.query<{ user_id: string; role: string; status: string }>(
+    'select user_id, role, status from project_members where project_id = $1',
+    [projectId]
+  )
+  await db.exec('set role authenticated')
+  return Object.fromEntries(rows.map((r) => [r.user_id, r.status === 'active' ? r.role : 'inactive']))
+}
+
+describe('research spaces', () => {
+  it('gives an accepted Trigger its own private, approved Project and Research Workstream', async () => {
+    const t = await raise(isr)
+    await move(cto, t.id, 'researching')
+    await as(cto)
+    const detail = await call('sli_get_trigger', t.code)
+    expect(detail.projectId).toEqual(expect.any(String))
+    expect(detail.workstreamId).toEqual(expect.any(String))
+    await db.exec('reset role')
+    const { rows } = await db.query<Json>('select * from projects where id = $1', [detail.projectId])
+    expect(rows[0]).toMatchObject({
+      approval_status: 'approved', visibility: 'private', information_sensitivity: 'confidential', owner_id: cto, portfolio_category: 'sandz',
+    })
+    expect(rows[0].name).toBe('TRG-001 · VMware licensing changes')
+    const ws = await db.query<Json>('select name, slug, status, project_id from project_workstreams where id = $1', [detail.workstreamId])
+    expect(ws.rows[0]).toMatchObject({ name: 'Research', slug: 'research', status: 'active', project_id: detail.projectId })
+    await db.exec('set role authenticated')
+    expect(await members(detail.projectId)).toEqual({ [cto]: 'owner', [md]: 'curator', [analyst]: 'curator' })
+  })
+
+  it('still sends an ordinary Project created by a member for approval', async () => {
+    await db.exec('reset role')
+    await as(isr)
+    const { rows } = await db.query<{ approval_status: string }>(
+      "insert into projects (name, project_type) values ('Side project', 'experiment') returning approval_status"
+    )
+    await db.exec('set role authenticated')
+    // The migration's version of the approval rule exempts reserved Projects only.
+    expect(rows[0].approval_status).toBe('pending')
+  })
+
+  it('creates the space once, however often the Trigger moves', async () => {
+    const t = await raise(isr)
+    await move(cto, t.id, 'researching')
+    await move(cto, t.id, 'concept')
+    await move(cto, t.id, 'researching', 'More data needed')
+    await db.exec('reset role')
+    const { rows } = await db.query<{ n: number }>('select count(*)::int as n from projects')
+    const ws = await db.query<{ n: number }>('select count(*)::int as n from project_workstreams')
+    await db.exec('set role authenticated')
+    expect([rows[0].n, ws.rows[0].n]).toEqual([1, 1])
+  })
+
+  it('keeps the Discovery team in step with every Trigger Project', async () => {
+    const t = await raise(isr)
+    await move(cto, t.id, 'researching')
+    await as(cto)
+    const { projectId } = await call('sli_get_trigger', t.code)
+    await db.exec(`reset role;
+      insert into sli_department_members(organization_id, department_id, user_id, role, can_sponsor) values ('${sandz}', '${discovery}', '${idle}', 'member', false);
+      update sli_department_members set status = 'inactive' where department_id = '${discovery}' and user_id = '${analyst}';
+      set role authenticated;`)
+    expect(await members(projectId)).toEqual({ [cto]: 'owner', [md]: 'curator', [idle]: 'curator', [analyst]: 'inactive' })
+  })
+})
+
+describe('contributors', () => {
+  async function researching() {
+    const t = await raise(md, 'Warehouse monitoring', 'management_idea')
+    await move(cto, t.id, 'researching')
+    await as(cto)
+    const detail = await call('sli_get_trigger', t.code)
+    return { ...t, projectId: detail.projectId as string }
+  }
+
+  it('lets the sponsor invite someone from another department to one Trigger only', async () => {
+    const t = await researching()
+    const other = await raise(cto, 'Another idea', 'management_idea')
+    await move(cto, other.id, 'researching')
+    await as(cto)
+    expect((await call<Json[]>('sli_list_contributor_candidates', t.id)).map((c) => c.userId)).toEqual([isr])
+    expect(await call('sli_set_trigger_contributor', t.id, isr, true)).toMatchObject({ changed: true })
+
+    await as(isr)
+    const seen = await call('sli_get_trigger', t.code)
+    expect(seen).toMatchObject({ access: 'contributor', projectId: t.projectId, summary: expect.any(String), allowedActions: [] })
+    expect(seen.contributors).toEqual([expect.objectContaining({ userId: isr, isMe: true, departments: 'Marketing' })])
+    expect(seen.history.at(-1)).toMatchObject({ event: 'contributor_added', reason: 'Ivy Rep' })
+    expect(await members(t.projectId)).toMatchObject({ [isr]: 'consultant' })
+    // The other Trigger's research stays out of reach.
+    const notMine = await call('sli_get_trigger', other.code)
+    expect(notMine).toMatchObject({ access: 'summary' })
+    expect(notMine).not.toHaveProperty('projectId')
+  })
+
+  it('removes a contributor and their Project access, keeping the record', async () => {
+    const t = await researching()
+    await as(analyst)
+    await call('sli_set_trigger_contributor', t.id, isr, true)
+    await call('sli_set_trigger_contributor', t.id, isr, false)
+    expect(await members(t.projectId)).toMatchObject({ [isr]: 'inactive' })
+    await as(isr)
+    expect(await call('sli_get_trigger', 'TRG-001')).toMatchObject({ access: 'summary' })
+    await as(analyst)
+    const events = (await call('sli_get_trigger', 'TRG-001')).history.map((h: Json) => h.event)
+    expect(events.slice(-2)).toEqual(['contributor_added', 'contributor_removed'])
+  })
+
+  it('refuses invitations from outsiders, to the wrong people, or before research starts', async () => {
+    const t = await researching()
+    await as(isr)
+    expect((await errorOf(call('sli_set_trigger_contributor', t.id, idle, true))).code).toBe('42501')
+    await as(cto)
+    expect((await errorOf(call('sli_set_trigger_contributor', t.id, analyst, true))).message).toMatch(/already sees every Trigger/)
+    expect((await errorOf(call('sli_set_trigger_contributor', t.id, idle, true))).message).toMatch(/departments can be invited/)
+    expect((await errorOf(call('sli_set_trigger_contributor', t.id, rival, true))).message).toMatch(/departments can be invited/)
+    const fresh = await raise(isr, 'Not yet accepted')
+    await as(cto)
+    expect((await errorOf(call('sli_set_trigger_contributor', fresh.id, isr, true))).message).toMatch(/Accept the Trigger/)
+    await as(rival)
+    expect((await errorOf(call('sli_set_trigger_contributor', t.id, isr, true))).code).toBe('42501')
+  })
+
+  it('offers contributor management only to those who may use it', async () => {
+    const t = await researching()
+    await as(cto)
+    expect((await call('sli_get_trigger', t.code)).canManageContributors).toBe(true)
+    await call('sli_set_trigger_contributor', t.id, isr, true)
+    await as(isr)
+    expect((await call('sli_get_trigger', t.code)).canManageContributors).toBe(false)
   })
 })
