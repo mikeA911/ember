@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChatSession, OPEN_FEEDBACK_EVENT } from '@/components/chat/ChatPanel'
 import { ViewBackground, ViewPicker, useViewSettings } from './CalmView'
+import type { SavedView } from '@/lib/view-settings-shared'
 
 // The calm workspace for a Trigger (docs/design-notes/ember-sli-calm-workspace.md):
 // one quiet conversation in the centre, mode chips instead of menus, and
@@ -27,6 +28,7 @@ export function CalmWorkspace({
   fitCheckPrompt,
   taskChips = [],
   panels,
+  savedView,
 }: {
   code: string
   title: string
@@ -40,9 +42,10 @@ export function CalmWorkspace({
   // Find candidates), when they may.
   taskChips?: { label: string; prompt: string; title?: string }[]
   panels: WorkspacePanel[]
+  savedView: SavedView | null
 }) {
   const router = useRouter()
-  const view = useViewSettings()
+  const view = useViewSettings(savedView)
   const [showView, setShowView] = useState(false)
   // Hidden, not unmounted: the conversation is still there when it comes back.
   const [hidden, setHidden] = useState(false)

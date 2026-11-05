@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireUser } from '@/lib/auth'
 import { getDecisionSettings, getHandoffInbox, getSliContext, listTriggers } from '@/lib/sli/api'
 import { CalmHome, type HomeNote } from '@/components/sli/CalmHome'
+import { loadSavedView } from '@/lib/view-settings'
 import type { TriggerStage } from '@/lib/sli/types'
 
 export const metadata = { title: 'Home' }
@@ -15,12 +16,13 @@ const MAX_NOTES = 3
 // in My work (/sli/my-work).
 export default async function SliHomePage() {
   const supabase = await createClient()
-  const [{ profile }, ctx, triggers, decisionSettings, inbox] = await Promise.all([
+  const [{ profile }, ctx, triggers, decisionSettings, inbox, savedView] = await Promise.all([
     requireUser(),
     getSliContext(supabase),
     listTriggers(supabase),
     getDecisionSettings(supabase),
     getHandoffInbox(supabase),
+    loadSavedView(supabase),
   ])
 
   const waiting: HomeNote[] = []
@@ -55,6 +57,7 @@ export default async function SliHomePage() {
       moreWaiting={Math.max(0, waiting.length - MAX_NOTES)}
       suggestions={suggestions}
       canRaise={!!ctx?.isDepartmentMember}
+      savedView={savedView}
     />
   )
 }
