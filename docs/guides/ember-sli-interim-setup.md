@@ -25,6 +25,7 @@ node --env-file=.env.local scripts/run-migrations.mjs 20261108100001_sli_handoff
 node --env-file=.env.local scripts/run-migrations.mjs 20261109100001_sli_customers_and_candidates.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261110100001_sli_assistant_proposals.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261111100001_sli_thinking_aloud_notes.sql
+node --env-file=.env.local scripts/run-migrations.mjs 20261112100001_view_settings.sql 20261112100002_view_photos_storage.sql
 ```
 
 This one also gives Triggers already in research their research space.
@@ -105,3 +106,7 @@ SLI Home (`/sli`) is now the calm greeting with a general conversation. The list
 ## 10. Thinking aloud
 
 **Think aloud** sits beside **Dictate** in the conversation. It uses the same speech-to-text default (section 7), and it is always treated as confidential, so the speech provider's maximum sensitivity must be *Confidential* or the recording is refused. After `20261111100001_sli_thinking_aloud_notes.sql`, notes Ember organises in a Trigger's conversation can be saved to its research with a confirmation card.
+
+## 11. The view, saved with each person
+
+After `20261112100001_view_settings.sql` and `20261112100002_view_photos_storage.sql`, each person's background (scene, dim, soften) is saved with their account, and their own photo is stored in the private Supabase Storage bucket `view-photos`, in a folder only they can read or change. Check under Storage that the bucket exists and is not public. Photos are resized to at most 2400 pixels and 2.5MB before upload.

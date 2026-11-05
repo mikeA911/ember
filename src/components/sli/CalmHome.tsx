@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { ChatSession, OPEN_FEEDBACK_EVENT } from '@/components/chat/ChatPanel'
 import { ViewBackground, ViewPicker, useViewSettings } from './CalmView'
+import type { SavedView } from '@/lib/view-settings-shared'
 
 // SLI Home as the calm greeting (docs/design-notes/ember-sli-calm-workspace.md
 // §2): a greeting, a short note of what is waiting, a few gentle
@@ -36,6 +37,7 @@ export function CalmHome({
   moreWaiting,
   suggestions,
   canRaise,
+  savedView,
 }: {
   firstName: string | null
   productName: string
@@ -44,8 +46,9 @@ export function CalmHome({
   moreWaiting: number
   suggestions: HomeNote[]
   canRaise: boolean
+  savedView: SavedView | null
 }) {
-  const view = useViewSettings()
+  const view = useViewSettings(savedView)
   const [showView, setShowView] = useState(false)
   // Hidden, not unmounted: the conversation is still there when it comes back.
   const [hidden, setHidden] = useState(false)

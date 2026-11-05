@@ -1,6 +1,6 @@
 # Ember SLI: the calm workspace
 
-**Status:** steps 1 to 3 built (9 to 11 November 2026); the rest proposed. Design direction for SLI's user interface, from Mike (30 October 2026), with a clickable prototype (an HTML artifact, synthetic data, simulated speech). Waiting for the Sandz team's reactions before it changes the delivery plan.
+**Status:** steps 1 to 4 built (9 to 12 November 2026). Design direction for SLI's user interface, from Mike (30 October 2026), with a clickable prototype (an HTML artifact, synthetic data, simulated speech). Waiting for the Sandz team's reactions before it changes the delivery plan.
 **Applies to:** Discovery and Marketing screens in Ember SLI ([ADR-0002](../architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md), "UI per audience"; [Discovery design](../dev-request-sandz-sli-discovery-and-triggers.md) §3).
 **Does not change:** the tenant, Trigger, permission and history layer built in S2 (`supabase/migrations/20261101100001_*`, `20261101100002_*`). Every action in the conversation goes through the same database functions.
 
@@ -101,4 +101,4 @@ The app samples the picture's brightness and picks light or dark glass and text 
 
 Also: a **Feedback** button in the calm headers opens Ember's feedback conversation (report a problem, suggest an improvement, request a feature), and SLI has its own **Profile** page (`/sli/profile`: name, departments, password), since Ember Core's profile isn't reachable for SLI-only members.
 
-**Step 4 (next):** keep the view with the person's profile (a private storage bucket for their photo) rather than on the device.
+**Step 4 (12 November 2026): the view follows the person.** The scene, dim and soften are saved with the person's account (`user_view_settings`, `20261112100001_view_settings.sql`, read and written only through functions keyed to the signed-in person), so the same view appears on any device. Their photo is resized in the browser to a JPEG and uploaded into their own folder of the private `view-photos` bucket (`20261112100002_view_photos_storage.sql`: only they can read, add, replace or delete files in it); the app shows it through a signed link that lasts twelve hours, replacing a photo deletes the old one, and **Remove photo** deletes it. Choices kept on a device before this are not carried over.

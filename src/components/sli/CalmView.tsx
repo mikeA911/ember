@@ -1,16 +1,21 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { saveViewSettingsAction, setViewPhotoAction } from '@/app/actions/view-settings'
+import { createClient } from '@/lib/supabase/browser'
+import type { SavedView, ViewScene } from '@/lib/view-settings-shared'
 
 // The calm workspace's background view (docs/design-notes/ember-sli-calm-workspace.md §6):
-// painted scenes, or the person's own photo, behind frosted glass, with
-// dim and soften sliders. Kept on this device for now (localStorage); a
-// photo is resized in the browser before it is kept.
+// painted scenes, the sign-in picture, or the person's own photo, behind
+// frosted glass, with dim and soften sliders. Saved with the person's
+// account (20261112100001_view_settings.sql), so it follows them to any
+// device. Their photo is resized in the browser, then uploaded into their
+// own folder of the private view-photos bucket; only they can see it.
 
-export type ViewSettings = { scene: 'ember' | 'dusk' | 'mist' | 'plain' | 'photo'; photo: string | null; dim: number; soften: number }
+export type ViewSettings = { scene: ViewScene; photo: string | null; dim: number; soften: number }
 
-const STORE = 'ember-sli-view'
 const DEFAULTS: ViewSettings = { scene: 'ember', photo: null, dim: 15, soften: 0 }
+const SAVE_DELAY_MS = 600
 
 // The sign-in page's picture, the default view.
 export const EMBER_SCENE = '/images/ember-sli-login.jpg'
@@ -29,59 +34,73 @@ export const SCENES: Record<'dusk' | 'mist', string> = {
     'linear-gradient(180deg, #e9eeea 0%, #d6e0da 55%, #b9c9bf 100%)',
 }
 
-const CHANGED = 'ember-sli-view-changed'
-
-function readRaw(): string | null {
-  try {
-    return localStorage.getItem(STORE)
-  } catch {
-    return null
-  }
-}
-
-function parse(raw: string | null): ViewSettings {
-  try {
-    const v = JSON.parse(raw || 'null')
-    if (v && typeof v === 'object') return { ...DEFAULTS, ...v }
-  } catch {
-    // Unreadable: defaults.
-  }
-  return DEFAULTS
-}
-
-function subscribe(onChange: () => void) {
-  window.addEventListener('storage', onChange)
-  window.addEventListener(CHANGED, onChange)
-  return () => {
-    window.removeEventListener('storage', onChange)
-    window.removeEventListener(CHANGED, onChange)
-  }
-}
-
-// Saved settings come from localStorage through useSyncExternalStore (the
-// server renders the default view). A photo too large to save is kept in
-// memory for this visit instead.
-export function useViewSettings() {
-  const raw = useSyncExternalStore(subscribe, readRaw, () => null)
-  const [override, setOverride] = useState<ViewSettings | null>(null)
-  const [note, setNote] = useState<string | null>(null)
-  const settings = useMemo(() => override ?? parse(raw), [override, raw])
-  const update = useCallback(
-    (next: Partial<ViewSettings>) => {
-      const merged = { ...settings, ...next }
-      try {
-        localStorage.setItem(STORE, JSON.stringify(merged))
-        setOverride(null)
-        setNote(null)
-        window.dispatchEvent(new Event(CHANGED))
-      } catch {
-        setOverride(merged)
-        setNote('This photo is too large to remember on this device; it stays until you close the page.')
-      }
-    },
-    [settings]
+export function useViewSettings(saved: SavedView | null) {
+  const [settings, setSettings] = useState<ViewSettings>(() =>
+    saved ? { scene: saved.scene, photo: saved.photoUrl, dim: saved.dim, soften: saved.soften } : DEFAULTS
   )
-  return { settings, update, note, setNote }
+  const [note, setNote] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current)
+    },
+    []
+  )
+
+  // Shown at once; saved a moment later, so dragging a slider saves once.
+  const update = useCallback((next: Partial<ViewSettings>) => {
+    setSettings((prev) => {
+      const merged = { ...prev, ...next }
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(() => {
+        void saveViewSettingsAction({ scene: merged.scene, dim: merged.dim, soften: merged.soften }).then((r) => {
+          if (!r.ok) setNote(r.error)
+        })
+      }, SAVE_DELAY_MS)
+      return merged
+    })
+    setNote(null)
+  }, [])
+
+  const uploadPhoto = useCallback(async (file: File) => {
+    setBusy(true)
+    setNote('Saving your photo…')
+    try {
+      const blob = await resizePhoto(file)
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) throw new Error('signed out')
+      const path = `${user.id}/${Date.now()}.jpg`
+      const { error } = await supabase.storage.from('view-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+      if (error) throw error
+      const res = await setViewPhotoAction(path)
+      if (!res.ok) throw new Error(res.error)
+      setSettings((prev) => ({ ...prev, scene: 'photo', photo: res.photoUrl }))
+      setNote(null)
+    } catch {
+      setNote('That photo couldn’t be saved. Try another one, or a smaller one.')
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  const removePhoto = useCallback(async () => {
+    setBusy(true)
+    const res = await setViewPhotoAction(null)
+    setBusy(false)
+    if (!res.ok) {
+      setNote(res.error)
+      return
+    }
+    setSettings((prev) => ({ ...prev, photo: null, scene: prev.scene === 'photo' ? 'ember' : prev.scene }))
+    setNote('Your photo was removed.')
+  }, [])
+
+  return { settings, update, note, setNote, busy, uploadPhoto, removePhoto }
 }
 
 export function ViewBackground({ settings }: { settings: ViewSettings }) {
@@ -109,7 +128,8 @@ export function ViewBackground({ settings }: { settings: ViewSettings }) {
   )
 }
 
-async function resizePhoto(file: File): Promise<string> {
+// Up to 2400px on the long side, as a JPEG under the bucket's 5MB limit.
+async function resizePhoto(file: File): Promise<Blob> {
   const url = URL.createObjectURL(file)
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -123,13 +143,15 @@ async function resizePhoto(file: File): Promise<string> {
     canvas.width = Math.round(img.naturalWidth * scale)
     canvas.height = Math.round(img.naturalHeight * scale)
     canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
+    const toJpeg = (quality: number) =>
+      new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('encode'))), 'image/jpeg', quality))
     let quality = 0.85
-    let data = canvas.toDataURL('image/jpeg', quality)
-    while (data.length > 2_600_000 && quality > 0.45) {
+    let blob = await toJpeg(quality)
+    while (blob.size > 2_500_000 && quality > 0.45) {
       quality -= 0.1
-      data = canvas.toDataURL('image/jpeg', quality)
+      blob = await toJpeg(quality)
     }
-    return data
+    return blob
   } finally {
     URL.revokeObjectURL(url)
   }
@@ -140,6 +162,9 @@ export function ViewPicker({
   update,
   note,
   setNote,
+  busy,
+  uploadPhoto,
+  removePhoto,
   onClose,
 }: ReturnType<typeof useViewSettings> & { onClose: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -150,11 +175,7 @@ export function ViewPicker({
       setNote('Choose an image file (JPG or PNG).')
       return
     }
-    try {
-      update({ scene: 'photo', photo: await resizePhoto(file) })
-    } catch {
-      setNote('That image couldn’t be opened. Try another one.')
-    }
+    await uploadPhoto(file)
   }
 
   return (
@@ -208,9 +229,14 @@ export function ViewPicker({
         </button>
       </div>
       {settings.photo && (
-        <button type="button" onClick={() => fileRef.current?.click()} className="text-xs text-zinc-600 underline">
-          Choose a different photo
-        </button>
+        <div className="flex gap-3 text-xs text-zinc-600">
+          <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="underline disabled:opacity-50">
+            Choose a different photo
+          </button>
+          <button type="button" disabled={busy} onClick={() => void removePhoto()} className="underline disabled:opacity-50">
+            Remove photo
+          </button>
+        </div>
       )}
       <input
         ref={fileRef}
@@ -230,7 +256,7 @@ export function ViewPicker({
         Soften <span className="float-right tabular-nums">{settings.soften}</span>
         <input type="range" min={0} max={16} value={settings.soften} onChange={(e) => update({ soften: Number(e.target.value) })} className="mt-1 w-full accent-orange-500" />
       </label>
-      <p className="text-xs text-zinc-500">{note ?? 'Your view stays on this device only.'}</p>
+      <p className="text-xs text-zinc-500">{note ?? 'Your view is saved with your account. Your photo is private to you.'}</p>
     </div>
   )
 }
