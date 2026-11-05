@@ -61,12 +61,15 @@ export default async function DiscoveryPage({ searchParams }: { searchParams: Pr
         <TriggerGrid triggers={visible} empty="No archived Triggers." />
       ) : (
         <>
-          <div className="overflow-x-auto pb-2">
+          {/* The board uses the whole window width (wider than the page
+              column), so all eight stages fit on a laptop; on a narrower
+              screen it scrolls sideways. */}
+          <div className="relative left-1/2 w-[min(calc(100vw-2rem),120rem)] -translate-x-1/2 overflow-x-auto pb-2">
             <div className="flex gap-3">
               {BOARD_STAGES.map((stage) => {
                 const column = visible.filter((t) => t.stage === stage)
                 return (
-                  <section key={stage} className="w-56 shrink-0">
+                  <section key={stage} className="min-w-40 flex-1 basis-0">
                     <h2 className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-zinc-500">
                       {STAGE_LABELS[stage]}
                       <span className="font-normal">{column.length}</span>
