@@ -37,7 +37,7 @@ export default async function SliLayout({ children }: { children: React.ReactNod
     <div className="flex flex-1 flex-col bg-zinc-50">
       <SliHeader
         productName={ctx.productName}
-        byline={ctx.byline}
+        organizationName={ctx.organizationName}
         logoUrl={brandingUrls.logo}
         showCoreLink={role === 'admin' || role === 'curator'}
       />

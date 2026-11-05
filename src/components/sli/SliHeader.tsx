@@ -17,12 +17,13 @@ const NAV = [
 
 export function SliHeader({
   productName,
-  byline,
+  organizationName,
   logoUrl,
   showCoreLink,
 }: {
   productName: string
-  byline: string
+  // Shown under the product name: the organisation using it.
+  organizationName: string
   logoUrl: string
   showCoreLink: boolean
 }) {
@@ -46,7 +47,7 @@ export function SliHeader({
             </span>
             <span className="leading-tight">
               <span className="block text-sm font-semibold text-zinc-900">{productName}</span>
-              {byline && <span className="block text-xs text-zinc-500">{byline}</span>}
+              {organizationName && <span className="block text-xs text-zinc-500">{organizationName}</span>}
             </span>
           </Link>
           <nav className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-600">
