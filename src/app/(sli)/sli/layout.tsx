@@ -38,6 +38,7 @@ export default async function SliLayout({ children }: { children: React.ReactNod
       <SliHeader
         productName={ctx.productName}
         organizationName={ctx.organizationName}
+        userName={(profile as Profile).full_name ?? (profile as Profile).email}
         logoUrl={brandingUrls.logo}
         showCoreLink={role === 'admin' || role === 'curator'}
       />

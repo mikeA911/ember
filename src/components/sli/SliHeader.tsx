@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/browser'
+import { AccountLink } from './AccountLink'
 
 // The SLI shell's header (docs/dev-request-sandz-sli-discovery-and-triggers.md
 // §3): SLI navigation only, in the organisation's own name. Platform admins
@@ -18,12 +19,14 @@ const NAV = [
 export function SliHeader({
   productName,
   organizationName,
+  userName,
   logoUrl,
   showCoreLink,
 }: {
   productName: string
   // Shown under the product name: the organisation using it.
   organizationName: string
+  userName: string | null
   logoUrl: string
   showCoreLink: boolean
 }) {
@@ -67,9 +70,7 @@ export function SliHeader({
               Ember admin
             </Link>
           )}
-          <Link href="/sli/profile" className={pathname === '/sli/profile' ? 'font-medium text-zinc-900' : 'hover:text-zinc-900'}>
-            Profile
-          </Link>
+          <AccountLink name={userName} className={pathname === '/sli/profile' ? 'bg-zinc-100 font-medium text-zinc-900' : 'hover:bg-zinc-100'} />
           <button onClick={handleSignOut} className="underline">
             Sign out
           </button>

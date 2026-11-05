@@ -12,6 +12,7 @@ import { TriggerDecision } from '@/components/sli/TriggerDecision'
 import { TriggerHandoffs } from '@/components/sli/TriggerHandoffs'
 import { STAGE_LABELS } from '@/lib/sli/types'
 import { loadSavedView } from '@/lib/view-settings'
+import { requireUser } from '@/lib/auth'
 
 const FIND_CANDIDATES_PROMPT =
   'Help me find candidate customers for this Trigger. Ask me one question at a time about who it is for, look companies up in our registry, and propose each good fit as a candidate (with its tier and why) for me to confirm. If a company isn’t in the registry, propose adding it.'
@@ -33,10 +34,11 @@ export default async function TriggerWorkspacePage({ params }: { params: Promise
   if (!view) notFound()
   const { trigger, ctx } = view
 
-  const [fitCheckPrompt, stagePrompt, savedView] = await Promise.all([
+  const [fitCheckPrompt, stagePrompt, savedView, { profile }] = await Promise.all([
     sliRpc<string>(supabase, 'sli_fit_check_prompt'),
     trigger.stage === 'concept' || trigger.stage === 'feasibility' ? sliRpc<string>(supabase, 'sli_stage_prompt', { p_stage: trigger.stage }) : Promise.resolve(null),
     loadSavedView(supabase),
+    requireUser(),
   ])
 
   const panels: WorkspacePanel[] = [
@@ -131,6 +133,7 @@ export default async function TriggerWorkspacePage({ params }: { params: Promise
       fitCheckPrompt={fitCheckPrompt}
       taskChips={taskChips}
       savedView={savedView}
+      userName={profile.full_name ?? profile.email}
       panels={panels}
     />
   )

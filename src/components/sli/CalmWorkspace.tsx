@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChatSession, OPEN_FEEDBACK_EVENT } from '@/components/chat/ChatPanel'
 import { ViewBackground, ViewPicker, useViewSettings } from './CalmView'
+import { AccountLink } from './AccountLink'
 import type { SavedView } from '@/lib/view-settings-shared'
 
 // The calm workspace for a Trigger (docs/design-notes/ember-sli-calm-workspace.md):
@@ -29,6 +30,7 @@ export function CalmWorkspace({
   taskChips = [],
   panels,
   savedView,
+  userName,
 }: {
   code: string
   title: string
@@ -43,6 +45,7 @@ export function CalmWorkspace({
   taskChips?: { label: string; prompt: string; title?: string }[]
   panels: WorkspacePanel[]
   savedView: SavedView | null
+  userName: string | null
 }) {
   const router = useRouter()
   const view = useViewSettings(savedView)
@@ -137,6 +140,7 @@ export function CalmWorkspace({
           <Link href={`/sli/discovery/${code}`} className="rounded-full px-3 py-1 text-zinc-600 hover:bg-white">
             Classic page
           </Link>
+          <AccountLink name={userName} />
         </nav>
       </header>
 
