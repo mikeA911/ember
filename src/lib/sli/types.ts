@@ -359,7 +359,7 @@ export type DuplicateMatch = { id: string; name: string; domain: string | null; 
 
 // A change Ember proposed in a conversation, waiting for (or decided by)
 // the person (20261110100001_sli_assistant_proposals.sql).
-export type SliProposalKind = 'raise_trigger' | 'add_candidate' | 'create_customer' | 'record_recommendation'
+export type SliProposalKind = 'raise_trigger' | 'add_candidate' | 'create_customer' | 'record_recommendation' | 'save_notes'
 export type SliProposal = {
   id: string
   kind: SliProposalKind

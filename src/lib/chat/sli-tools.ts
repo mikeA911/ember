@@ -89,6 +89,11 @@ const ProposeRecommendationInput = z.object({
   comments: Optional,
 })
 
+const ProposeNotesInput = z.object({
+  title: z.string().min(3).max(200).describe('For example "Thinking aloud, 5 November" or what the notes are about'),
+  content: z.string().min(10).max(100000).describe('The notes as Markdown, exactly as the person last saw and agreed them'),
+})
+
 const TOOLS = {
   sli_find_customers: {
     description:
@@ -114,6 +119,12 @@ const TOOLS = {
     schema: ProposeCandidateInput,
     triggerOnly: true,
   },
+  sli_propose_notes: {
+    description:
+      'Propose saving notes (for example notes from thinking aloud or a brainstorm) to this Trigger’s research, as findings in its Research workstream. Does not save anything until the person confirms. Only when the person asks to save them.',
+    schema: ProposeNotesInput,
+    triggerOnly: true,
+  },
   sli_propose_recommendation: {
     description:
       'Propose recording the person’s recommendation on this Trigger while it is under review (approve, revise, defer or reject). Does not save anything until the person confirms. Only when the person has said what they recommend.',
@@ -129,6 +140,7 @@ const KIND: Record<Exclude<SliToolName, 'sli_find_customers'>, SliProposal['kind
   sli_propose_new_customer: 'create_customer',
   sli_propose_candidate_customer: 'add_candidate',
   sli_propose_recommendation: 'record_recommendation',
+  sli_propose_notes: 'save_notes',
 }
 
 export function isSliToolName(name: string): name is SliToolName {
@@ -144,8 +156,8 @@ export function sliToolSpecs(context: SliChatContext): ToolSpec[] {
 export function buildSliPromptAddendum(context: SliChatContext): string {
   const types = context.triggerTypes.map((t) => `${t.code} (${t.label})`).join(', ')
   const trigger = context.trigger
-    ? `\n\nThis conversation is the research conversation of Trigger ${context.trigger.code}, "${context.trigger.title}", now at stage ${context.trigger.stage.replace('_', ' ')}. Candidate customers and recommendations you propose apply to this Trigger.`
-    : ''
+    ? `\n\nThis conversation is the research conversation of Trigger ${context.trigger.code}, "${context.trigger.title}", now at stage ${context.trigger.stage.replace('_', ' ')}. Candidate customers, recommendations and notes you propose apply to this Trigger. When the person wants notes saved (from thinking aloud or a brainstorm), propose them with sli_propose_notes rather than saving them yourself.`
+    : `\n\nNotes from thinking aloud here are not saved anywhere unless the person turns them into a Trigger: if the notes describe an event, idea or lesson that may justify a new solution, you may offer to propose it as a Trigger.`
   return `\n\nYou are also working in ${context.sli.productName} (${context.sli.byline}) for ${context.sli.organizationName}. Be calm and brief, and ask one question at a time rather than a list of questions.
 
 You can look companies up with sli_find_customers. You can never change an SLI record yourself: the sli_propose_* tools only create a proposal, which the person sees as a card with Confirm and Cancel. Nothing is saved until they confirm. So never say a Trigger was raised, a company added, a candidate added or a recommendation recorded unless a tool result in this conversation says its status is "confirmed". After proposing, say in one short sentence what you proposed and that it is waiting for them to confirm on the card. If a proposal is refused, say why in plain words and ask what they would like to do. Don't propose with guesses: ask for anything you need first (for a Trigger: a title, its type and a short summary of what happened).

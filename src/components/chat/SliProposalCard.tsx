@@ -49,6 +49,8 @@ function details(p: SliProposal): [string, string | null][] {
         ['Candidate', candidate ? tier(candidate.tier) : null],
         ['Why', candidate ? text(candidate.fitRationale) : null],
       ]
+    case 'save_notes':
+      return [['Title', text(d.title)]]
     case 'record_recommendation':
       return [
         ['Recommend', RECOMMENDATIONS[String(d.recommendation)] ?? text(d.recommendation)],
@@ -92,6 +94,16 @@ function Outcome({ p }: { p: SliProposal }) {
       )
     case 'record_recommendation':
       return <>Recommendation recorded on {trigger} · in the history</>
+    case 'save_notes':
+      return (
+        <>
+          Saved to{' '}
+          <Link href={`/sli/discovery/${trigger}/workspace`} className="underline">
+            {trigger}
+          </Link>
+          ’s research · under Saved
+        </>
+      )
   }
 }
 
@@ -137,6 +149,12 @@ export function SliProposalCard({ proposal: initial }: { proposal: SliProposal }
             </div>
           ))}
         </dl>
+      )}
+      {proposal.kind === 'save_notes' && text(proposal.payload.content) && (
+        <details className="mt-2 text-xs text-zinc-700">
+          <summary className="cursor-pointer text-zinc-500">The notes</summary>
+          <div className="mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap rounded bg-zinc-50 p-2">{text(proposal.payload.content)}</div>
+        </details>
       )}
       {proposal.status === 'failed' && (
         <p className="mt-2 text-xs text-red-700">Not saved: {proposal.error ?? 'it was refused.'} Tell Ember what to change.</p>

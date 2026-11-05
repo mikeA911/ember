@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { ChatSession } from '@/components/chat/ChatPanel'
+import { ChatSession, OPEN_FEEDBACK_EVENT } from '@/components/chat/ChatPanel'
 import { ViewBackground, ViewPicker, useViewSettings } from './CalmView'
 
 // SLI Home as the calm greeting (docs/design-notes/ember-sli-calm-workspace.md
@@ -82,9 +82,21 @@ export function CalmHome({
           <Link href="/sli/my-work" className="rounded-full px-3 py-1 hover:bg-white">My work</Link>
           <Link href="/sli/discovery" className="rounded-full px-3 py-1 hover:bg-white">Discovery</Link>
           <Link href="/sli/customers" className="rounded-full px-3 py-1 hover:bg-white">Customers</Link>
+          <Link href="/sli/profile" className="rounded-full px-3 py-1 hover:bg-white">Profile</Link>
           <span aria-hidden="true" className="mx-1 h-4 w-px bg-zinc-300" />
           <button type="button" onClick={() => setHidden((h) => !h)} aria-pressed={hidden} className="rounded-full px-3 py-1 hover:bg-white">
             {hidden ? 'Show conversation' : 'Hide conversation'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setHidden(false)
+              window.dispatchEvent(new Event(OPEN_FEEDBACK_EVENT))
+            }}
+            title="Report a problem or suggest an improvement"
+            className="rounded-full px-3 py-1 hover:bg-white"
+          >
+            Feedback
           </button>
           <button type="button" onClick={() => setShowView((v) => !v)} aria-expanded={showView} className="rounded-full px-3 py-1 hover:bg-white">
             View

@@ -24,8 +24,11 @@ export async function transcribeAudioAction(formData: FormData): Promise<{ text:
   const ctx = await requireUser()
   const audio = formData.get('audio')
   const projectId = formData.get('projectId')
+  // Thinking aloud: always treated as confidential, wherever it happens.
+  const confidential = formData.get('confidential') === '1'
   if (!(audio instanceof File) || audio.size === 0) return { error: 'No recording was received.' }
   if (audio.size > MAX_AUDIO_BYTES) return { error: 'That recording is too long. Keep dictation under three minutes.' }
+  // Thinking aloud sends its recording in two-minute parts, each under this limit.
   if (!audio.type.startsWith('audio/')) return { error: 'That isn’t an audio recording.' }
 
   const speech = await getSpeechProvider(ctx.supabase)
@@ -37,6 +40,7 @@ export async function transcribeAudioAction(formData: FormData): Promise<{ text:
     if (!project) return { error: 'You don’t have access to that Project.' }
     sensitivity = project.information_sensitivity ?? 'internal'
   }
+  if (confidential && sensitivity !== 'restricted') sensitivity = 'confidential'
 
   try {
     await assertProviderEligible(ctx.supabase, speech.provider.id, sensitivity)

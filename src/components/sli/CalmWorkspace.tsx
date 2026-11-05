@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChatSession } from '@/components/chat/ChatPanel'
+import { ChatSession, OPEN_FEEDBACK_EVENT } from '@/components/chat/ChatPanel'
 import { ViewBackground, ViewPicker, useViewSettings } from './CalmView'
 
 // The calm workspace for a Trigger (docs/design-notes/ember-sli-calm-workspace.md):
@@ -15,7 +15,7 @@ import { ViewBackground, ViewPicker, useViewSettings } from './CalmView'
 export type WorkspacePanel = { key: string; label: string; content: ReactNode; attention?: boolean }
 
 const BRAINSTORM_PROMPT =
-  'Let’s brainstorm this Trigger together. Ask me one question at a time and collect my ideas as short notes, grouped into: the offer, who it is for, open questions, and feelings worth keeping. Don’t judge or critique the ideas yet. When I say "save the notes", save them as an artifact titled "Brainstorm notes" in the Research workstream.'
+  'Let’s brainstorm this Trigger together. Ask me one question at a time and collect my ideas as short notes, grouped into: the offer, who it is for, open questions, and feelings worth keeping. Don’t judge or critique the ideas yet. When I say "save the notes", propose saving them as "Brainstorm notes" for me to confirm.'
 
 export function CalmWorkspace({
   code,
@@ -113,6 +113,21 @@ export function CalmWorkspace({
           <button type="button" onClick={() => setHidden((h) => !h)} aria-pressed={hidden} className="rounded-full px-3 py-1 hover:bg-white">
             {hidden ? 'Show conversation' : 'Hide conversation'}
           </button>
+          {projectId && (
+            <>
+          <button
+            type="button"
+            onClick={() => {
+              setHidden(false)
+              window.dispatchEvent(new Event(OPEN_FEEDBACK_EVENT))
+            }}
+            title="Report a problem or suggest an improvement"
+            className="rounded-full px-3 py-1 hover:bg-white"
+          >
+            Feedback
+          </button>
+            </>
+          )}
           <button type="button" onClick={() => setShowView((v) => !v)} aria-expanded={showView} className="rounded-full px-3 py-1 hover:bg-white">
             View
           </button>
