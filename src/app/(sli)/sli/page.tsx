@@ -51,6 +51,7 @@ export default async function SliHomePage() {
   return (
     <CalmHome
       firstName={firstName}
+      userName={profile.full_name ?? profile.email}
       productName={ctx?.productName ?? 'Ember SLI'}
       organizationName={ctx?.organizationName ?? ''}
       notes={waiting.slice(0, MAX_NOTES)}

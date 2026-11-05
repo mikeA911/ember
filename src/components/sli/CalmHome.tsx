@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { ChatSession, OPEN_FEEDBACK_EVENT } from '@/components/chat/ChatPanel'
 import { ViewBackground, ViewPicker, useViewSettings } from './CalmView'
+import { AccountLink } from './AccountLink'
 import type { SavedView } from '@/lib/view-settings-shared'
 
 // SLI Home as the calm greeting (docs/design-notes/ember-sli-calm-workspace.md
@@ -31,6 +32,7 @@ function greetingNow(): string {
 
 export function CalmHome({
   firstName,
+  userName,
   productName,
   organizationName,
   notes,
@@ -40,6 +42,7 @@ export function CalmHome({
   savedView,
 }: {
   firstName: string | null
+  userName: string | null
   productName: string
   organizationName: string
   notes: HomeNote[]
@@ -85,7 +88,6 @@ export function CalmHome({
           <Link href="/sli/my-work" className="rounded-full px-3 py-1 hover:bg-white">My work</Link>
           <Link href="/sli/discovery" className="rounded-full px-3 py-1 hover:bg-white">Discovery</Link>
           <Link href="/sli/customers" className="rounded-full px-3 py-1 hover:bg-white">Customers</Link>
-          <Link href="/sli/profile" className="rounded-full px-3 py-1 hover:bg-white">Profile</Link>
           <span aria-hidden="true" className="mx-1 h-4 w-px bg-zinc-300" />
           <button type="button" onClick={() => setHidden((h) => !h)} aria-pressed={hidden} className="rounded-full px-3 py-1 hover:bg-white">
             {hidden ? 'Show conversation' : 'Hide conversation'}
@@ -104,6 +106,7 @@ export function CalmHome({
           <button type="button" onClick={() => setShowView((v) => !v)} aria-expanded={showView} className="rounded-full px-3 py-1 hover:bg-white">
             View
           </button>
+          <AccountLink name={userName} />
         </nav>
       </header>
 
