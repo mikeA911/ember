@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -14,6 +15,7 @@ export function ResetPasswordForm({ firstSignIn = false, redirectTo = '/dashboar
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
+  const [noSession, setNoSession] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -31,6 +33,15 @@ export function ResetPasswordForm({ firstSignIn = false, redirectTo = '/dashboar
 
     setSubmitting(true)
     const supabase = createClient()
+    // Only works signed in: after sign-in, or from a reset link (/auth/confirm).
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      setSubmitting(false)
+      setNoSession(true)
+      return
+    }
     // Clears the first-sign-in flag in the same call (src/lib/password-change.ts).
     const { error: updateError } = await supabase.auth.updateUser({ password, data: { must_change_password: false } })
 
@@ -80,6 +91,15 @@ export function ResetPasswordForm({ firstSignIn = false, redirectTo = '/dashboar
         />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {noSession && (
+        <p className="text-sm text-red-600">
+          This page needs a valid reset link, and yours has expired or was opened in a different browser.{' '}
+          <Link href="/forgot-password" className="underline">
+            Ask for a new link
+          </Link>
+          .
+        </p>
+      )}
       {done && <p className="text-sm text-green-700">Password updated. Use it next time you sign in.</p>}
       <button
         type="submit"
