@@ -67,6 +67,9 @@ export function SliHeader({
               Ember admin
             </Link>
           )}
+          <Link href="/sli/profile" className={pathname === '/sli/profile' ? 'font-medium text-zinc-900' : 'hover:text-zinc-900'}>
+            Profile
+          </Link>
           <button onClick={handleSignOut} className="underline">
             Sign out
           </button>

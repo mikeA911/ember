@@ -16,4 +16,5 @@ export async function updateOwnFullNameAction(fullName: string) {
   const { error } = await admin.from('profiles').update({ full_name: fullName || null }).eq('id', user.id)
   if (error) throw error
   revalidatePath('/profile')
+  revalidatePath('/sli', 'layout')
 }

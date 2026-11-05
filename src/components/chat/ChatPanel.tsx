@@ -55,6 +55,7 @@ const FEEDBACK_CATEGORIES: { type: FeedbackType; label: string }[] = [
   { type: 'improvement', label: 'Suggest an improvement' },
   { type: 'feature_request', label: 'Request a new feature' },
 ]
+export const OPEN_FEEDBACK_EVENT = 'ember-open-feedback'
 const FEEDBACK_LABEL_BY_TYPE: Record<string, string> = Object.fromEntries(FEEDBACK_CATEGORIES.map((c) => [c.type, c.label]))
 
 // Whether the header options are open, remembered per browser. Kept in
@@ -864,6 +865,14 @@ export function ChatSession({
     setLastFailedMessage(null)
     setShowFeedbackChooser(true)
   }
+
+  // A Feedback button outside the panel (the calm headers) asks for the
+  // chooser with this event; see OPEN_FEEDBACK_EVENT.
+  useEffect(() => {
+    const onOpen = () => openFeedbackChooser()
+    window.addEventListener(OPEN_FEEDBACK_EVENT, onOpen)
+    return () => window.removeEventListener(OPEN_FEEDBACK_EVENT, onOpen)
+  })
 
   function chooseFeedbackCategory(category: FeedbackType) {
     setShowFeedbackChooser(false)

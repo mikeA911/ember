@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChatSession } from '@/components/chat/ChatPanel'
+import { ChatSession, OPEN_FEEDBACK_EVENT } from '@/components/chat/ChatPanel'
 import { ViewBackground, ViewPicker, useViewSettings } from './CalmView'
 
 // The calm workspace for a Trigger (docs/design-notes/ember-sli-calm-workspace.md):
@@ -113,6 +113,21 @@ export function CalmWorkspace({
           <button type="button" onClick={() => setHidden((h) => !h)} aria-pressed={hidden} className="rounded-full px-3 py-1 hover:bg-white">
             {hidden ? 'Show conversation' : 'Hide conversation'}
           </button>
+          {projectId && (
+            <>
+          <button
+            type="button"
+            onClick={() => {
+              setHidden(false)
+              window.dispatchEvent(new Event(OPEN_FEEDBACK_EVENT))
+            }}
+            title="Report a problem or suggest an improvement"
+            className="rounded-full px-3 py-1 hover:bg-white"
+          >
+            Feedback
+          </button>
+            </>
+          )}
           <button type="button" onClick={() => setShowView((v) => !v)} aria-expanded={showView} className="rounded-full px-3 py-1 hover:bg-white">
             View
           </button>

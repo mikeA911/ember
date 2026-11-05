@@ -99,4 +99,6 @@ The app samples the picture's brightness and picks light or dark glass and text 
 - In a Trigger's conversation, "save the notes" becomes a confirmation card (`save_notes`, `20261111100001_sli_thinking_aloud_notes.sql`); confirming saves them as findings in the Trigger's Research workstream, marked as created by the assistant, so they appear under **Saved**. Brainstorm notes now go the same way. On Home, Ember can offer to raise a Trigger from the notes instead.
 - To learn from testers: Taglish accuracy, whether ten minutes is right, and whether the transcript should be saved with the notes (today only the notes are).
 
+Also: a **Feedback** button in the calm headers opens Ember's feedback conversation (report a problem, suggest an improvement, request a feature), and SLI has its own **Profile** page (`/sli/profile`: name, departments, password), since Ember Core's profile isn't reachable for SLI-only members.
+
 **Step 4 (next):** keep the view with the person's profile (a private storage bucket for their photo) rather than on the device.

@@ -6,16 +6,19 @@ import { createClient } from '@/lib/supabase/browser'
 
 // firstSignIn: the person signed in with a temporary password
 // (scripts/sli-add-members.mjs) and must choose their own before going on.
-export function ResetPasswordForm({ firstSignIn = false }: { firstSignIn?: boolean }) {
+// redirectTo null: stay on the page and say it worked (the SLI profile page).
+export function ResetPasswordForm({ firstSignIn = false, redirectTo = '/dashboard' }: { firstSignIn?: boolean; redirectTo?: string | null }) {
   const router = useRouter()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [done, setDone] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setDone(false)
 
     if (password !== confirmPassword) {
       setError('Passwords do not match')
@@ -36,7 +39,13 @@ export function ResetPasswordForm({ firstSignIn = false }: { firstSignIn?: boole
       setError(updateError.message)
       return
     }
-    router.push('/dashboard')
+    if (redirectTo === null) {
+      setPassword('')
+      setConfirmPassword('')
+      setDone(true)
+      return
+    }
+    router.push(redirectTo)
     router.refresh()
   }
 
@@ -71,6 +80,7 @@ export function ResetPasswordForm({ firstSignIn = false }: { firstSignIn?: boole
         />
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {done && <p className="text-sm text-green-700">Password updated. Use it next time you sign in.</p>}
       <button
         type="submit"
         disabled={submitting}
