@@ -2,7 +2,14 @@
 // For each person in a JSON list it creates the account if needed, with a
 // random temporary password they must change at first sign-in, then their
 // profile (role member; an existing role is never changed), organisation
-// membership and department membership. Safe to re-run.
+// membership and department membership. Safe to re-run, and works for
+// accounts that already exist (for example ones created in Ember Core's
+// admin pages): they are added to the organisation and departments too.
+//
+// The file is the truth for each listed person's departments: they end up
+// in exactly the departments listed for them, and taken out of any other
+// (the output says so). Someone in two departments is listed twice, once
+// per department. People not in the file are never touched.
 //
 //   node --env-file=.env.local scripts/sli-add-members.mjs sli-members.local.json [--org sandz] [--reset-passwords] [--shared-password]
 //
@@ -109,12 +116,23 @@ for (let page = 1; ; page++) {
   if (data.users.length < 200) break
 }
 
-const handout = []
+// One person per email, with every department listed for them.
+const byEmail = new Map()
 for (const p of people) {
   const email = p.email.trim().toLowerCase()
   const dept = deptByCode[p.department]
   if (!dept) throw new Error(`Unknown department "${p.department}" for ${email}. Known: ${Object.keys(deptByCode).join(', ')}`)
-  const name = p.name?.trim() || null
+  const person = byEmail.get(email) ?? { email, name: null, entries: [], decides: false }
+  person.name = person.name ?? (p.name?.trim() || null)
+  person.decides = person.decides || p.decides === true
+  if (person.entries.some((e) => e.dept.id === dept.id)) throw new Error(`${email} is listed twice for ${dept.name}`)
+  person.entries.push({ dept, role: p.role ?? 'member', sponsor: p.sponsor === true })
+  byEmail.set(email, person)
+}
+
+const handout = []
+for (const person of byEmail.values()) {
+  const { email, name } = person
 
   let user = allUsers.find((u) => u.email?.toLowerCase() === email)
   let password = null
@@ -162,21 +180,38 @@ for (const p of people) {
     ),
     `Membership ${email}`
   )
-  must(
-    await db.from('sli_department_members').upsert(
-      {
-        organization_id: org.id,
-        department_id: dept.id,
-        user_id: user.id,
-        role: p.role ?? 'member',
-        can_sponsor: dept.code === 'discovery' && p.sponsor === true,
-        status: 'active',
-      },
-      { onConflict: 'department_id,user_id' }
-    ),
-    `Department ${email}`
+  for (const e of person.entries) {
+    must(
+      await db.from('sli_department_members').upsert(
+        {
+          organization_id: org.id,
+          department_id: e.dept.id,
+          user_id: user.id,
+          role: e.role,
+          can_sponsor: e.dept.code === 'discovery' && e.sponsor,
+          status: 'active',
+        },
+        { onConflict: 'department_id,user_id' }
+      ),
+      `Department ${email}`
+    )
+  }
+  // Out of any department not listed for them.
+  const listed = new Set(person.entries.map((e) => e.dept.id))
+  const current = must(
+    await db.from('sli_department_members').select('department_id').eq('organization_id', org.id).eq('user_id', user.id).eq('status', 'active'),
+    `Departments ${email}`
   )
-  if (p.decides === true) {
+  const removed = []
+  for (const row of current.filter((r) => !listed.has(r.department_id))) {
+    must(
+      await db.from('sli_department_members').update({ status: 'inactive' }).eq('department_id', row.department_id).eq('user_id', user.id),
+      `Remove ${email}`
+    )
+    removed.push(departments.find((d) => d.id === row.department_id)?.name ?? 'a department')
+  }
+
+  if (person.decides) {
     must(await db.from('sli_decision_authorities').delete().eq('organization_id', org.id).eq('kind', 'decider').neq('user_id', user.id), 'Decider')
     const existing = must(
       await db.from('sli_decision_authorities').select('id').eq('organization_id', org.id).eq('kind', 'decider').eq('user_id', user.id),
@@ -186,13 +221,15 @@ for (const p of people) {
       must(await db.from('sli_decision_authorities').insert({ organization_id: org.id, user_id: user.id, kind: 'decider' }), `Decider ${email}`)
     }
   }
-  handout.push({ email, department: dept.name, role: `${p.role ?? 'member'}${p.decides === true ? ', decides' : ''}`, password })
+  const depts = person.entries.map((e) => `${e.dept.name} (${e.role}${e.dept.code === 'discovery' && e.sponsor ? ', sponsor' : ''})`).join(', ')
+  handout.push({ email, department: depts + (person.decides ? ', decides' : ''), removed, password })
 }
 
 console.log(`\n${org.name}: ${handout.length} people set up.\n`)
 for (const h of handout) {
   const status = !h.password ? 'existing account, password unchanged' : sharedPassword ? 'shared temporary password' : `temporary password: ${h.password}`
-  console.log(`${h.email.padEnd(36)} ${`${h.department} (${h.role})`.padEnd(28)} ${status}`)
+  console.log(`${h.email.padEnd(36)} ${h.department.padEnd(32)} ${status}`)
+  if (h.removed.length > 0) console.log(`${''.padEnd(36)} taken out of ${h.removed.join(', ')}`)
 }
 if (sharedPassword && handout.some((h) => h.password)) {
   console.log('\nEveryone listed as "shared temporary password" signs in with the password you typed and chooses their own at first sign-in.')

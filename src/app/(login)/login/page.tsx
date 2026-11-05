@@ -108,7 +108,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       >
         <div className="w-full max-w-sm">
           <h1 className="mb-6 text-2xl font-semibold tracking-tight">{card ? 'Sign in' : 'Ember'}</h1>
-          <LoginForm next={safeNextPath(next)} />
+          <LoginForm next={safeNextPath(next)} home={sliEnabled() ? '/sli' : '/dashboard'} />
         </div>
       </div>
     </div>

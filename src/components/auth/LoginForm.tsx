@@ -8,7 +8,8 @@ import { ensureProfile } from '@/app/actions/auth'
 
 // next: a same-site path to return to after sign-in (already validated by
 // the login page with safeNextPath), e.g. the MCP OAuth consent page.
-export function LoginForm({ next }: { next?: string | null }) {
+// home: where to go otherwise (SLI Home on an SLI instance).
+export function LoginForm({ next, home = '/dashboard' }: { next?: string | null; home?: string }) {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -38,7 +39,7 @@ export function LoginForm({ next }: { next?: string | null }) {
       setSubmitting(false)
       return
     }
-    router.push(next ?? '/dashboard')
+    router.push(next ?? home)
     router.refresh()
   }
 

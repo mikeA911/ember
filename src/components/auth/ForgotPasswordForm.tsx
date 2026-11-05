@@ -4,7 +4,9 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/browser'
 
-export function ForgotPasswordForm() {
+// expired: the reset link they opened had expired, was already used, or was
+// opened in a different browser (/auth/confirm sends them back here).
+export function ForgotPasswordForm({ expired = false }: { expired?: boolean }) {
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
@@ -17,7 +19,9 @@ export function ForgotPasswordForm() {
 
     const supabase = createClient()
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      // /auth/confirm turns the emailed link into a session, then opens
+      // /reset-password to choose the new password.
+      redirectTo: `${window.location.origin}/auth/confirm?next=/reset-password`,
     })
 
     setSubmitting(false)
@@ -34,6 +38,13 @@ export function ForgotPasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 w-full max-w-sm">
+      {expired ? (
+        <p className="text-sm text-amber-800">
+          That reset link has expired or was already used. Ask for a new one below, and open it in this same browser.
+        </p>
+      ) : (
+        <p className="text-sm text-zinc-600">Enter your email and we’ll send you a link to choose a new password. Open it in this same browser.</p>
+      )}
       <div>
         <label className="block text-sm font-medium mb-1" htmlFor="email">Email</label>
         <input
