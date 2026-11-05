@@ -24,6 +24,7 @@ node --env-file=.env.local scripts/run-migrations.mjs 20261107100001_sli_recomme
 node --env-file=.env.local scripts/run-migrations.mjs 20261108100001_sli_handoffs.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261109100001_sli_customers_and_candidates.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261110100001_sli_assistant_proposals.sql
+node --env-file=.env.local scripts/run-migrations.mjs 20261111100001_sli_thinking_aloud_notes.sql
 ```
 
 This one also gives Triggers already in research their research space.
@@ -98,3 +99,7 @@ Add `"decides": true` to the decider's entry in your members list (one person pe
 After `20261110100001_sli_assistant_proposals.sql`, Ember can raise a Trigger, add a company to the registry, add a candidate customer and record a recommendation from the conversation, but only as a card the person confirms. Nothing is saved until they press **Confirm**, and the change then goes through the same checks as the pages. Members of an SLI department get these tools in any Ember conversation; candidate and recommendation proposals appear only in a Trigger's research conversation.
 
 SLI Home (`/sli`) is now the calm greeting with a general conversation. The lists that were on Home are under **My work**.
+
+## 10. Thinking aloud
+
+**Think aloud** sits beside **Dictate** in the conversation. It uses the same speech-to-text default (section 7), and it is always treated as confidential, so the speech provider's maximum sensitivity must be *Confidential* or the recording is refused. After `20261111100001_sli_thinking_aloud_notes.sql`, notes Ember organises in a Trigger's conversation can be saved to its research with a confirmation card.

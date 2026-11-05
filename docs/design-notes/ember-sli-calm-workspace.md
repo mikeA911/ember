@@ -1,6 +1,6 @@
 # Ember SLI: the calm workspace
 
-**Status:** steps 1 and 2 built (9 and 10 November 2026); the rest proposed. Design direction for SLI's user interface, from Mike (30 October 2026), with a clickable prototype (an HTML artifact, synthetic data, simulated speech). Waiting for the Sandz team's reactions before it changes the delivery plan.
+**Status:** steps 1 to 3 built (9 to 11 November 2026); the rest proposed. Design direction for SLI's user interface, from Mike (30 October 2026), with a clickable prototype (an HTML artifact, synthetic data, simulated speech). Waiting for the Sandz team's reactions before it changes the delivery plan.
 **Applies to:** Discovery and Marketing screens in Ember SLI ([ADR-0002](../architecture-decisions/ADR-0002-ember-sandz-as-a-domain-module.md), "UI per audience"; [Discovery design](../dev-request-sandz-sli-discovery-and-triggers.md) §3).
 **Does not change:** the tenant, Trigger, permission and history layer built in S2 (`supabase/migrations/20261101100001_*`, `20261101100002_*`). Every action in the conversation goes through the same database functions.
 
@@ -92,4 +92,11 @@ The app samples the picture's brightness and picks light or dark glass and text 
 - The view: the sign-in page's own picture (**Ember**) is now the default scene, and **Hide conversation** in the header (Home and the Trigger workspace) puts the conversation away to show the view; **Show conversation** brings it back as it was.
 - Not yet: proposing a handoff, and saving brainstorm notes through a card (Ember still saves them when the person asks, as before).
 
-**Step 3 (next):** thinking aloud.
+**Step 3 (11 November 2026): thinking aloud.**
+
+- **Think aloud** beside Dictate in Ember's composer (everywhere dictation works): up to ten minutes, with a timer, **Pause**, **Done** and **Discard**. The recording is cut into two-minute parts, each transcribed on the server while the person keeps talking, always as confidential (only a speech provider approved for confidential material); no audio is kept. A failed part is reported and the rest still goes through.
+- The transcript goes to Ember as one message marked `[Thinking aloud · m:ss]` (`src/lib/chat/thinking-aloud.ts`), shown folded ("You thought aloud for 4:12 · Show what you said"). Ember answers with notes under The idea, Who it is for, Open questions, Things to check and Worth keeping, in the person's words, with unsure words marked "(?)", and no critique.
+- In a Trigger's conversation, "save the notes" becomes a confirmation card (`save_notes`, `20261111100001_sli_thinking_aloud_notes.sql`); confirming saves them as findings in the Trigger's Research workstream, marked as created by the assistant, so they appear under **Saved**. Brainstorm notes now go the same way. On Home, Ember can offer to raise a Trigger from the notes instead.
+- To learn from testers: Taglish accuracy, whether ten minutes is right, and whether the transcript should be saved with the notes (today only the notes are).
+
+**Step 4 (next):** keep the view with the person's profile (a private storage bucket for their photo) rather than on the device.

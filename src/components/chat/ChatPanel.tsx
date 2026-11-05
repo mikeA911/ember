@@ -1,6 +1,8 @@
 'use client'
 
 import { DictationButton } from '@/components/chat/DictationButton'
+import { ThinkAloudButton } from '@/components/chat/ThinkAloudButton'
+import { parseThinkingAloud, thinkingAloudMessage } from '@/lib/chat/thinking-aloud'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -1599,7 +1601,7 @@ export function ChatSession({
       )}
       <form
         onSubmit={handleSubmit}
-        className={`flex items-end gap-2 p-2 ${attachments.length > 0 || attachNotice || (promptChips && promptChips.length > 0) ? '' : 'border-t border-zinc-200'}`}
+        className={`flex flex-wrap items-end gap-2 p-2 ${attachments.length > 0 || attachNotice || (promptChips && promptChips.length > 0) ? '' : 'border-t border-zinc-200'}`}
       >
         {!feedbackCategory && (
           <>
@@ -1631,6 +1633,13 @@ export function ChatSession({
             composerRef.current?.focus()
           }}
         />
+        {!feedbackCategory && (
+          <ThinkAloudButton
+            projectId={projectId}
+            disabled={isPending || showFeedbackChooser}
+            onTranscript={(transcript, seconds) => void send(thinkingAloudMessage(transcript, seconds))}
+          />
+        )}
         <textarea
           ref={composerRef}
           value={input}
@@ -1674,6 +1683,24 @@ const COLLAPSE_USER_MESSAGE_CHARS = 400
 
 function UserMessageBubble({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false)
+  // Thinking aloud: shown folded, since Ember's notes are what matter.
+  const aloud = parseThinkingAloud(content)
+  if (aloud) {
+    return (
+      <span className="inline-block max-w-[85%] rounded bg-zinc-900 px-2 py-1 text-left text-white">
+        <span className="block">You thought aloud for {aloud.duration}.</span>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="mt-0.5 block text-xs text-zinc-300 underline hover:text-white"
+        >
+          {expanded ? 'Hide what you said' : 'Show what you said'}
+        </button>
+        {expanded && <span className="mt-1 block whitespace-pre-wrap text-sm text-zinc-100">{aloud.transcript}</span>}
+      </span>
+    )
+  }
   const collapsible = content.length > COLLAPSE_USER_MESSAGE_CHARS
   const shown = collapsible && !expanded ? `${content.slice(0, COLLAPSE_USER_MESSAGE_CHARS).trimEnd()}…` : content
   return (

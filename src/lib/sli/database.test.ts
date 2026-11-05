@@ -16,6 +16,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261108100001_sli_handoffs.sql',
   'supabase/migrations/20261109100001_sli_customers_and_candidates.sql',
   'supabase/migrations/20261110100001_sli_assistant_proposals.sql',
+  'supabase/migrations/20261111100001_sli_thinking_aloud_notes.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 // Sandz: md and cto are Discovery sponsors, analyst is on the Discovery
@@ -81,6 +82,7 @@ beforeAll(async () => {
       guardrail text, deliverables jsonb not null default '[]', derived_from_method_id uuid, unique (project_id, slug));
     create table workstream_artifacts(id uuid primary key default gen_random_uuid(), workstream_id uuid not null references project_workstreams(id) on delete cascade,
       artifact_type text not null default 'findings', title text not null, content text, external_url text, notes text, created_by uuid,
+      created_via text not null default 'ui', assistant_conversation_id uuid,
       created_at timestamptz not null default now());
     create table methods(id uuid primary key default gen_random_uuid(), name text not null, slug text not null unique, description text,
       requirements text, evidence text, deliverables text, guardrails text, review_points text, status text not null default 'draft',
@@ -1164,6 +1166,29 @@ describe('proposals Ember makes and the person confirms', () => {
     const cancelled = await call('sli_cancel_proposal', r.id)
     expect(cancelled.status).toBe('cancelled')
     expect((await call('sli_confirm_proposal', r.id)).status).toBe('cancelled')
+  })
+
+  it('saves notes to the Trigger’s research only when the person confirms', async () => {
+    const t = await raise(analyst, 'VMware exit offer')
+    await as(analyst)
+    expect((await errorOf(call('sli_create_proposal', 'save_notes', { title: 'Notes', content: 'Some ideas worth keeping' }, null, null, t.id))).message).toMatch(/no research space/)
+    await move(cto, t.id, 'researching')
+    await as(analyst)
+    expect((await errorOf(call('sli_create_proposal', 'save_notes', { title: 'Notes', content: 'short' }, null, null, t.id))).message).toMatch(/no notes/)
+    expect((await errorOf(call('sli_create_proposal', 'save_notes', { title: 'Notes', content: 'Some ideas worth keeping' }, null, null, null))).message).toMatch(/Trigger’s conversation/)
+    const p = await call('sli_create_proposal', 'save_notes', { title: 'Thinking aloud, 5 November', content: '## The idea\n- Offer a VMware exit package' }, null, null, t.id)
+    expect(p.summary).toBe(`Save “Thinking aloud, 5 November” to ${t.code}’s research`)
+    await db.exec('reset role')
+    expect((await db.query('select 1 from workstream_artifacts')).rows.length).toBe(0)
+    await db.exec('set role authenticated')
+    await as(analyst)
+    expect(await call('sli_confirm_proposal', p.id)).toMatchObject({ status: 'confirmed', result: { code: t.code } })
+    await db.exec('reset role')
+    const { rows } = await db.query<Json>(
+      "select a.title, a.created_via, w.slug from workstream_artifacts a join project_workstreams w on w.id = a.workstream_id"
+    )
+    expect(rows).toEqual([{ title: 'Thinking aloud, 5 November', created_via: 'assistant', slug: 'research' }])
+    await db.exec('set role authenticated')
   })
 
   it('finds the Trigger behind a research Project for people with full access', async () => {
