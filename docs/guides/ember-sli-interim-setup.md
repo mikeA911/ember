@@ -71,7 +71,9 @@ Supabase's built-in email can't reach staff addresses, so people get a temporary
 
 To give everyone the same temporary password instead, add `--shared-password`: the script asks you for it (typed hidden, never printed). It is easier to hand out, but until each person changes it, anyone who knows it can sign in as them, so ask everyone to sign in the same day.
 
-Re-running is safe: existing accounts keep their password and role, and their memberships are updated. `--reset-passwords` issues new temporary passwords to everyone in the list (for someone who lost theirs, use a list with just that person).
+Re-running is safe: existing accounts keep their password and role, and their memberships are updated. Accounts created in Ember Core's admin pages are added to the organisation and departments the same way. Each listed person ends up in exactly the departments listed for them (list someone twice for two departments); the script says when it takes someone out of a department. `--reset-passwords` issues new temporary passwords to everyone in the list (for someone who lost theirs, use a list with just that person), and asks them to choose their own at next sign-in.
+
+**Forgot password** on the sign-in page sends a reset email, so it only works once Supabase has an SMTP server for sending (Authentication → Emails → SMTP Settings) and the instance's `/auth/confirm` address is under Authentication → URL Configuration → Redirect URLs. Until then, use `--reset-passwords`.
 
 ## 6. Claude as a model
 
