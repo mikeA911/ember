@@ -14,6 +14,7 @@ const NAV = [
   { href: '/sli/my-work', label: 'My work', exact: false },
   { href: '/sli/discovery', label: 'Discovery', exact: false },
   { href: '/sli/customers', label: 'Customers', exact: false },
+  { href: '/sli/contacts', label: 'Contacts', exact: false },
 ]
 
 export function SliHeader({

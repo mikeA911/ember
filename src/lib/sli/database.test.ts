@@ -17,6 +17,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261109100001_sli_customers_and_candidates.sql',
   'supabase/migrations/20261110100001_sli_assistant_proposals.sql',
   'supabase/migrations/20261111100001_sli_thinking_aloud_notes.sql',
+  'supabase/migrations/20261113100001_sli_contacts.sql',
 ]
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 // Sandz: md and cto are Discovery sponsors, analyst is on the Discovery
@@ -127,7 +128,7 @@ beforeEach(async () => {
     reset role;
     alter table sli_trigger_stage_history disable trigger sli_trigger_stage_history_append_only;
     update sli_departments set workspace_project_id = null;
-    truncate sli_assistant_proposals, chat_messages, conversations, sli_trigger_candidate_customers, sli_customer_technologies, sli_customer_rankings, sli_customer_assignments, sli_customers,
+    truncate sli_customer_contacts, sli_contact_methods, sli_contacts, sli_assistant_proposals, chat_messages, conversations, sli_trigger_candidate_customers, sli_customer_technologies, sli_customer_rankings, sli_customer_assignments, sli_customers,
       sli_handoff_package_items, sli_handoffs, sli_decision_evidence, sli_decisions, sli_recommendations, sli_decision_authorities, workstream_artifacts,
       sli_project_reservations, sli_trigger_contributors, project_members, project_workstreams, projects,
       sli_admin_access_log, sli_trigger_stage_history, sli_triggers, sli_trigger_types, sli_department_members,
@@ -1201,5 +1202,77 @@ describe('proposals Ember makes and the person confirms', () => {
     expect(await call('sli_trigger_for_project', rows[0].project_id)).toMatchObject({ code: t.code, stage: 'researching' })
     await as(rival)
     expect(await call('sli_trigger_for_project', rows[0].project_id)).toBeNull()
+  })
+})
+
+describe('contacts', () => {
+  async function company(user: string, name: string) {
+    await as(user)
+    return (await call<{ id: string }>('sli_save_customer', null, name, null, null, null, null, null, null, null, null, null)).id
+  }
+  const email = (value: string, extra: Record<string, unknown> = {}) => ({ kind: 'email', value, isPrimary: true, ...extra })
+
+  it('adds people to a company, with their methods and buying role, and keeps emails unique', async () => {
+    const acme = await company(isr, 'Acme Logistics')
+    await as(idle)
+    expect((await errorOf(call('sli_save_contact', null, 'Ana', 'Cruz', null, 'unknown', null, false, null, [], acme, null, null, false))).code).toBe('42501')
+    await as(isr)
+    const { id } = await call<{ id: string }>('sli_save_contact', null, 'Ana', 'Cruz', 'decision_maker', 'given', 'Webinar sign-up', false, null,
+      [email('Ana.Cruz@Acme.ph'), { kind: 'mobile', value: '+63 917 555 0101' }], acme, 'IT Director', 'IT', true)
+    expect((await errorOf(call('sli_save_contact', null, 'Ann', 'C', null, 'unknown', null, false, null, [email('ana.cruz@acme.ph ')], null, null, null, false))).message)
+      .toMatch(/Ana Cruz already uses/)
+    expect((await errorOf(call('sli_save_contact', null, 'X', null, null, 'unknown', null, false, null, [email('not-an-email')], null, null, null, false))).message)
+      .toMatch(/valid email/)
+
+    await as(analyst)
+    const c = await call('sli_get_customer', acme)
+    expect(c.contacts).toEqual([expect.objectContaining({ name: 'Ana Cruz', jobTitle: 'IT Director', buyingRole: 'decision_maker', isPrimary: true, endedOn: null })])
+    expect((await call<Json[]>('sli_list_contacts', '0917 555 0101', 100)).map((x) => x.name)).toEqual(['Ana Cruz'])
+    expect((await call<Json[]>('sli_list_contacts', 'acme.ph', 100))[0].companies).toEqual([{ id: acme, name: 'Acme Logistics', jobTitle: 'IT Director' }])
+    expect((await call('sli_get_contact', id)).marketingConsent).toBe('given')
+  })
+
+  it('keeps history when someone moves company, and remembers an opt-out', async () => {
+    const acme = await company(isr, 'Acme Logistics')
+    const beta = await company(isr, 'Beta Foods')
+    await as(isr)
+    const { id } = await call<{ id: string }>('sli_save_contact', null, 'Ben', 'Reyes', null, 'unknown', null, false, null,
+      [email('ben@acme.ph', { optedOut: true })], acme, 'IT Manager', null, false)
+    const optedAt = async () => {
+      await db.exec('reset role')
+      const t = (await db.query<{ t: string }>("select opted_out_at::text t from sli_contact_methods where value = 'ben@acme.ph'")).rows[0].t
+      await db.exec('set role authenticated')
+      return t
+    }
+    const first = await optedAt()
+    const today = new Date().toISOString().slice(0, 10)
+    const link = (await call('sli_get_contact', id)).links[0].linkId
+    expect((await errorOf(call('sli_update_contact_link', link, 'IT Manager', null, false, '2020-01-01'))).message).toMatch(/before they joined/)
+    await call('sli_update_contact_link', link, 'IT Manager', null, false, today)
+    await call('sli_save_contact', id, 'Ben', 'Reyes', 'influencer', 'unknown', null, false, null,
+      [email('ben@acme.ph', { optedOut: true }), email('ben@beta.ph')], beta, 'CIO', 'IT', true)
+    const detail = await call('sli_get_contact', id)
+    expect(detail.links.map((l: Json) => [l.customerName, l.endedOn === null])).toEqual([['Beta Foods', true], ['Acme Logistics', false]])
+    expect(detail.methods.find((m: Json) => m.value === 'ben@acme.ph').optedOut).toBe(true)
+    expect(await optedAt()).toBe(first)
+    await as(isr)
+    expect((await call('sli_get_customer', acme)).contacts[0].endedOn).toBe(today)
+    expect((await errorOf(call('sli_update_contact_link', link, 'IT Manager', null, false, null))).message).toMatch(/already left/)
+  })
+
+  it('records the Lead Form company profile, and removes a contact only with a reason', async () => {
+    const acme = await company(isr, 'Acme Logistics')
+    await as(isr)
+    expect((await errorOf(call('sli_save_customer_profile', acme, null, null, null, null, null, 'sometimes'))).message).toMatch(/how they procure/)
+    await call('sli_save_customer_profile', acme, 'Third-party logistics', 'Warehousing, trucking', 'Retail chains', '1 Ayala Ave, Makati', '500-1000', 'local_and_global')
+    expect((await call('sli_get_customer', acme)).profile).toEqual({
+      overview: 'Third-party logistics', productsServices: 'Warehousing, trucking', notableCustomers: 'Retail chains',
+      address: '1 Ayala Ave, Makati', employeeCount: '500-1000', procurementType: 'local_and_global',
+    })
+    const { id } = await call<{ id: string }>('sli_save_contact', null, 'Cy', null, null, 'unknown', null, false, null, [], acme, null, null, false)
+    expect((await errorOf(call('sli_archive_contact', id, ''))).message).toMatch(/why/)
+    await call('sli_archive_contact', id, 'Duplicate of another record')
+    expect(await call('sli_get_contact', id)).toBeNull()
+    expect((await call('sli_get_customer', acme)).contacts).toEqual([])
   })
 })

@@ -251,3 +251,137 @@ export async function setCandidateStatusAction(input: { candidateId: string; sta
     return failure(err)
   }
 }
+
+// Company profile (the Lead Form's company fields) and contacts
+// (supabase/migrations/20261113100001_sli_contacts.sql).
+
+const ProfileSchema = z.object({
+  customerId: z.string().uuid(),
+  overview: text(4000),
+  productsServices: text(4000),
+  notableCustomers: text(2000),
+  address: text(500),
+  employeeCount: text(50),
+  procurementType: z.enum(['local', 'global_mandate', 'local_and_global']).optional().or(z.literal('')).transform((v) => (v ? v : null)),
+})
+
+export async function saveCustomerProfileAction(input: z.input<typeof ProfileSchema>): Promise<Result> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  const parsed = ProfileSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the form.' }
+  try {
+    const { supabase } = await requireUser()
+    const v = parsed.data
+    await sliRpc(supabase, 'sli_save_customer_profile', {
+      p_customer: v.customerId,
+      p_overview: v.overview,
+      p_products_services: v.productsServices,
+      p_notable_customers: v.notableCustomers,
+      p_address: v.address,
+      p_employee_count: v.employeeCount,
+      p_procurement_type: v.procurementType,
+    })
+    revalidatePath(`/sli/customers/${v.customerId}`)
+    return { ok: true }
+  } catch (err) {
+    return failure(err)
+  }
+}
+
+const MethodSchema = z.object({
+  kind: z.enum(['email', 'mobile', 'landline', 'viber', 'whatsapp', 'linkedin', 'other']),
+  value: z.string().trim().max(300),
+  isPrimary: z.boolean().default(false),
+  optedOut: z.boolean().default(false),
+})
+
+const ContactSchema = z.object({
+  id: uuidOrNull,
+  firstName: z.string().trim().min(1, 'Give the first name').max(100),
+  lastName: text(100),
+  buyingRole: z.enum(['decision_maker', 'influencer', 'user', 'other']).optional().or(z.literal('')).transform((v) => (v ? v : null)),
+  marketingConsent: z.enum(['unknown', 'given', 'withdrawn']).default('unknown'),
+  consentSource: text(200),
+  doNotContact: z.boolean().default(false),
+  notes: text(4000),
+  methods: z.array(MethodSchema).max(20),
+  customerId: uuidOrNull,
+  jobTitle: text(200),
+  department: text(200),
+  isPrimary: z.boolean().default(false),
+})
+
+export async function saveContactAction(input: z.input<typeof ContactSchema>): Promise<Result<{ id: string }>> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  const parsed = ContactSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the form.' }
+  try {
+    const { supabase } = await requireUser()
+    const v = parsed.data
+    const { id } = await sliRpc<{ id: string }>(supabase, 'sli_save_contact', {
+      p_id: v.id,
+      p_first_name: v.firstName,
+      p_last_name: v.lastName,
+      p_buying_role: v.buyingRole,
+      p_marketing_consent: v.marketingConsent,
+      p_consent_source: v.consentSource,
+      p_do_not_contact: v.doNotContact,
+      p_notes: v.notes,
+      p_methods: v.methods.filter((m) => m.value),
+      p_customer: v.customerId,
+      p_job_title: v.jobTitle,
+      p_department: v.department,
+      p_is_primary: v.isPrimary,
+    })
+    revalidatePath('/sli/contacts')
+    revalidatePath(`/sli/contacts/${id}`)
+    if (v.customerId) revalidatePath(`/sli/customers/${v.customerId}`)
+    return { ok: true, id }
+  } catch (err) {
+    return failure(err)
+  }
+}
+
+const LinkSchema = z.object({
+  linkId: z.string().uuid(),
+  jobTitle: text(200),
+  department: text(200),
+  isPrimary: z.boolean().default(false),
+  endedOn: dateOrNull,
+})
+
+export async function updateContactLinkAction(input: z.input<typeof LinkSchema>): Promise<Result> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  const parsed = LinkSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the form.' }
+  try {
+    const { supabase } = await requireUser()
+    const v = parsed.data
+    const r = await sliRpc<{ id: string; customerId: string }>(supabase, 'sli_update_contact_link', {
+      p_link: v.linkId,
+      p_job_title: v.jobTitle,
+      p_department: v.department,
+      p_is_primary: v.isPrimary,
+      p_ended_on: v.endedOn,
+    })
+    revalidatePath(`/sli/contacts/${r.id}`)
+    revalidatePath(`/sli/customers/${r.customerId}`)
+    return { ok: true }
+  } catch (err) {
+    return failure(err)
+  }
+}
+
+export async function archiveContactAction(input: { contactId: string; reason: string }): Promise<Result> {
+  if (!sliEnabled()) return { ok: false, error: 'Not available.' }
+  if (!z.string().uuid().safeParse(input.contactId).success) return { ok: false, error: 'Contact not found.' }
+  try {
+    const { supabase } = await requireUser()
+    await sliRpc(supabase, 'sli_archive_contact', { p_contact: input.contactId, p_reason: input.reason.slice(0, 500) })
+    revalidatePath('/sli/contacts')
+    revalidatePath('/sli/customers', 'layout')
+    return { ok: true }
+  } catch (err) {
+    return failure(err)
+  }
+}
