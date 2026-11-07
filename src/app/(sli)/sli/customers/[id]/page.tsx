@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCustomer, getSliContext, listCustomers } from '@/lib/sli/api'
 import { CustomerForm } from '@/components/sli/CustomerForm'
 import { CustomerAssignments, CustomerRankings, CustomerTechnologies } from '@/components/sli/CustomerPanels'
+import { CustomerContacts, CustomerProfilePanel } from '@/components/sli/CustomerContacts'
 import { CANDIDATE_TIERS, STAGE_LABELS } from '@/lib/sli/types'
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
@@ -32,6 +33,16 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           {[customer.domain, customer.mainPhone].filter(Boolean).join(' · ')}
         </p>
       </div>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Company profile</h2>
+        <CustomerProfilePanel customer={customer} />
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">People</h2>
+        <CustomerContacts customer={customer} />
+      </section>
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Who looks after it</h2>

@@ -26,6 +26,7 @@ node --env-file=.env.local scripts/run-migrations.mjs 20261109100001_sli_custome
 node --env-file=.env.local scripts/run-migrations.mjs 20261110100001_sli_assistant_proposals.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261111100001_sli_thinking_aloud_notes.sql
 node --env-file=.env.local scripts/run-migrations.mjs 20261112100001_view_settings.sql 20261112100002_view_photos_storage.sql
+node --env-file=.env.local scripts/run-migrations.mjs 20261113100001_sli_contacts.sql
 ```
 
 This one also gives Triggers already in research their research space.

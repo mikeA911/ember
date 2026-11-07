@@ -300,6 +300,69 @@ export type CustomerDetail = CustomerBrief & {
   members: { id: string; name: string }[]
   triggers: { code: string; title: string; stage: TriggerStage; tier: CandidateTier; status: string }[]
   salesMembers: { userId: string; name: string; department: 'sales' | 'marketing' }[]
+  profile: CustomerProfile
+  contacts: CustomerContact[]
+}
+
+// The Lead Form's company profile (20261113100001_sli_contacts.sql).
+export const PROCUREMENT_TYPES = {
+  local: 'Procures locally',
+  global_mandate: 'Globally mandated',
+  local_and_global: 'Local and global',
+} as const
+export type ProcurementType = keyof typeof PROCUREMENT_TYPES
+export type CustomerProfile = {
+  overview: string | null
+  productsServices: string | null
+  notableCustomers: string | null
+  address: string | null
+  employeeCount: string | null
+  procurementType: ProcurementType | null
+}
+
+// Contacts: people, linked to companies over time.
+export const BUYING_ROLES = { decision_maker: 'Decision maker', influencer: 'Influencer', user: 'User', other: 'Other' } as const
+export type BuyingRole = keyof typeof BUYING_ROLES
+export const CONTACT_METHOD_KINDS = {
+  email: 'Email',
+  mobile: 'Mobile',
+  landline: 'Landline',
+  viber: 'Viber',
+  whatsapp: 'WhatsApp',
+  linkedin: 'LinkedIn',
+  other: 'Other',
+} as const
+export type ContactMethodKind = keyof typeof CONTACT_METHOD_KINDS
+export type ContactMethod = { id: string; kind: ContactMethodKind; value: string; isPrimary: boolean; optedOut: boolean }
+export type MarketingConsent = 'unknown' | 'given' | 'withdrawn'
+export type ContactBrief = {
+  id: string
+  firstName: string
+  lastName: string | null
+  name: string
+  buyingRole: BuyingRole | null
+  marketingConsent: MarketingConsent
+  doNotContact: boolean
+  methods: ContactMethod[]
+}
+export type CustomerContact = ContactBrief & {
+  linkId: string
+  jobTitle: string | null
+  department: string | null
+  isPrimary: boolean
+  startedOn: string | null
+  endedOn: string | null
+}
+export type ContactListItem = ContactBrief & { companies: { id: string; name: string; jobTitle: string | null }[] }
+export type ContactDetail = ContactBrief & {
+  consentRecordedAt: string | null
+  consentSource: string | null
+  notes: string | null
+  source: string
+  createdBy: string | null
+  updatedAt: string
+  canEdit: boolean
+  links: { linkId: string; customerId: string; customerName: string; jobTitle: string | null; department: string | null; isPrimary: boolean; startedOn: string | null; endedOn: string | null }[]
 }
 
 export const TECHNOLOGY_CATEGORIES = {

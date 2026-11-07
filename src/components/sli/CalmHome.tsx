@@ -88,6 +88,7 @@ export function CalmHome({
           <Link href="/sli/my-work" className="rounded-full px-3 py-1 hover:bg-white">My work</Link>
           <Link href="/sli/discovery" className="rounded-full px-3 py-1 hover:bg-white">Discovery</Link>
           <Link href="/sli/customers" className="rounded-full px-3 py-1 hover:bg-white">Customers</Link>
+          <Link href="/sli/contacts" className="rounded-full px-3 py-1 hover:bg-white">Contacts</Link>
           <span aria-hidden="true" className="mx-1 h-4 w-px bg-zinc-300" />
           <button type="button" onClick={() => setHidden((h) => !h)} aria-pressed={hidden} className="rounded-full px-3 py-1 hover:bg-white">
             {hidden ? 'Show conversation' : 'Hide conversation'}
